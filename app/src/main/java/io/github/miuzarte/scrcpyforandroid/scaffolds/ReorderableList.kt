@@ -55,6 +55,7 @@ class ReorderableList(
     data class Item(
         val id: String,
         val icon: ImageVector? = null,
+        val iconContent: (@Composable () -> Unit)? = null,
         val title: String,
         val subtitle: String,
         val onClick: (() -> Unit)? = null,
@@ -105,7 +106,9 @@ class ReorderableList(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(UiSpacing.Small),
                                     ) {
-                                        if (item.icon != null) Icon(
+                                        if (item.iconContent != null) {
+                                            item.iconContent()
+                                        } else if (item.icon != null) Icon(
                                             item.icon,
                                             contentDescription = item.title,
                                         )

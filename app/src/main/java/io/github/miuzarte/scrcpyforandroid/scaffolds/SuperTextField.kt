@@ -3,7 +3,11 @@ package io.github.miuzarte.scrcpyforandroid.scaffolds
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -75,18 +79,18 @@ fun SuperTextField(
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
 
-    // 监听焦点状态变化并触发回调
-    LaunchedEffect(isFocused) {
-        if (isFocused) onFocusGained?.invoke()
-        else onFocusLost?.invoke()
-    }
-
     TextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
             .onFocusChanged { focusState ->
+                val wasFocused = isFocused
                 isFocused = focusState.isFocused
+                if (wasFocused && !focusState.isFocused) {
+                    onFocusLost?.invoke()
+                } else if (!wasFocused && focusState.isFocused) {
+                    onFocusGained?.invoke()
+                }
             }
             .focusRequester(focusRequester),
         label = label,
