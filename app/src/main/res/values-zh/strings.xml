@@ -77,6 +77,7 @@
     <string name="device_cd_config_left">配置显示在左侧</string>
     <string name="device_menu_quick_sort">快速设备排序</string>
     <string name="device_menu_virtual_button_sort">虚拟按钮排序</string>
+    <string name="device_menu_swipe_floating_ball_sort">悬浮球排序</string>
     <string name="device_menu_clear_logs">清空日志</string>
     <string name="device_hint_long_press_edit">长按可编辑</string>
     <string name="device_cannot_modify_connected">无法修改已连接的设备</string>
@@ -118,6 +119,10 @@
     <string name="bottomsheet_all_apps">所有应用</string>
     <string name="bottomsheet_loading_apps">应用列表加载中</string>
     <string name="bottomsheet_no_apps">没有可用的应用列表</string>
+    <string name="bottomsheet_search_apps">搜索应用</string>
+    <string name="bottomsheet_no_search_result">没有找到匹配的应用</string>
+    <string name="bottomsheet_add_favorite">添加收藏</string>
+    <string name="bottomsheet_remove_favorite">取消收藏</string>
 
     <!-- Fullscreen Control -->
     <string name="fullscreen_failed_app_list">获取应用列表失败</string>
@@ -131,6 +136,7 @@
     <string name="fullscreen_debug_resolution">分辨率：%1$sx%2$s</string>
     <string name="fullscreen_debug_fps">帧率：%1$s</string>
     <string name="fullscreen_debug_touches">触点：%1$d</string>
+    <string name="fullscreen_debug_bandwidth">带宽：%1$s</string>
 
     <!-- Settings -->
     <string name="settings_title">设置</string>
@@ -169,7 +175,7 @@
     <string name="pref_title_low_latency_audio">低延迟音频（实验性）</string>
     <string name="pref_summary_low_latency_audio">启用后将尝试使用低延迟音频路径\n推荐配合 RAW PCM 编解码\n修改后建议划卡重启应用</string>
     <string name="pref_title_debug_info">启用调试信息</string>
-    <string name="pref_summary_debug_info">在全屏界面悬浮显示分辨率、帧率和触点信息</string>
+    <string name="pref_summary_debug_info">在全屏界面悬浮显示分辨率、帧率、带宽和触点信息</string>
     <string name="pref_title_hide_simple_settings">设备页隐藏简单设置项</string>
     <string name="pref_summary_hide_simple_settings">启用后设备页仅保留更多参数、所有应用、最近任务和启动/停止按钮</string>
     <string name="pref_title_preview_card_on_top">使预览卡显示在配置卡上方</string>
@@ -181,10 +187,18 @@
     <string name="pref_summary_quick_device_sort">手动排序设备页的快速设备</string>
     <string name="pref_title_virtual_button_sort">虚拟按钮排序</string>
     <string name="pref_summary_virtual_button_sort">手动排序预览/全屏时的虚拟按钮，并选择哪些按钮展示在外</string>
+    <string name="pref_title_swipe_floating_ball_sort">悬浮球排序</string>
+    <string name="pref_summary_swipe_floating_ball_sort">手动排序悬浮球的菜单项，并选择哪些展示在滑动悬浮球菜单</string>
     <string name="pref_title_password_autofill">锁屏密码自动填充</string>
     <string name="pref_summary_password_autofill">管理用于自动填充的锁屏密码</string>
     <string name="pref_title_clipboard_sync">实时同步剪贴板到受控机</string>
     <string name="pref_summary_clipboard_sync">本机剪贴板更新后会自动同步到受控机\n禁用后需要使用虚拟按钮中的粘贴才能粘贴本机内容\nMIUI 完全不允许后台监听剪贴板，因此该选项在小米设备上可能无效</string>
+    <string name="vb_temp_hide_virtual_buttons">切换到悬浮球</string>
+    <string name="vb_restore_virtual_buttons">切换到虚拟按钮</string>
+    <string name="pref_title_fullscreen_control_mode">全屏控制模式</string>
+    <string name="vb_virtual_buttons">虚拟按钮</string>
+    <string name="pref_title_off">关闭</string>
+    <string name="vb_expand_status_bar">控制中心</string>
 
     <!-- Settings - Fullscreen -->
     <string name="section_fullscreen">全屏</string>
@@ -199,6 +213,12 @@
     <string name="pref_title_show_floating_button">全屏时显示悬浮球</string>
     <string name="pref_summary_show_floating_button">在全屏控制页中显示可拖动的悬浮球，点击后弹出完整虚拟按键菜单</string>
     <string name="pref_title_floating_button_size">悬浮球尺寸</string>
+    <string name="pref_title_temp_floating_button_size">悬浮球尺寸</string>
+    <string name="pref_title_swipe_floating_ball_bg_opacity">悬浮球不透明度</string>
+    <string name="pref_title_swipe_floating_ball_ring_opacity">悬浮球白环不透明度</string>
+    <string name="pref_title_swipe_floating_menu_item_count">滑动悬浮球菜单项数量</string>
+    <string name="pref_title_show_swipe_floating_ball">悬浮球</string>
+    <string name="pref_summary_show_swipe_floating_ball">在全屏控制页中切换使用虚拟按钮栏或滑动选择悬浮球</string>
     <string name="pref_title_floating_button_bg_opacity">悬浮球背景透明度</string>
     <string name="pref_title_floating_button_ring_opacity">悬浮球白环透明度</string>
     <string name="pref_title_fullscreen_compat_mode">全屏兼容模式</string>
@@ -265,7 +285,10 @@
     <string name="pref_title_clear_logs_on_exit">退出应用时清除日志</string>
     <string name="pref_summary_clear_logs_on_exit">双击返回退出应用时清除日志</string>
     <string name="pref_title_hide_log_box">隐藏设备页日志框</string>
-    <string name="pref_summary_hide_log_box">隐藏设备页最下方的日志框</string>
+    <string name="pref_summary_hide_log_box">隐藏设备页面底部的日志框</string>
+    <string name="pref_title_show_app_icons">显示应用图标</string>
+    <string name="pref_summary_show_app_icons">在所有应用、最近任务、应用管理列表中显示应用图标</string>
+    <string name="pref_title_snackbar_duration">Snackbar 显示时长</string>
     <string name="pref_title_language">语言</string>
     <string name="pref_summary_language">应用显示语言</string>
 
@@ -283,10 +306,13 @@
 
     <!-- Virtual Button Order -->
     <string name="vb_order_title">虚拟按钮排序</string>
+    <string name="sfb_order_title">悬浮球排序</string>
     <string name="vb_order_button_text">按钮显示文本</string>
     <string name="vb_order_hint">超过3个建议关闭，只对预览卡下方的虚拟按钮生效</string>
     <string name="vb_order_display_external">显示在外部</string>
     <string name="vb_order_display_more_menu">显示在更多菜单内</string>
+    <string name="sfb_order_swipe_visible">滑动悬浮球显示</string>
+    <string name="sfb_order_click_visible">单击悬浮球显示</string>
 
     <!-- Virtual Button Actions -->
     <string name="vb_more">更多</string>
@@ -305,6 +331,7 @@
     <string name="vb_recent_tasks">最近任务</string>
     <string name="vb_toggle_ime">拉起输入法</string>
     <string name="vb_paste_clipboard">粘贴本机剪贴板</string>
+    <string name="vb_exit_fullscreen">退出全屏</string>
 
     <!-- Dock Positions -->
     <string name="dock_follow">跟随</string>
@@ -470,6 +497,9 @@
     <string name="scrcpyopt_title">所有参数</string>
     <string name="scrcpyopt_cd_profile_manage">配置管理</string>
     <string name="scrcpyopt_manage_profiles">管理配置</string>
+    <string name="scrcpyopt_paste_and_create">粘贴并新建配置</string>
+    <string name="scrcpyopt_paste_invalid">剪贴板内容不是有效配置</string>
+    <string name="scrcpyopt_paste_success">已从剪贴板创建新配置</string>
     <string name="scrcpyopt_new_profile">新建配置</string>
     <string name="scrcpyopt_rename_profile">重命名配置</string>
     <string name="scrcpyopt_duplicate_name_hint">配置名重复时会自动追加序号</string>
@@ -509,6 +539,10 @@
     <string name="scrcpyopt_min_size_alignment">最小尺寸对齐</string>
     <string name="scrcpyopt_min_size_alignment_invalid">对齐值必须是 2 的次方 (1, 2, 4, 8, 16)</string>
     <string name="scrcpyopt_max_size">最大分辨率</string>
+    <string name="pref_title_resolution_custom_enabled">修改分辨率</string>
+    <string name="pref_summary_resolution_custom_enabled">--custom-resolution</string>
+    <string name="pref_title_resolution_width">宽度</string>
+    <string name="pref_title_resolution_height">高度</string>
     <string name="scrcpyopt_max_fps">最大帧率</string>
     <string name="scrcpyopt_camera_id">摄像头 ID</string>
     <string name="scrcpyopt_camera_facing">摄像头朝向</string>
@@ -534,6 +568,8 @@
     <string name="scrcpyopt_no_cleanup">禁用结束后清理</string>
     <string name="scrcpyopt_no_cleanup_desc">默认情况下，scrcpy 会从设备中移除服务器二进制文件，并在退出时恢复设备状态（显示触摸、保持唤醒和电源模式）\n此选项将禁用此清理操作</string>
     <string name="scrcpyopt_flex_display">自动调整尺寸以匹配界面</string>
+    <string name="scrcpyopt_wake_screen_on_fullscreen">进入全屏时点亮屏幕</string>
+    <string name="scrcpyopt_wake_screen_on_fullscreen_desc">进入全屏时点亮受控端屏幕\n关闭后，进入全屏时不会点亮屏幕</string>
     <string name="scrcpyopt_start_app">scrcpy 启动后打开应用</string>
     <string name="scrcpyopt_native">本机</string>
     <string name="scrcpyopt_log_level">日志等级</string>
@@ -542,6 +578,8 @@
     <string name="vm_adb_connected">ADB 已连接</string>
     <string name="vm_scrcpy_started">scrcpy 已启动</string>
     <string name="vm_scrcpy_started_recording">scrcpy 已启动并开始录制</string>
+    <string name="vm_resolution_modified">已修改分辨率为 %1$s</string>
+    <string name="vm_resolution_restored">已还原分辨率为原始分辨率</string>
     <string name="vm_scrcpy_stopped_adb_disconnected">scrcpy 已停止，ADB 已断开</string>
     <string name="vm_scrcpy_stopped">scrcpy 已停止</string>
     <string name="vm_adb_connection_failed">ADB 连接失败</string>
@@ -550,6 +588,8 @@
     <string name="vm_pairing_failed">配对失败</string>
     <string name="vm_auto_reconnect_succeeded">ADB 自动重连成功</string>
     <string name="vm_auto_reconnect_failed">ADB 自动重连失败</string>
+    <string name="vm_auto_reconnect_restart_scrcpy">ADB 已重连，正在重启投屏…</string>
+    <string name="vm_auto_reconnect_restart_scrcpy_failed">ADB 已重连，但重启投屏失败</string>
     <string name="vm_start_scrcpy">启动 scrcpy</string>
     <string name="vm_stop_scrcpy">停止 scrcpy</string>
     <string name="vm_launch_app">启动应用</string>
@@ -558,6 +598,7 @@
     <string name="vm_execute_pairing">执行配对</string>
     <string name="vm_send_action">发送 %1$s</string>
     <string name="vm_label_timeout">%1$s 超时</string>
+    <string name="vm_label_cancelled">%1$s 已取消</string>
     <string name="vm_label_param_error">%1$s 参数错误：%2$s</string>
     <string name="vm_label_failed">%1$s 失败：%2$s</string>
     <string name="vm_app_started_on_display">已在当前显示启动应用：%1$s</string>
@@ -583,5 +624,237 @@
     <string name="language_follow_system">跟随系统</string>
     <string name="language_english">英语</string>
     <string name="language_chinese">中文</string>
+
+    <!-- Local IP -->
+    <string name="local_ip_title">本机IP地址</string>
+    <string name="local_ip_ipv4_section">IPv4 地址</string>
+    <string name="local_ip_ipv6_section">IPv6 地址</string>
+    <string name="local_ip_interface">接口: %1$s</string>
+    <string name="local_ip_tap_to_copy">点击复制</string>
+    <string name="local_ip_no_interface">未找到网络接口</string>
+    <string name="local_ip_check_network">请检查网络连接</string>
+    <string name="pref_title_view_local_ip">查看本机IP</string>
+    <string name="pref_summary_view_local_ip">显示本机IPv4/IPv6地址，支持一键复制</string>
+    <string name="pref_title_preview_card_tap_fullscreen">点击预览卡进入全屏</string>
+    <string name="pref_summary_preview_card_tap_fullscreen">开启后点击设备预览卡直接进入全屏控制</string>
+
+    <!-- Terminal - Command Bookmarks -->
+    <string name="terminal_menu_command_bookmarks">命令书签</string>
+    <string name="bookmark_title">命令书签</string>
+    <string name="bookmark_empty">暂无书签</string>
+    <string name="bookmark_empty_hint">点击 + 创建命令书签</string>
+    <string name="bookmark_create">创建书签</string>
+    <string name="bookmark_rename">重命名</string>
+    <string name="bookmark_edit">编辑</string>
+    <string name="bookmark_delete">删除</string>
+    <string name="bookmark_label_name">名称</string>
+    <string name="bookmark_label_command">命令</string>
+    <string name="bookmark_hint_name">书签名称</string>
+    <string name="bookmark_hint_command">要执行的命令</string>
+    <string name="bookmark_name_empty">名称不能为空</string>
+    <string name="bookmark_command_empty">命令不能为空</string>
+    <string name="bookmark_deleted">书签已删除</string>
+    <string name="bookmark_input_to_terminal">输入到终端</string>
+
+    <!-- LAN Scan -->
+    <string name="button_scan_devices">扫描设备</string>
+    <string name="lan_scan_title">扫描局域网设备</string>
+    <string name="lan_scan_scanning">正在扫描… (%1$d / %2$d)</string>
+    <string name="lan_scan_no_interface">未找到本地网络接口</string>
+    <string name="lan_scan_failed">扫描失败</string>
+    <string name="lan_scan_unknown_error">未知错误</string>
+    <string name="lan_scan_no_devices">未找到设备</string>
+    <string name="lan_scan_no_devices_hint">请确保目标设备已开启无线调试</string>
+    <string name="lan_scan_found_devices">发现 %1$d 个设备</string>
+    <string name="lan_scan_local_device">本机</string>
+
+    <!-- Terminal - Bookmark Auto Enter -->
+    <string name="pref_title_terminal_bookmark_auto_enter">命令书签自动回车</string>
+    <string name="pref_summary_terminal_bookmark_auto_enter">选择命令书签后自动执行命令（自动添加回车键）</string>
+
+    <!-- App Manager -->
+    <string name="appmgr_title">应用管理</string>
+    <string name="appmgr_tab_user_apps">用户应用</string>
+    <string name="appmgr_tab_system_apps">系统应用</string>
+    <string name="appmgr_search_hint">搜索应用名或包名</string>
+    <string name="appmgr_loading">加载应用列表…</string>
+    <string name="appmgr_no_apps">未找到应用</string>
+    <string name="appmgr_disabled">已停用</string>
+    <string name="appmgr_upload_apk">安装应用</string>
+    <string name="appmgr_upload_from_file">从文件选择</string>
+    <string name="appmgr_upload_from_device">从本机导入</string>
+    <string name="appmgr_local_app_picker_title">选择本机应用</string>
+    <string name="appmgr_loading_local_apps">正在加载本机应用…</string>
+    <string name="pull_refresh_pull_down">下拉刷新</string>
+    <string name="pull_refresh_release">释放刷新</string>
+    <string name="pull_refresh_refreshing">正在刷新…</string>
+    <string name="pull_refresh_complete">刷新成功</string>
+    <string name="appmgr_action_uninstall">卸载</string>
+    <string name="appmgr_action_export">导出APK</string>
+    <string name="appmgr_action_disable">停用</string>
+    <string name="appmgr_action_enable">启用</string>
+    <string name="appmgr_action_clear_data">清除数据</string>
+    <string name="appmgr_action_force_stop">停止运行</string>
+    <string name="appmgr_batch_mode">批量管理</string>
+    <string name="appmgr_batch_exit">退出批量</string>
+    <string name="appmgr_batch_freeze">冻结所选</string>
+    <string name="appmgr_batch_unfreeze">解冻所选</string>
+    <string name="appmgr_batch_uninstall">卸载所选</string>
+    <string name="appmgr_batch_selected">已选: %d</string>
+    <string name="appmgr_batch_freeze_confirm">确定冻结 %d 个应用？</string>
+    <string name="appmgr_batch_uninstall_confirm">确认卸载选中的 %d 个应用？</string>
+    <string name="appmgr_batch_unfreeze_confirm">确认启用选中的 %d 个应用？</string>
+    <string name="appmgr_batch_export_confirm">确认导出选中的 %d 个应用？</string>
+    <string name="appmgr_batch_clear">清除</string>
+    <string name="appmgr_batch_install">批量安装</string>
+    <string name="appmgr_uninstall_confirm">确定卸载「%1$s」？</string>
+    <string name="appmgr_disable_confirm">确定停用「%1$s」？</string>
+    <string name="appmgr_clear_data_confirm">确定清除「%1$s」的数据？</string>
+    <string name="appmgr_force_stop_confirm">确定停止运行「%1$s」？</string>
+    <string name="appmgr_uninstall_success">已卸载：%1$s</string>
+    <string name="appmgr_uninstall_failed">卸载失败：%1$s</string>
+    <string name="appmgr_export_success">已导出到Download</string>
+    <string name="appmgr_export_failed">导出失败：%1$s</string>
+    <string name="appmgr_disable_success">已停用：%1$s</string>
+    <string name="appmgr_disable_failed">停用失败：%1$s</string>
+    <string name="appmgr_enable_success">已启用：%1$s</string>
+    <string name="appmgr_enable_failed">启用失败：%1$s</string>
+    <string name="appmgr_clear_data_success">已清除数据：%1$s</string>
+    <string name="appmgr_clear_data_failed">清除数据失败：%1$s</string>
+    <string name="appmgr_force_stop_success">已停止运行：%1$s</string>
+    <string name="appmgr_force_stop_failed">停止运行失败：%1$s</string>
+    <string name="appmgr_version">v%1$s</string>
+
+    <string name="appmgr_device_info">设备信息</string>
+    <string name="appmgr_device_info_loading">加载设备信息…</string>
+    <string name="appmgr_info_model">型号</string>
+    <string name="appmgr_info_android_version">Android 版本</string>
+    <string name="appmgr_info_cpu">CPUABI</string>
+    <string name="appmgr_info_screen">分辨率</string>
+    <string name="appmgr_info_battery">电池</string>
+    <string name="appmgr_info_storage">存储空间(可用/总量)</string>
+
+    <string name="appmgr_info_battery_charging">充电中</string>
+    <string name="appmgr_info_battery_discharging">未充电</string>
+    <string name="appmgr_info_battery_full">已充满</string>
+    <string name="appmgr_info_storage_used">已用存储</string>
+
+    <!-- 实用工具 -->
+    <string name="tools_title">实用工具</string>
+    <string name="tools_screenshot">屏幕截图</string>
+    <string name="tools_screenshot_desc">截取设备屏幕</string>
+    <string name="tools_screenshot_save">保存</string>
+    <string name="tools_screenshot_open">打开</string>
+    <string name="tools_screenshot_saved">截图已保存到 Download</string>
+    <string name="tools_screenshot_failed">截图失败：%1$s</string>
+    <string name="tools_advanced_reboot">高级重启</string>
+    <string name="tools_screen_standby">熄屏待机</string>
+    <string name="tools_screen_standby_desc">在不锁屏的情况下熄灭屏幕</string>
+    <string name="tools_screen_standby_turn_off">熄灭屏幕</string>
+    <string name="tools_screen_standby_wake_up">点亮屏幕</string>
+    <string name="tools_screen_standby_success_off">已熄屏</string>
+    <string name="tools_screen_standby_success_on">已亮屏</string>
+    <string name="tools_screen_standby_not_connected">请先连接设备</string>
+    <string name="tools_advanced_reboot_desc">重启、Recovery 或 Fastboot</string>
+    <string name="tools_reboot_normal">正常重启</string>
+    <string name="tools_reboot_recovery">Recovery 模式</string>
+    <string name="tools_reboot_fastboot">Fastboot 模式</string>
+    <string name="tools_reboot_executing">正在执行重启…</string>
+    <string name="tools_reboot_failed">重启失败：%1$s</string>
+    <string name="tools_modify_dpi">修改 DPI</string>
+    <string name="tools_modify_dpi_desc">更改屏幕像素密度</string>
+    <string name="tools_dpi_hint">输入 DPI（如 320、480）</string>
+    <string name="tools_dpi_default">默认 DPI：%1$s</string>
+    <string name="tools_dpi_current">当前 DPI：%1$s</string>
+    <string name="tools_dpi_modified">DPI 已修改为 %1$s</string>
+    <string name="tools_dpi_failed">修改 DPI 失败：%1$s</string>
+    <string name="tools_modify_resolution">修改分辨率</string>
+    <string name="tools_modify_resolution_desc">更改屏幕分辨率</string>
+    <string name="tools_resolution_width">宽度</string>
+    <string name="tools_resolution_height">高度</string>
+    <string name="tools_resolution_default">默认：%1$s</string>
+    <string name="tools_resolution_current">当前：%1$s</string>
+    <string name="tools_resolution_modified">分辨率已修改为 %1$sx%2$s</string>
+    <string name="tools_resolution_failed">修改分辨率失败：%1$s</string>
+    <string name="tools_reset_resolution">重置</string>
+    <string name="tools_activate_app">激活应用</string>
+    <string name="tools_activate_app_desc">激活 Shizuku、冰箱等</string>
+    <string name="tools_activate_select">选择要激活的应用</string>
+    <string name="tools_activate_no_apps">未检测到可激活的应用</string>
+    <string name="tools_activate_executing">正在激活 %1$s…</string>
+    <string name="tools_activate_success">已激活：%1$s</string>
+    <string name="tools_activate_failed">激活失败：%1$s</string>
+    <string name="tools_process_manager">进程管理</string>
+    <string name="tools_process_manager_desc">查看和管理运行中的进程</string>
+    <string name="tools_process_hide_system">隐藏系统应用</string>
+    <string name="tools_process_loading">加载进程中…</string>
+    <string name="tools_process_empty">未找到进程</string>
+    <string name="tools_process_kill">结束</string>
+    <string name="tools_process_killed">已结束进程：%1$s</string>
+    <string name="tools_process_kill_failed">结束进程失败：%1$s</string>
+    <string name="tools_process_system_confirm_title">系统应用确认</string>
+    <string name="tools_process_system_confirm_msg">%1$s 是系统应用，结束可能导致系统异常。确定要结束吗？</string>
+    <string name="tools_app_system">系统</string>
+    <string name="tools_app_manager">应用管理</string>
+    <string name="tools_app_manager_desc">安装、卸载、导出 APK</string>
+    <string name="tools_wireless_adb">无线 ADB 调试</string>
+    <string name="tools_wireless_adb_desc">在端口 5555 启用 TCP/IP 模式</string>
+    <string name="tools_wireless_adb_enabled">无线 ADB 已启用</string>
+    <string name="tools_wireless_adb_disabled">无线 ADB 已关闭</string>
+    <string name="tools_wireless_adb_failed">操作失败：%1$s</string>
+    <string name="tools_device_info">设备信息</string>
+    <string name="tools_device_info_desc">查看详细设备信息</string>
+    <string name="appmgr_info_cpu_model">CPU 型号</string>
+    <string name="appmgr_info_ram">运行内存</string>
+    <string name="appmgr_info_density">DPI</string>
+    <string name="appmgr_info_screen_size">屏幕尺寸</string>
+    <string name="appmgr_info_serial">序列号</string>
+    <string name="tools_not_connected">ADB 未连接</string>
+    <string name="tools_adb_disconnected_title">已断开连接</string>
+    <string name="tools_adb_disconnected_msg">ADB 连接已断开，是否重新连接？</string>
+    <string name="tools_adb_reconnect">重连</string>
+
+    <!-- USB Connection -->
+    <string name="usb_connection">USB 连接</string>
+    <string name="usb_device_detected">检测到 USB 设备</string>
+    <string name="usb_no_device">未检测到设备</string>
+    <string name="usb_multiple_devices">检测到 %1$d 台设备</string>
+    <string name="usb_permission_required">需要 USB 权限</string>
+    <string name="usb_permission_granted">USB 权限已授予</string>
+    <string name="usb_permission_denied">USB 权限被拒绝</string>
+    <string name="usb_connection_failed">USB 连接失败：%1$s</string>
+    <string name="usb_connection_success">USB 连接成功</string>
+    <string name="usb_device_disconnected">USB 设备已断开</string>
+    <string name="usb_select_device">选择 USB 设备</string>
+    <string name="usb_show_all_devices">显示所有 USB 设备</string>
+    <string name="usb_vendor">厂商</string>
+    <string name="usb_product">产品</string>
+    <string name="usb_device_id">设备 ID</string>
+    <string name="usb_vid">VID</string>
+    <string name="usb_pid">PID</string>
+    <string name="usb_address">USB 地址</string>
+    <string name="usb_status_connected">USB 已连接</string>
+    <string name="usb_status_disconnected">USB 已断开</string>
+    <string name="usb_status_connecting">正在通过 USB 连接…</string>
+    <string name="usb_hint_connect_device">使用 OTG 数据线连接 USB 设备</string>
+    <string name="usb_hint_enable_usb_debug">在目标设备上启用 USB 调试</string>
+    <string name="usb_card_connected">已连接</string>
+    <string name="usb_card_not_connected">未连接</string>
+    <string name="usb_card_hint_subtitle">使用 OTG 线连接设备</string>
+    <string name="usb_card_device_detected">检测到设备</string>
+    <string name="usb_card_tap_for_permission">点击允许APP访问 %1$s</string>
+    <string name="usb_card_tap_to_connect">点击卡片连接设备</string>
+    <string name="usb_error_no_permission">没有 USB 权限，请授予权限</string>
+    <string name="usb_error_device_busy">USB 设备忙，请断开其他连接</string>
+    <string name="usb_error_connection_lost">USB 连接已断开，请重新连接</string>
+    <string name="usb_error_invalid_device">无效的 USB 设备，请检查连接</string>
+    <string name="usb_error_timeout">USB 连接超时，请重试</string>
+    <string name="usb_retry_hint">连接失败，请在被控设备允许USB调试请求后重试</string>
+    <string name="usb_connection_in_progress">USB 连接进行中，请稍候</string>
+    <string name="usb_auth_timeout_hint">连接失败，请在被控设备允许USB调试后重新点击卡片</string>
+    <string name="usb_error_unknown">未知 USB 错误：%1$s</string>
+    <string name="usb_status_authorized">已授权</string>
+    <string name="vm_screen_off_hint">已启用不唤醒屏幕，进入全屏画面可能静止，发送操作即可恢复</string>
+    <string name="usb_permission_request_hint">请在设备上授权USB调试权限</string>
 
 </resources>

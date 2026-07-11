@@ -77,6 +77,7 @@
     <string name="device_cd_config_left">Config panel on left</string>
     <string name="device_menu_quick_sort">Quick device sort</string>
     <string name="device_menu_virtual_button_sort">Virtual button order</string>
+    <string name="device_menu_swipe_floating_ball_sort">Floating ball order</string>
     <string name="device_menu_clear_logs">Clear logs</string>
     <string name="device_hint_long_press_edit">Long press to edit</string>
     <string name="device_cannot_modify_connected">Cannot modify a connected device</string>
@@ -118,6 +119,10 @@
     <string name="bottomsheet_all_apps">All apps</string>
     <string name="bottomsheet_loading_apps">Loading app list…</string>
     <string name="bottomsheet_no_apps">No app list available</string>
+    <string name="bottomsheet_search_apps">Search apps</string>
+    <string name="bottomsheet_no_search_result">No matching apps found</string>
+    <string name="bottomsheet_add_favorite">Add to favorites</string>
+    <string name="bottomsheet_remove_favorite">Remove from favorites</string>
 
     <!-- Fullscreen Control -->
     <string name="fullscreen_failed_app_list">Failed to get app list</string>
@@ -131,6 +136,7 @@
     <string name="fullscreen_debug_resolution">Resolution: %1$sx%2$s</string>
     <string name="fullscreen_debug_fps">FPS: %1$s</string>
     <string name="fullscreen_debug_touches">Touches: %1$d</string>
+    <string name="fullscreen_debug_bandwidth">Bandwidth: %1$s</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -170,7 +176,7 @@
     <string name="pref_title_low_latency_audio">Low latency audio (experimental)</string>
     <string name="pref_summary_low_latency_audio">When enabled, will attempt to use low-latency audio path.\nRecommended to use with RAW PCM codec.\nAfter modification, it is recommended to swipe away and restart the app</string>
     <string name="pref_title_debug_info">Enable debug info</string>
-    <string name="pref_summary_debug_info">Display resolution, frame rate, and touch info as overlay in fullscreen</string>
+    <string name="pref_summary_debug_info">Display resolution, frame rate, bandwidth and touch info as overlay in fullscreen</string>
     <string name="pref_title_hide_simple_settings">Hide simple settings on device page</string>
     <string name="pref_summary_hide_simple_settings">When enabled, the device page only keeps More parameters, All apps, Recent tasks, and Start/Stop buttons</string>
     <string name="pref_title_preview_card_on_top">Show preview card above config</string>
@@ -182,10 +188,18 @@
     <string name="pref_summary_quick_device_sort">Manually sort quick devices on the device page</string>
     <string name="pref_title_virtual_button_sort">Virtual button order</string>
     <string name="pref_summary_virtual_button_sort">Manually sort virtual buttons in preview/fullscreen and select which are shown</string>
+    <string name="pref_title_swipe_floating_ball_sort">Floating ball order</string>
+    <string name="pref_summary_swipe_floating_ball_sort">Manually sort floating ball menu items and select which are shown in the swipe floating ball menu</string>
     <string name="pref_title_password_autofill">Lockscreen password auto-fill</string>
     <string name="pref_summary_password_autofill">Manage lockscreen passwords used for auto-fill</string>
     <string name="pref_title_clipboard_sync">Realtime clipboard sync to device</string>
     <string name="pref_summary_clipboard_sync">When local clipboard is updated, it is automatically synced to the controlled device.\nAfter disabling, use the Paste virtual button to paste local content.\nMIUI does not allow background clipboard monitoring at all, so this option may not work on Xiaomi devices</string>
+    <string name="vb_temp_hide_virtual_buttons">Switch to swipe floating ball</string>
+    <string name="vb_restore_virtual_buttons">Switch to virtual buttons</string>
+    <string name="pref_title_fullscreen_control_mode">Fullscreen control mode</string>
+    <string name="vb_virtual_buttons">Virtual buttons</string>
+    <string name="pref_title_off">Off</string>
+    <string name="vb_expand_status_bar">Quick Settings</string>
 
     <!-- Settings - Fullscreen -->
     <string name="section_fullscreen">Fullscreen</string>
@@ -200,6 +214,12 @@
     <string name="pref_title_show_floating_button">Show floating button in fullscreen</string>
     <string name="pref_summary_show_floating_button">Show a draggable floating button on the fullscreen control page; tap to open the full virtual button menu</string>
     <string name="pref_title_floating_button_size">Floating button size</string>
+    <string name="pref_title_temp_floating_button_size">Floating ball size</string>
+    <string name="pref_title_swipe_floating_ball_bg_opacity">Floating ball opacity</string>
+    <string name="pref_title_swipe_floating_ball_ring_opacity">Floating ball ring opacity</string>
+    <string name="pref_title_swipe_floating_menu_item_count">Swipe floating ball menu item count</string>
+    <string name="pref_title_show_swipe_floating_ball">Floating ball</string>
+    <string name="pref_summary_show_swipe_floating_ball">Switch between virtual button bar and swipe-selection floating ball in fullscreen</string>
     <string name="pref_title_floating_button_bg_opacity">Floating button background opacity</string>
     <string name="pref_title_floating_button_ring_opacity">Floating button ring opacity</string>
     <string name="pref_title_fullscreen_compat_mode">Fullscreen compatibility mode</string>
@@ -267,6 +287,9 @@
     <string name="pref_summary_clear_logs_on_exit">Clear logs when double-pressing back to exit the app</string>
     <string name="pref_title_hide_log_box">Hide device page log box</string>
     <string name="pref_summary_hide_log_box">Hide the log box at the bottom of the device page</string>
+    <string name="pref_title_show_app_icons">Show app icons</string>
+    <string name="pref_summary_show_app_icons">Display app icons in All Apps, Recent Tasks, and App Manager lists</string>
+    <string name="pref_title_snackbar_duration">Snackbar duration</string>
     <string name="pref_title_language">Language</string>
     <string name="pref_summary_language">App display language</string>
 
@@ -284,10 +307,13 @@
 
     <!-- Virtual Button Order -->
     <string name="vb_order_title">Virtual button order</string>
+    <string name="sfb_order_title">Floating ball order</string>
     <string name="vb_order_button_text">Button display text</string>
     <string name="vb_order_hint">Exceed 3, recommend hiding, only effective for virtual buttons below the preview card</string>
     <string name="vb_order_display_external">Display on external</string>
     <string name="vb_order_display_more_menu">Display in more menu</string>
+    <string name="sfb_order_swipe_visible">Swipe floating ball display</string>
+    <string name="sfb_order_click_visible">Click floating ball display</string>
 
     <!-- Virtual Button Actions -->
     <string name="vb_more">More</string>
@@ -306,6 +332,7 @@
     <string name="vb_recent_tasks">Recent tasks</string>
     <string name="vb_toggle_ime">Toggle IME</string>
     <string name="vb_paste_clipboard">Paste local clipboard</string>
+    <string name="vb_exit_fullscreen">Exit fullscreen</string>
 
     <!-- Dock Positions -->
     <string name="dock_follow">Follow</string>
@@ -471,6 +498,9 @@
     <string name="scrcpyopt_title">All Parameters</string>
     <string name="scrcpyopt_cd_profile_manage">Profile Management</string>
     <string name="scrcpyopt_manage_profiles">Manage Profiles</string>
+    <string name="scrcpyopt_paste_and_create">Paste and Create Profile</string>
+    <string name="scrcpyopt_paste_invalid">Clipboard content is not a valid config</string>
+    <string name="scrcpyopt_paste_success">New profile created from clipboard</string>
     <string name="scrcpyopt_new_profile">New Profile</string>
     <string name="scrcpyopt_rename_profile">Rename Profile</string>
     <string name="scrcpyopt_duplicate_name_hint">Duplicate profile names will have a number appended automatically</string>
@@ -510,7 +540,11 @@
     <string name="scrcpyopt_min_size_alignment">Min size alignment</string>
     <string name="scrcpyopt_min_size_alignment_invalid">Alignment must be a power of 2 (1, 2, 4, 8, or 16)</string>
     <string name="scrcpyopt_max_size">Max resolution</string>
-    <string name="scrcpyopt_max_fps">Max framerate</string>
+    <string name="pref_title_resolution_custom_enabled">Custom resolution</string>
+    <string name="pref_summary_resolution_custom_enabled">--custom-resolution</string>
+    <string name="pref_title_resolution_width">Width</string>
+    <string name="pref_title_resolution_height">Height</string>
+    <string name="scrcpyopt_max_fps">Max FPS</string>
     <string name="scrcpyopt_camera_id">Camera ID</string>
     <string name="scrcpyopt_camera_facing">Camera facing</string>
     <string name="scrcpyopt_camera_size">Camera resolution</string>
@@ -535,6 +569,8 @@
     <string name="scrcpyopt_no_cleanup">Disable cleanup on exit</string>
     <string name="scrcpyopt_no_cleanup_desc">By default, scrcpy removes the server binary from the device and restores device state on exit (show touches, stay awake, and power mode).\nThis option disables this cleanup operation.</string>
     <string name="scrcpyopt_flex_display">Automatically resize to match the screen</string>
+    <string name="scrcpyopt_wake_screen_on_fullscreen">Wake screen when entering fullscreen</string>
+    <string name="scrcpyopt_wake_screen_on_fullscreen_desc">Wake the screen of the controlled device when entering fullscreen.\nIf disabled, the screen will not be woken when entering fullscreen.</string>
     <string name="scrcpyopt_start_app">Open app after scrcpy starts</string>
     <string name="scrcpyopt_native">Native</string>
     <string name="scrcpyopt_log_level">Log level</string>
@@ -543,6 +579,8 @@
     <string name="vm_adb_connected">ADB connected</string>
     <string name="vm_scrcpy_started">scrcpy started</string>
     <string name="vm_scrcpy_started_recording">scrcpy started and recording</string>
+    <string name="vm_resolution_modified">Resolution changed to %1$s</string>
+    <string name="vm_resolution_restored">Resolution restored to original</string>
     <string name="vm_scrcpy_stopped_adb_disconnected">scrcpy stopped, ADB disconnected</string>
     <string name="vm_scrcpy_stopped">scrcpy stopped</string>
     <string name="vm_adb_connection_failed">ADB connection failed</string>
@@ -551,6 +589,8 @@
     <string name="vm_pairing_failed">Pairing failed</string>
     <string name="vm_auto_reconnect_succeeded">ADB auto-reconnect succeeded</string>
     <string name="vm_auto_reconnect_failed">ADB auto-reconnect failed</string>
+    <string name="vm_auto_reconnect_restart_scrcpy">ADB reconnected, restarting scrcpy…</string>
+    <string name="vm_auto_reconnect_restart_scrcpy_failed">ADB reconnected but failed to restart scrcpy</string>
     <string name="vm_start_scrcpy">Start scrcpy</string>
     <string name="vm_stop_scrcpy">Stop scrcpy</string>
     <string name="vm_launch_app">Launch app</string>
@@ -559,6 +599,7 @@
     <string name="vm_execute_pairing">Execute pairing</string>
     <string name="vm_send_action">Send %1$s</string>
     <string name="vm_label_timeout">%1$s timed out</string>
+    <string name="vm_label_cancelled">%1$s cancelled</string>
     <string name="vm_label_param_error">%1$s parameter error: %2$s</string>
     <string name="vm_label_failed">%1$s failed: %2$s</string>
     <string name="vm_app_started_on_display">App started on current display: %1$s</string>
@@ -584,5 +625,237 @@
     <string name="language_follow_system">Follow system</string>
     <string name="language_english">English</string>
     <string name="language_chinese">Chinese</string>
+
+    <!-- Local IP -->
+    <string name="local_ip_title">Local IP Address</string>
+    <string name="local_ip_ipv4_section">IPv4 Address</string>
+    <string name="local_ip_ipv6_section">IPv6 Address</string>
+    <string name="local_ip_interface">Interface: %1$s</string>
+    <string name="local_ip_tap_to_copy">Tap to copy</string>
+    <string name="local_ip_no_interface">No network interface found</string>
+    <string name="local_ip_check_network">Please check network connection</string>
+    <string name="pref_title_view_local_ip">View Local IP</string>
+    <string name="pref_summary_view_local_ip">Show local IPv4/IPv6 addresses, tap to copy</string>
+    <string name="pref_title_preview_card_tap_fullscreen">Tap preview card to enter fullscreen</string>
+    <string name="pref_summary_preview_card_tap_fullscreen">When enabled, tap device preview card to enter fullscreen control directly</string>
+
+    <!-- Terminal - Command Bookmarks -->
+    <string name="terminal_menu_command_bookmarks">Shell bookmarks</string>
+    <string name="bookmark_title">Shell Bookmarks</string>
+    <string name="bookmark_empty">No shell bookmarks yet</string>
+    <string name="bookmark_empty_hint">Tap + to create a shell bookmark</string>
+    <string name="bookmark_create">Create bookmark</string>
+    <string name="bookmark_rename">Rename</string>
+    <string name="bookmark_edit">Edit</string>
+    <string name="bookmark_delete">Delete</string>
+    <string name="bookmark_label_name">Name</string>
+    <string name="bookmark_label_command">Shell command</string>
+    <string name="bookmark_hint_name">Bookmark name</string>
+    <string name="bookmark_hint_command">Shell command to execute</string>
+    <string name="bookmark_name_empty">Name cannot be empty</string>
+    <string name="bookmark_command_empty">Shell command cannot be empty</string>
+    <string name="bookmark_deleted">Bookmark deleted</string>
+    <string name="bookmark_input_to_terminal">Input to terminal</string>
+
+    <!-- LAN Scan -->
+    <string name="button_scan_devices">Scan devices</string>
+    <string name="lan_scan_title">Scan LAN devices</string>
+    <string name="lan_scan_scanning">Scanning… (%1$d / %2$d)</string>
+    <string name="lan_scan_no_interface">No local network interface found</string>
+    <string name="lan_scan_failed">Scan failed</string>
+    <string name="lan_scan_unknown_error">Unknown error</string>
+    <string name="lan_scan_no_devices">No devices found</string>
+    <string name="lan_scan_no_devices_hint">Make sure target device has wireless debugging enabled</string>
+    <string name="lan_scan_found_devices">Found %1$d device(s)</string>
+    <string name="lan_scan_local_device">This device</string>
+
+    <!-- Terminal - Bookmark Auto Enter -->
+    <string name="pref_title_terminal_bookmark_auto_enter">Shell bookmark auto-enter</string>
+    <string name="pref_summary_terminal_bookmark_auto_enter">Automatically execute shell command after selecting a bookmark (add Enter key)</string>
+
+    <!-- App Manager -->
+    <string name="appmgr_title">App Manager</string>
+    <string name="appmgr_tab_user_apps">User Apps</string>
+    <string name="appmgr_tab_system_apps">System Apps</string>
+    <string name="appmgr_search_hint">Search by name or package</string>
+    <string name="appmgr_loading">Loading apps…</string>
+    <string name="appmgr_no_apps">No apps found</string>
+    <string name="appmgr_disabled">Disabled</string>
+    <string name="appmgr_upload_apk">Install App</string>
+    <string name="appmgr_upload_from_file">Select from file</string>
+    <string name="appmgr_upload_from_device">Import from this device</string>
+    <string name="appmgr_local_app_picker_title">Select local app</string>
+    <string name="appmgr_loading_local_apps">Loading local apps…</string>
+    <string name="pull_refresh_pull_down">Pull down to refresh</string>
+    <string name="pull_refresh_release">Release to refresh</string>
+    <string name="pull_refresh_refreshing">Refreshing…</string>
+    <string name="pull_refresh_complete">Refreshed successfully</string>
+    <string name="appmgr_action_uninstall">Uninstall</string>
+    <string name="appmgr_action_export">Export APK</string>
+    <string name="appmgr_action_disable">Disable</string>
+    <string name="appmgr_action_enable">Enable</string>
+    <string name="appmgr_action_clear_data">Clear data</string>
+    <string name="appmgr_action_force_stop">Force stop</string>
+    <string name="appmgr_batch_mode">Batch management</string>
+    <string name="appmgr_batch_exit">Exit batch</string>
+    <string name="appmgr_batch_freeze">Freeze selected</string>
+    <string name="appmgr_batch_unfreeze">Unfreeze selected</string>
+    <string name="appmgr_batch_uninstall">Uninstall selected</string>
+    <string name="appmgr_batch_selected">Selected: %d</string>
+    <string name="appmgr_batch_freeze_confirm">Freeze %d selected apps?</string>
+    <string name="appmgr_batch_uninstall_confirm">Uninstall %d selected apps?</string>
+    <string name="appmgr_batch_unfreeze_confirm">Enable %d selected apps?</string>
+    <string name="appmgr_batch_export_confirm">Export %d selected apps?</string>
+    <string name="appmgr_batch_clear">Clear</string>
+    <string name="appmgr_batch_install">Batch install</string>
+    <string name="appmgr_uninstall_confirm">Uninstall \"%1$s\"?</string>
+    <string name="appmgr_disable_confirm">Disable \"%1$s\"?</string>
+    <string name="appmgr_clear_data_confirm">Clear data of \"%1$s\"?</string>
+    <string name="appmgr_force_stop_confirm">Force stop \"%1$s\"?</string>
+    <string name="appmgr_uninstall_success">Uninstalled: %1$s</string>
+    <string name="appmgr_uninstall_failed">Uninstall failed: %1$s</string>
+    <string name="appmgr_export_success">Exported to Download</string>
+    <string name="appmgr_export_failed">Export failed: %1$s</string>
+    <string name="appmgr_disable_success">Disabled: %1$s</string>
+    <string name="appmgr_disable_failed">Disable failed: %1$s</string>
+    <string name="appmgr_enable_success">Enabled: %1$s</string>
+    <string name="appmgr_enable_failed">Enable failed: %1$s</string>
+    <string name="appmgr_clear_data_success">Data cleared: %1$s</string>
+    <string name="appmgr_clear_data_failed">Clear data failed: %1$s</string>
+    <string name="appmgr_force_stop_success">Force stopped: %1$s</string>
+    <string name="appmgr_force_stop_failed">Force stop failed: %1$s</string>
+    <string name="appmgr_version">v%1$s</string>
+
+    <string name="appmgr_device_info">Device Info</string>
+    <string name="appmgr_device_info_loading">Loading device info…</string>
+    <string name="appmgr_info_model">Model</string>
+    <string name="appmgr_info_android_version">Android Version</string>
+    <string name="appmgr_info_cpu">CPUABI</string>
+    <string name="appmgr_info_screen">Resolution</string>
+    <string name="appmgr_info_battery">Battery</string>
+    <string name="appmgr_info_storage">Storage (Available / Total)</string>
+
+    <string name="appmgr_info_battery_charging">Charging</string>
+    <string name="appmgr_info_battery_discharging">Not charging</string>
+    <string name="appmgr_info_battery_full">Full</string>
+    <string name="appmgr_info_storage_used">Storage Used</string>
+
+    <!-- Utility Tools -->
+    <string name="tools_title">Utility Tools</string>
+    <string name="tools_screenshot">Screenshot</string>
+    <string name="tools_screenshot_desc">Capture device screen</string>
+    <string name="tools_screenshot_save">Save</string>
+    <string name="tools_screenshot_open">Open</string>
+    <string name="tools_screenshot_saved">Screenshot saved to Download</string>
+    <string name="tools_screenshot_failed">Screenshot failed: %1$s</string>
+    <string name="tools_advanced_reboot">Advanced Reboot</string>
+    <string name="tools_screen_standby">Screen Standby</string>
+    <string name="tools_screen_standby_desc">Turn off screen without locking</string>
+    <string name="tools_screen_standby_turn_off">Turn Off Screen</string>
+    <string name="tools_screen_standby_wake_up">Wake Up Screen</string>
+    <string name="tools_screen_standby_success_off">Screen off</string>
+    <string name="tools_screen_standby_success_on">Screen on</string>
+    <string name="tools_screen_standby_not_connected">Please connect device first</string>
+    <string name="tools_advanced_reboot_desc">Reboot, Recovery, or Fastboot</string>
+    <string name="tools_reboot_normal">Reboot</string>
+    <string name="tools_reboot_recovery">Recovery Mode</string>
+    <string name="tools_reboot_fastboot">Fastboot Mode</string>
+    <string name="tools_reboot_executing">Executing reboot…</string>
+    <string name="tools_reboot_failed">Reboot failed: %1$s</string>
+    <string name="tools_modify_dpi">Modify DPI</string>
+    <string name="tools_modify_dpi_desc">Change screen density</string>
+    <string name="tools_dpi_hint">Enter DPI (e.g. 320, 480)</string>
+    <string name="tools_dpi_default">Default DPI: %1$s</string>
+    <string name="tools_dpi_current">Current DPI: %1$s</string>
+    <string name="tools_dpi_modified">DPI modified to %1$s</string>
+    <string name="tools_dpi_failed">Modify DPI failed: %1$s</string>
+    <string name="tools_modify_resolution">Modify Resolution</string>
+    <string name="tools_modify_resolution_desc">Change screen resolution</string>
+    <string name="tools_resolution_width">Width</string>
+    <string name="tools_resolution_height">Height</string>
+    <string name="tools_resolution_default">Default: %1$s</string>
+    <string name="tools_resolution_current">Current: %1$s</string>
+    <string name="tools_resolution_modified">Resolution modified to %1$sx%2$s</string>
+    <string name="tools_resolution_failed">Modify resolution failed: %1$s</string>
+    <string name="tools_reset_resolution">Reset</string>
+    <string name="tools_activate_app">Activate App</string>
+    <string name="tools_activate_app_desc">Activate Shizuku, IceBox, etc.</string>
+    <string name="tools_activate_select">Select apps to activate</string>
+    <string name="tools_activate_no_apps">No activatable apps detected</string>
+    <string name="tools_activate_executing">Activating %1$s…</string>
+    <string name="tools_activate_success">Activated: %1$s</string>
+    <string name="tools_activate_failed">Activation failed: %1$s</string>
+    <string name="tools_process_manager">Process Manager</string>
+    <string name="tools_process_manager_desc">View and manage running processes</string>
+    <string name="tools_process_hide_system">Hide system apps</string>
+    <string name="tools_process_loading">Loading processes…</string>
+    <string name="tools_process_empty">No processes found</string>
+    <string name="tools_process_kill">Kill</string>
+    <string name="tools_process_killed">Killed process: %1$s</string>
+    <string name="tools_process_kill_failed">Kill failed: %1$s</string>
+    <string name="tools_process_system_confirm_title">System App</string>
+    <string name="tools_process_system_confirm_msg">%1$s is a system app. Killing it may cause issues. Continue?</string>
+    <string name="tools_app_system">System</string>
+    <string name="tools_app_manager">App Manager</string>
+    <string name="tools_app_manager_desc">Install, uninstall, export APKs</string>
+    <string name="tools_wireless_adb">Wireless ADB</string>
+    <string name="tools_wireless_adb_desc">Enable TCP/IP mode on port 5555</string>
+    <string name="tools_wireless_adb_enabled">Wireless ADB enabled</string>
+    <string name="tools_wireless_adb_disabled">Wireless ADB disabled</string>
+    <string name="tools_wireless_adb_failed">Failed: %1$s</string>
+    <string name="tools_device_info">Device Info</string>
+    <string name="tools_device_info_desc">View detailed device information</string>
+    <string name="appmgr_info_cpu_model">CPU Model</string>
+    <string name="appmgr_info_ram">RAM</string>
+    <string name="appmgr_info_density">DPI</string>
+    <string name="appmgr_info_screen_size">Screen Diagonal</string>
+    <string name="appmgr_info_serial">Serial</string>
+    <string name="tools_not_connected">ADB not connected</string>
+    <string name="tools_adb_disconnected_title">Disconnected</string>
+    <string name="tools_adb_disconnected_msg">ADB connection lost. Reconnect?</string>
+    <string name="tools_adb_reconnect">Reconnect</string>
+
+    <!-- USB Connection -->
+    <string name="usb_connection">USB Connection</string>
+    <string name="usb_device_detected">USB device detected</string>
+    <string name="usb_no_device">No device detected</string>
+    <string name="usb_multiple_devices">Detected %1$d devices</string>
+    <string name="usb_permission_required">USB permission required</string>
+    <string name="usb_permission_granted">USB permission granted</string>
+    <string name="usb_permission_denied">USB permission denied</string>
+    <string name="usb_connection_failed">USB connection failed: %1$s</string>
+    <string name="usb_connection_success">USB connection successful</string>
+    <string name="usb_device_disconnected">USB device disconnected</string>
+    <string name="usb_select_device">Select USB device</string>
+    <string name="usb_show_all_devices">Show all USB devices</string>
+    <string name="usb_vendor">Vendor</string>
+    <string name="usb_product">Product</string>
+    <string name="usb_device_id">Device ID</string>
+    <string name="usb_vid">VID</string>
+    <string name="usb_pid">PID</string>
+    <string name="usb_address">USB Address</string>
+    <string name="usb_status_connected">USB Connected</string>
+    <string name="usb_status_disconnected">USB Disconnected</string>
+    <string name="usb_status_connecting">Connecting via USB…</string>
+    <string name="usb_hint_connect_device">Connect a USB device using an OTG cable</string>
+    <string name="usb_hint_enable_usb_debug">Enable USB debugging on the target device</string>
+    <string name="usb_card_connected">Connected</string>
+    <string name="usb_card_not_connected">Not connected</string>
+    <string name="usb_card_hint_subtitle">Connect device via OTG cable</string>
+    <string name="usb_card_device_detected">Device detected</string>
+    <string name="usb_card_tap_for_permission">Tap to allow app access to %1$s</string>
+    <string name="usb_card_tap_to_connect">Tap card to connect device</string>
+    <string name="usb_error_no_permission">No USB permission. Please grant permission.</string>
+    <string name="usb_error_device_busy">USB device is busy. Please disconnect other connections.</string>
+    <string name="usb_error_connection_lost">USB connection lost. Please reconnect.</string>
+    <string name="usb_error_invalid_device">Invalid USB device. Please check the connection.</string>
+    <string name="usb_error_timeout">USB connection timed out. Please try again.</string>
+    <string name="usb_retry_hint">Connection failed. Allow USB debugging on the target device and retry.</string>
+    <string name="usb_connection_in_progress">USB connection in progress</string>
+    <string name="usb_auth_timeout_hint">Connection failed. Allow USB debugging on the target device, then tap the card again.</string>
+    <string name="usb_error_unknown">Unknown USB error: %1$s</string>
+    <string name="usb_status_authorized">Authorized</string>
+    <string name="usb_permission_request_hint">Please authorize USB debugging on the device</string>
+    <string name="vm_screen_off_hint">Screen will not be woken on start. Display may appear frozen until you send input.</string>
 
 </resources>

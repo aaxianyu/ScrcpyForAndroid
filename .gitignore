@@ -47,3 +47,19 @@ abandoned_assets/
 
 # scrcpy-server binary (downloaded by Gradle during build)
 app/src/main/assets/bin/scrcpy-server-v*
+
+# 本地工作文件（日志、临时diff、AI助手记忆）
+日志/
+技术文档/
+doc/scheme/
+.github/agents/
+.workbuddy/
+ceb24ae_virtualbuttons.kt
+diff_virtualbuttons.txt
+diff_stat.txt
+nul
+build_release*.log
+build_task*.log
+test_task1_*.log
+debug.log
+ScrcpyForAndroid.code-workspace

@@ -60,7 +60,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 35
-        versionName = "0.4.4"
+        versionName = "0.4.4mod"
 
         externalNativeBuild {
             cmake {
@@ -88,7 +88,10 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.findByName("release")
+            if (releaseSigning?.storeFile != null) {
+                signingConfig = releaseSigning
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -169,20 +172,23 @@ dependencies {
 
 val scrcpyServerAssetDir = "${project.projectDir}/src/main/assets/bin"
 val scrcpyServerAssetFile = "$scrcpyServerAssetDir/scrcpy-server-v4.0"
-val scrcpyServerDownloadUrl = "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-server-v4.0"
+val scrcpyServerDownloadUrls = listOf(
+    "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-server-v4.0",
+    "https://mirror.ghproxy.com/https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-server-v4.0",
+)
 val scrcpyServerSha256 = "84924bd564a1eb6089c872c7521f968058977f91f5ff02514a8c74aff3210f3a"
 
 val downloadScrcpyServer by tasks.registering {
     description = "Download scrcpy-server binary from GitHub releases if absent or SHA256 mismatch"
     group = "build setup"
 
-    inputs.property("downloadUrl", scrcpyServerDownloadUrl)
+    inputs.property("downloadUrls", scrcpyServerDownloadUrls.joinToString("|"))
     inputs.property("expectedSha256", scrcpyServerSha256)
     outputs.file(scrcpyServerAssetFile)
 
     doLast {
         val file = outputs.files.singleFile
-        val url = inputs.properties["downloadUrl"] as String
+        val urls = (inputs.properties["downloadUrls"] as String).split("|")
         val expectedSha = inputs.properties["expectedSha256"] as String
         val dir = file.parentFile
 
@@ -203,30 +209,38 @@ val downloadScrcpyServer by tasks.registering {
         val needsDownload = !file.exists() || computeSha256(file) != expectedSha
 
         if (needsDownload) {
-            logger.lifecycle("Downloading scrcpy-server-v4.0 from GitHub releases...")
-            try {
-                URI(url).toURL().openStream().use { input ->
-                    file.outputStream().use { output ->
-                        input.copyTo(output)
+            var lastError: Exception? = null
+            var downloaded = false
+            for (url in urls) {
+                logger.lifecycle("Downloading scrcpy-server-v4.0 from $url ...")
+                try {
+                    URI(url).toURL().openStream().use { input ->
+                        file.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
                     }
+                    val actualSha = computeSha256(file)
+                    if (actualSha == expectedSha) {
+                        downloaded = true
+                        break
+                    } else {
+                        logger.warn("SHA256 mismatch from $url, trying next mirror...")
+                        file.delete()
+                    }
+                } catch (e: Exception) {
+                    lastError = e
+                    logger.warn("Failed to download from $url: ${e.message}")
                 }
-            } catch (e: Exception) {
+            }
+            if (!downloaded) {
                 throw GradleException(
-                    "Failed to download scrcpy-server-v4.0 from GitHub releases.\n" +
-                    "  URL: $url\n" +
+                    "Failed to download scrcpy-server-v4.0 from all mirrors.\n" +
+                    "  Tried: ${urls.joinToString("\n         ")}\n" +
                     "  You may download it manually and place it at: ${file.absolutePath}\n" +
                     "  If you are behind a proxy, check your Gradle proxy settings\n" +
                     "  (gradle.properties: systemProp.https.proxyHost / systemProp.https.proxyPort).",
-                    e
+                    lastError
                 )
-            }
-
-            val actualSha = computeSha256(file)
-            require(actualSha == expectedSha) {
-                "SHA256 mismatch for scrcpy-server-v4.0!\n" +
-                "  Expected: $expectedSha\n" +
-                "  Got:      $actualSha\n" +
-                "  Delete ${file.absolutePath} to retry download."
             }
             logger.lifecycle("scrcpy-server-v4.0 downloaded and verified.")
         } else {
@@ -237,4 +251,67 @@ val downloadScrcpyServer by tasks.registering {
 
 tasks.named("preBuild") {
     dependsOn(downloadScrcpyServer)
+    dependsOn(compileDeviceHelper)
+}
+
+val helperSource = file("src/devicehelper/DeviceAppsHelper.java")
+val helperCompileDir = file("${layout.buildDirectory.get()}/intermediates/devicehelper/classes")
+val helperDexDir = file("${layout.buildDirectory.get()}/intermediates/devicehelper/dex")
+val helperJar = file("src/main/assets/bin/device_apps_helper.jar")
+
+val compileDeviceHelper by tasks.registering {
+    description = "Compile DeviceAppsHelper.java to JAR for running on device via app_process"
+    group = "build"
+
+    inputs.file(helperSource)
+    outputs.file(helperJar)
+
+    doFirst {
+        helperJar.delete()
+        helperCompileDir.deleteRecursively()
+        helperDexDir.deleteRecursively()
+    }
+
+    doLast {
+        val androidHome = System.getenv("ANDROID_HOME") ?: error("ANDROID_HOME not set")
+        val androidJar = file("$androidHome/platforms/android-37.0/android.jar")
+        val isWindows = System.getProperty("os.name").lowercase().contains("win")
+        val d8 = file("$androidHome/build-tools/37.0.0/d8${if (isWindows) ".bat" else ""}")
+        val javaHome = System.getenv("JAVA_HOME") ?: error("JAVA_HOME not set")
+        val javac = file("$javaHome/bin/javac${if (isWindows) ".exe" else ""}")
+        val jarExe = file("$javaHome/bin/jar${if (isWindows) ".exe" else ""}")
+
+        helperCompileDir.mkdirs()
+        helperDexDir.mkdirs()
+        helperJar.parentFile.mkdirs()
+
+        val javacExit = ProcessBuilder(
+            javac.absolutePath,
+            "-encoding", "UTF-8",
+            "-cp", androidJar.absolutePath,
+            "-d", helperCompileDir.absolutePath,
+            helperSource.absolutePath
+        ).inheritIO().start().waitFor()
+        if (javacExit != 0) throw GradleException("javac failed")
+
+        val d8Exit = ProcessBuilder(
+            d8.absolutePath,
+            "--lib", androidJar.absolutePath,
+            "--output", helperDexDir.absolutePath,
+            helperCompileDir.resolve("DeviceAppsHelper.class").absolutePath
+        ).inheritIO().start().waitFor()
+        if (d8Exit != 0) throw GradleException("d8 failed")
+
+        val classesDex = helperDexDir.resolve("classes.dex")
+        if (!classesDex.exists()) throw GradleException("d8 output not found")
+
+        val jarExit = ProcessBuilder(
+            jarExe.absolutePath,
+            "cf", helperJar.absolutePath,
+            "-C", helperDexDir.absolutePath, "classes.dex"
+        ).inheritIO().start().waitFor()
+        if (jarExit != 0) throw GradleException("jar failed")
+
+        logger.lifecycle("DeviceAppsHelper compiled to ${helperJar.name}")
+    }
 }
