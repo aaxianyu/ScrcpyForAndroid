@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
@@ -24,6 +25,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.StreamActivity
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.models.ConnectionTarget
 import io.github.miuzarte.scrcpyforandroid.models.DeviceShortcut
@@ -31,13 +33,30 @@ import io.github.miuzarte.scrcpyforandroid.password.PasswordPickerPopupContent
 import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SectionSmallTitle
 import io.github.miuzarte.scrcpyforandroid.scrcpy.ClientOptions
-import io.github.miuzarte.scrcpyforandroid.services.*
-import io.github.miuzarte.scrcpyforandroid.storage.Storage.scrcpyProfiles
+import io.github.miuzarte.scrcpyforandroid.services.AppManagerService
+import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
+import io.github.miuzarte.scrcpyforandroid.services.ConnectionController
+import io.github.miuzarte.scrcpyforandroid.services.ConnectionStateStore
+import io.github.miuzarte.scrcpyforandroid.services.DeviceAdbAutoReconnectManager
+import io.github.miuzarte.scrcpyforandroid.services.DeviceAdbConnectionCoordinator
+import io.github.miuzarte.scrcpyforandroid.services.EventLogger
+import io.github.miuzarte.scrcpyforandroid.storage.Storage
 import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
-import io.github.miuzarte.scrcpyforandroid.widgets.*
+import io.github.miuzarte.scrcpyforandroid.widgets.AppListBottomSheet
+import io.github.miuzarte.scrcpyforandroid.widgets.AppListEntry
+import io.github.miuzarte.scrcpyforandroid.widgets.ConfigPanel
+import io.github.miuzarte.scrcpyforandroid.widgets.DeviceTileList
+import io.github.miuzarte.scrcpyforandroid.widgets.LanScanDialog
+import io.github.miuzarte.scrcpyforandroid.widgets.PairingCard
+import io.github.miuzarte.scrcpyforandroid.widgets.PreviewCard
+import io.github.miuzarte.scrcpyforandroid.widgets.QuickConnectCard
+import io.github.miuzarte.scrcpyforandroid.widgets.StatusCard
+import io.github.miuzarte.scrcpyforandroid.widgets.UsbDeviceCard
+import io.github.miuzarte.scrcpyforandroid.widgets.VirtualButtonAction
+import io.github.miuzarte.scrcpyforandroid.widgets.VirtualButtonCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -86,6 +105,14 @@ internal fun DeviceTabScreen(
                     if (blurActive) Color.Transparent
                     else colorScheme.surface
                 val topAppBarActions: @Composable RowScope.() -> Unit = {
+                    IconButton(
+                        onClick = { navigator.push(RootScreen.UtilityTools) },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Build,
+                            contentDescription = stringResource(R.string.tools_title),
+                        )
+                    }
                     if (showTwoPaneSideAction) {
                         IconButton(
                             onClick = {
@@ -115,6 +142,12 @@ internal fun DeviceTabScreen(
                                     text = stringResource(R.string.device_menu_virtual_button_sort),
                                     onClick = {
                                         navigator.push(RootScreen.VirtualButtonOrder)
+                                    },
+                                ),
+                                DropdownItem(
+                                    text = stringResource(R.string.device_menu_swipe_floating_ball_sort),
+                                    onClick = {
+                                        navigator.push(RootScreen.SwipeFloatingBallOrder)
                                     },
                                 ),
                                 DropdownItem(
@@ -190,6 +223,7 @@ internal fun DeviceTabPage(
     val activeDeviceActionId by viewModel.activeDeviceActionId.collectAsState()
     val showRecentTasksSheet by viewModel.showRecentTasksSheet.collectAsState()
     val showAllAppsSheet by viewModel.showAllAppsSheet.collectAsState()
+    val showAppIcons = asBundle.showAppIcons
     val imeRequestToken by viewModel.imeRequestToken.collectAsState()
     val pendingScrollToPreview by viewModel.pendingScrollToPreview.collectAsState()
     val savedShortcuts by viewModel.savedShortcuts.collectAsState()
@@ -203,7 +237,7 @@ internal fun DeviceTabPage(
     val connectedScrcpyProfileId by viewModel.connectedScrcpyProfileId.collectAsState()
     val connectedScrcpyBundle by viewModel.connectedScrcpyBundle.collectAsState()
     val connectedScrcpyProfileName by viewModel.connectedScrcpyProfileName.collectAsState()
-    val scrcpyProfilesState by scrcpyProfiles.state.collectAsState()
+    val scrcpyProfilesState by Storage.scrcpyProfiles.state.collectAsState()
     val canShowPreviewControls by viewModel.canShowPreviewControls.collectAsState()
     val virtualButtonLayout by viewModel.virtualButtonLayout.collectAsState()
 
@@ -230,12 +264,20 @@ internal fun DeviceTabPage(
     LaunchedEffect(Unit) { viewModel.startAutoReconnectLoop() }
     LaunchedEffect(Unit) { viewModel.startProfileIdSync() }
     LaunchedEffect(Unit) { viewModel.startRecentTasksAutoRefresh() }
+    LaunchedEffect(Unit) { viewModel.startConnectionHealthCheckLoop() }
 
     fun openFullscreenControl() {
-        if (viewModel.shouldOpenFullscreenCompat())
+        if (viewModel.shouldOpenFullscreenCompat()) {
             onOpenFullscreenCompat()
-        else
-            viewModel.openStreamActivity(context)
+            return
+        }
+        // 如果scrcpy已经在运行，直接启动StreamActivity，避免重复触发startScrcpySession导致会话被重启
+        // 但仍需应用自定义分辨率
+        if (AppRuntime.scrcpy?.currentSessionState?.value != null) {
+            viewModel.applyCustomResolutionAndOpenFullscreen(context)
+            return
+        }
+        viewModel.openStreamActivityWithConnectionCheck(context)
     }
 
     DisposableEffect(Unit) {
@@ -305,6 +347,7 @@ internal fun DeviceTabPage(
 
     @Composable
     fun StatusSection() {
+
         StatusCard(
             statusLine = statusLine,
             adbConnected = adbConnected,
@@ -312,6 +355,7 @@ internal fun DeviceTabPage(
             sessionInfo = sessionInfo,
             busyLabel = null,
             connectedDeviceLabel = connectedDeviceLabel,
+            connectionType = currentTarget?.connectionType ?: io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType.LAN,
         )
     }
 
@@ -348,8 +392,19 @@ internal fun DeviceTabPage(
                 if (editingDeviceId == device.id) viewModel.setEditingDeviceId(null)
                 viewModel.onDeviceAction(device)
             },
-            onEditorSave = { _, updated ->
-                viewModel.upsertShortcut(updated)
+            onCancelAction = { device ->
+                viewModel.cancelAdbConnect()
+            },
+            onEditorSave = { device, updated ->
+                viewModel.updateShortcut(
+                    id = device.id,
+                    name = updated.name,
+                    host = updated.host,
+                    port = updated.port,
+                    startScrcpyOnConnect = updated.startScrcpyOnConnect,
+                    openFullscreenOnStart = updated.openFullscreenOnStart,
+                    scrcpyProfileId = updated.scrcpyProfileId,
+                )
             },
             onEditorDelete = { device ->
                 viewModel.removeShortcut(device.id)
@@ -361,11 +416,14 @@ internal fun DeviceTabPage(
 
     @Composable
     fun QuickConnectSection() {
+        var showLanScanDialog by remember { mutableStateOf(false) }
+
         QuickConnectCard(
             input = quickConnectInputTemp,
             onValueChange = { viewModel.setQuickConnectInput(it) },
             onFocusLost = { viewModel.saveQuickConnectInput() },
             enabled = !adbConnecting,
+            connecting = adbConnecting,
             onAddDevice = {
                 val target = ConnectionTarget.unmarshalFrom(quickConnectInputTemp)
                     ?: return@QuickConnectCard
@@ -376,6 +434,23 @@ internal fun DeviceTabPage(
                 val target = ConnectionTarget.unmarshalFrom(quickConnectInputTemp)
                     ?: return@QuickConnectCard
                 viewModel.onQuickConnect(target)
+            },
+            onCancelConnect = {
+                viewModel.cancelAdbConnect()
+            },
+            onScanDevices = {
+                showLanScanDialog = true
+            },
+        )
+
+        LanScanDialog(
+            showDialog = showLanScanDialog,
+            onDismissRequest = { showLanScanDialog = false },
+            onDismissFinished = { },
+            onDeviceSelected = { ip, port ->
+                showLanScanDialog = false
+                viewModel.setQuickConnectInput("$ip:$port")
+                viewModel.saveQuickConnectInput()
             },
         )
     }
@@ -392,6 +467,17 @@ internal fun DeviceTabPage(
     }
 
     @Composable
+    fun UsbSection() {
+        SectionSmallTitle(stringResource(R.string.usb_connection))
+        UsbDeviceCard(
+            onDeviceClick = { deviceInfo ->
+                // 处理USB设备点击
+                viewModel.connectUsbDevice(deviceInfo)
+            }
+        )
+    }
+
+    @Composable
     fun ScrcpyConfigSection() {
         ConfigPanel(
             busy = busy,
@@ -401,8 +487,8 @@ internal fun DeviceTabPage(
             audioForwardingSupported = connectionState.adbSession.audioForwardingSupported,
             cameraMirroringSupported = connectionState.adbSession.cameraMirroringSupported,
             adbConnecting = adbConnecting,
-            isQuickConnected = isQuickConnected,
-            advancedEndActionText = connectedScrcpyProfileName,
+            isQuickConnected = isQuickConnected || (adbConnected && currentTarget?.connectionType == io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType.USB),
+            connectedScrcpyProfileNameRaw = connectedScrcpyProfileName,
             allAppsEndActionText = when {
                 listingsRefreshBusy -> "..."
                 apps.isNotEmpty() -> apps.size.toString()
@@ -511,8 +597,8 @@ internal fun DeviceTabPage(
             audioForwardingSupported = connectionState.adbSession.audioForwardingSupported,
             cameraMirroringSupported = connectionState.adbSession.cameraMirroringSupported,
             adbConnecting = adbConnecting,
-            isQuickConnected = isQuickConnected,
-            advancedEndActionText = connectedScrcpyProfileName,
+            isQuickConnected = isQuickConnected || (adbConnected && currentTarget?.connectionType == io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType.USB),
+            connectedScrcpyProfileNameRaw = connectedScrcpyProfileName,
             allAppsEndActionText = when {
                 listingsRefreshBusy -> "..."
                 apps.isNotEmpty() -> apps.size.toString()
@@ -602,6 +688,8 @@ internal fun DeviceTabPage(
                 val newProfileId = profileIds.getOrNull(index) ?: return@TabRow
                 if (newProfileId == connectedScrcpyProfileId) return@TabRow
                 haptic.contextClick()
+                // 脱离快捷设备：直接写入 session 级状态
+                AppRuntime.currentConnectionProfileId.value = newProfileId
                 val device = currentTarget?.let { ct ->
                     savedShortcuts.firstOrNull { it.matchesAddress(ct) }
                 }
@@ -646,6 +734,7 @@ internal fun DeviceTabPage(
             if (!adbConnected) {
                 item { QuickConnectSection() }
                 item { PairingSection() }
+                item { UsbSection() }
             }
 
             if (adbConnected) {
@@ -785,6 +874,7 @@ internal fun DeviceTabPage(
         title = stringResource(R.string.bottomsheet_recent_tasks),
         loadingText = stringResource(R.string.bottomsheet_loading_tasks),
         emptyText = stringResource(R.string.bottomsheet_no_tasks),
+        searchHint = stringResource(R.string.bottomsheet_search_apps),
         entries = recentTasks.map { task ->
             val app = viewModel.findCachedApp(task.packageName)
             AppListEntry(
@@ -807,28 +897,56 @@ internal fun DeviceTabPage(
                 viewModel.refreshRecentTasks()
             }
         },
+        onFetchIcons = if (showAppIcons) { pkgs ->
+            AppManagerService.scrcpy = viewModel.scrcpy
+            AppManagerService.appContext = context
+            val result = AppManagerService.fetchLabelsViaHelper(pkgs)
+            result.mapValues { it.value.iconBase64 ?: "" }
+                .filterValues { it.isNotBlank() }
+        } else null,
     )
+
+    val favoriteApps = remember(asBundle.favoriteApps) {
+        asBundle.favoriteApps.split(',').filter { it.isNotBlank() }.toSet()
+    }
 
     AppListBottomSheet(
         show = showAllAppsSheet,
         title = stringResource(R.string.bottomsheet_all_apps),
         loadingText = stringResource(R.string.bottomsheet_loading_apps),
         emptyText = stringResource(R.string.bottomsheet_no_apps),
+        searchHint = stringResource(R.string.bottomsheet_search_apps),
         entries = apps.map { app ->
+            val isFavorite = app.packageName in favoriteApps
             AppListEntry(
                 key = app.packageName,
                 title = app.label?.takeIf { it.isNotBlank() } ?: app.packageName,
                 summary = if (app.label != null) app.packageName else null,
                 system = app.system,
+                favorite = isFavorite,
                 onClick = {
                     viewModel.hideAllApps()
                     if (sessionInfo == null) viewModel.startScrcpy(app.packageName)
                     else viewModel.launchAppWithFallback(app.packageName)
+                },
+                onToggleFavorite = {
+                    val current = asBundle.favoriteApps
+                        .split(',').filter { it.isNotBlank() }.toMutableSet()
+                    if (isFavorite) current.remove(app.packageName)
+                    else current.add(app.packageName)
+                    viewModel.updateAsBundle { it.copy(favoriteApps = current.joinToString(",")) }
                 },
             )
         },
         refreshBusy = listingsRefreshBusy,
         onDismissRequest = { viewModel.hideAllApps() },
         onRefresh = { scope.launch(Dispatchers.IO) { viewModel.refreshApps() } },
+        onFetchIcons = if (showAppIcons) { pkgs ->
+            AppManagerService.scrcpy = viewModel.scrcpy
+            AppManagerService.appContext = context
+            val result = AppManagerService.fetchLabelsViaHelper(pkgs)
+            result.mapValues { it.value.iconBase64 ?: "" }
+                .filterValues { it.isNotBlank() }
+        } else null,
     )
 }

@@ -31,6 +31,7 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -60,6 +61,7 @@ import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
 import io.github.miuzarte.scrcpyforandroid.storage.ScrcpyOptions
 import io.github.miuzarte.scrcpyforandroid.storage.Settings
 import io.github.miuzarte.scrcpyforandroid.storage.Storage
+import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.scrcpyOptions
 import io.github.miuzarte.scrcpyforandroid.ui.confirm
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
@@ -71,7 +73,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonColors
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.AddCircle
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -83,6 +95,54 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import kotlin.math.roundToInt
 
+/**
+ * 自动调整字体大小的按钮，防止文字换行
+ * 当文字过长时自动缩小字体，最小到10sp
+ */
+@Composable
+private fun AutoSizeTextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    colors: top.yukonga.miuix.kmp.basic.TextButtonColors? = null,
+) {
+    val defaultTextSize = textStyles.button.fontSize
+    var textSize by remember { mutableStateOf(defaultTextSize) }
+    var readyToDraw by remember { mutableStateOf(false) }
+    val actualColors = colors ?: ButtonDefaults.textButtonColors()
+    val mappedColors = remember(actualColors) {
+        ButtonColors(
+            color = actualColors.color,
+            disabledColor = actualColors.disabledColor,
+            contentColor = actualColors.textColor,
+            disabledContentColor = actualColors.disabledTextColor,
+        )
+    }
+
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        colors = mappedColors,
+    ) {
+        Text(
+            text = text,
+            fontSize = textSize,
+            maxLines = 1,
+            softWrap = false,
+            onTextLayout = { result ->
+                if (result.didOverflowWidth && textSize.value > 10f) {
+                    textSize = (textSize.value - 1).sp
+                } else {
+                    readyToDraw = true
+                }
+            },
+            modifier = Modifier.alpha(if (readyToDraw) 1f else 0f),
+        )
+    }
+}
+
 @Composable
 internal fun StatusCard(
     // TODO: unused
@@ -92,6 +152,8 @@ internal fun StatusCard(
     sessionInfo: Scrcpy.Session.SessionInfo?,
     busyLabel: String?,
     connectedDeviceLabel: String,
+    connectionType: io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType = io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType.LAN,
+    onFirstSmallCardClick: (() -> Unit)? = null,
 ) {
     val appSettings = Storage.appSettings
     val appSettingsBundle by appSettings.bundleState.collectAsState()
@@ -143,25 +205,36 @@ internal fun StatusCard(
             )
         }
 
-        adbConnected -> StatusCardSpec(
-            big = StatusBigCardSpec(
-                title = stringResource(R.string.device_status_adb_connected),
-                subtitle = connectedDeviceLabel,
-                containerColor = colorScheme.primaryContainer,
-                titleColor = colorScheme.onPrimaryContainer,
-                subtitleColor = colorScheme.onPrimaryContainer,
-                icon = Icons.Rounded.Wifi,
-                iconTint = colorScheme.primary.copy(alpha = 0.6f),
-            ),
-            firstSmall = StatusSmallCardSpec(
-                stringResource(R.string.device_status_current),
-                connectedDeviceLabel,
-            ),
-            secondSmall = StatusSmallCardSpec(
-                stringResource(R.string.label_status),
-                stringResource(R.string.device_status_idle),
-            ),
-        )
+        adbConnected -> {
+            // 根据连接类型区分显示
+            val isUsb = connectionType == io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType.USB
+            val connectionSubtitle = connectedDeviceLabel
+            val iconPainter = if (isUsb) {
+                painterResource(io.github.miuzarte.scrcpyforandroid.R.drawable.ic_usb)
+            } else {
+                null
+            }
+            StatusCardSpec(
+                big = StatusBigCardSpec(
+                    title = stringResource(R.string.device_status_adb_connected),
+                    subtitle = connectionSubtitle,
+                    containerColor = colorScheme.primaryContainer,
+                    titleColor = colorScheme.onPrimaryContainer,
+                    subtitleColor = colorScheme.onPrimaryContainer,
+                    icon = Icons.Rounded.Wifi,
+                    iconTint = colorScheme.primary.copy(alpha = 0.6f),
+                    iconPainter = iconPainter,
+                ),
+                firstSmall = StatusSmallCardSpec(
+                    stringResource(R.string.device_status_current),
+                    connectedDeviceLabel,
+                ),
+                secondSmall = StatusSmallCardSpec(
+                    stringResource(R.string.label_status),
+                    stringResource(R.string.device_status_idle),
+                ),
+            )
+        }
 
         else -> StatusCardSpec(
             big = StatusBigCardSpec(
@@ -184,7 +257,7 @@ internal fun StatusCard(
         )
     }
 
-    StatusCardLayout(spec = spec, busyLabel = busyLabel)
+    StatusCardLayout(spec = spec, busyLabel = busyLabel, onFirstSmallCardClick = onFirstSmallCardClick)
 }
 
 @Composable
@@ -346,12 +419,17 @@ internal fun PreviewCard(
                             touchEventHandler.handleMotionEvent(event)
                         }
                     } else {
-                        Modifier.pointerInput(sessionInfo) {
-                            detectTapGestures(
-                                onTap = {
+                        val asBundle by appSettings.bundleState.collectAsState()
+                        val tapToFullscreen = asBundle.previewCardTapToFullscreen
+                        Modifier.pointerInput(sessionInfo, tapToFullscreen) {
+                            detectTapGestures(onTap = {
+                                if (tapToFullscreen && sessionInfo != null) {
+                                    haptic.contextClick()
+                                    onOpenFullscreen()
+                                } else {
                                     previewControlsVisible = !previewControlsVisible
-                                },
-                            )
+                                }
+                            })
                         }
                     },
                 )
@@ -460,7 +538,7 @@ internal fun ConfigPanel(
     cameraMirroringSupported: Boolean,
     adbConnecting: Boolean,
     isQuickConnected: Boolean,
-    advancedEndActionText: String,
+    connectedScrcpyProfileNameRaw: String,
     allAppsEndActionText: String,
     onOpenAllApps: () -> Unit,
     recentTasksEndActionText: String,
@@ -505,6 +583,13 @@ internal fun ConfigPanel(
                     Storage.scrcpyProfiles.updateBundle(activeProfileIdLatest, soBundleLatest)
             }
         }
+    }
+    
+    val textGlobal = stringResource(R.string.text_global)
+    val advancedEndActionText = if (activeProfileId == ScrcpyOptions.GLOBAL_PROFILE_ID) {
+        textGlobal
+    } else {
+        connectedScrcpyProfileNameRaw
     }
 
     val audioBitRateVisibility = rememberSaveable(soBundle) {
@@ -827,7 +912,6 @@ private fun PairingDialog(
         show = showDialog,
         title = stringResource(R.string.device_pairing_title),
         summary = stringResource(R.string.device_pairing_desc),
-        defaultWindowInsetsPadding = false,
         onDismissRequest = {
             onDismissRequest()
         },
@@ -838,7 +922,7 @@ private fun PairingDialog(
         Column(
             verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),
         ) {
-            TextField(
+            SuperTextField(
                 value = host,
                 onValueChange = { host = it },
                 label = stringResource(R.string.label_ip_address),
@@ -852,7 +936,7 @@ private fun PairingDialog(
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
-            TextField(
+            SuperTextField(
                 value = port,
                 onValueChange = { port = it.filter(Char::isDigit) },
                 label = stringResource(R.string.label_port),
@@ -866,7 +950,7 @@ private fun PairingDialog(
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
-            TextField(
+            SuperTextField(
                 value = code,
                 onValueChange = { code = it },
                 label = stringResource(R.string.label_wlan_pairing_code),
@@ -1130,6 +1214,7 @@ internal fun DeviceTile(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onAction: () -> Unit,
+    onCancelAction: () -> Unit,
     onEditorSave: (DeviceShortcut) -> Unit,
     onEditorDelete: () -> Unit,
     onEditorCancel: () -> Unit,
@@ -1168,8 +1253,11 @@ internal fun DeviceTile(
 
     val currentDraft = draft ?: device
     val currentOriginalDraft = originalDraft ?: device
-    val profileNames = remember(scrcpyProfilesState.profiles) {
-        scrcpyProfilesState.profiles.map { it.name }
+    val textGlobal = stringResource(R.string.text_global)
+    val profileNames = remember(scrcpyProfilesState.profiles, textGlobal) {
+        scrcpyProfilesState.profiles.map {
+            if (it.isBuiltinGlobal) textGlobal else it.name
+        }
     }
     val profileIds = remember(scrcpyProfilesState.profiles) {
         scrcpyProfilesState.profiles.map { it.id }
@@ -1243,20 +1331,26 @@ internal fun DeviceTile(
                 if (actionInProgress) {
                     CircularProgressIndicator(progress = null)
                     Spacer(Modifier.width(UiSpacing.Medium))
+                    TextButton(
+                        text = stringResource(R.string.button_cancel),
+                        onClick = onCancelAction,
+                        colors = ButtonDefaults.textButtonColors(),
+                    )
+                } else {
+                    TextButton(
+                        text = stringResource(
+                            if (!isConnected) R.string.button_connect
+                            else R.string.button_disconnect
+                        ),
+                        onClick = onAction,
+                        enabled = actionEnabled,
+                        colors =
+                            if (!isConnected && device.startScrcpyOnConnect)
+                                ButtonDefaults.textButtonColorsPrimary()
+                            else
+                                ButtonDefaults.textButtonColors(),
+                    )
                 }
-                TextButton(
-                    text = stringResource(
-                        if (!isConnected) R.string.button_connect
-                        else R.string.button_disconnect,
-                    ),
-                    onClick = onAction,
-                    enabled = actionEnabled && !actionInProgress,
-                    colors =
-                        if (!isConnected && device.startScrcpyOnConnect)
-                            ButtonDefaults.textButtonColorsPrimary()
-                        else
-                            ButtonDefaults.textButtonColors(),
-                )
             }
         }
 
@@ -1343,7 +1437,6 @@ internal fun DeviceTile(
                             },
                         )
                     }
-                    val textGlobal = stringResource(R.string.text_global)
                     OverlayDropdownPreference(
                         title = stringResource(R.string.device_config_scrcpy_config),
                         items = profileNames,
@@ -1405,6 +1498,7 @@ internal fun DeviceTileList(
     onClick: (DeviceShortcut) -> Unit,
     onLongClick: (DeviceShortcut) -> Unit,
     onAction: (DeviceShortcut) -> Unit,
+    onCancelAction: (DeviceShortcut) -> Unit,
     onEditorSave: (DeviceShortcut, DeviceShortcut) -> Unit,
     onEditorDelete: (DeviceShortcut) -> Unit,
     onEditorCancel: () -> Unit,
@@ -1427,6 +1521,7 @@ internal fun DeviceTileList(
                 onClick = { onClick(device) },
                 onLongClick = { onLongClick(device) },
                 onAction = { onAction(device) },
+                onCancelAction = { onCancelAction(device) },
                 onEditorSave = { updated -> onEditorSave(device, updated) },
                 onEditorDelete = { onEditorDelete(device) },
                 onEditorCancel = onEditorCancel,
@@ -1441,7 +1536,10 @@ internal fun QuickConnectCard(
     onValueChange: (String) -> Unit,
     onFocusLost: (() -> Unit)? = null,
     onConnect: () -> Unit,
+    onCancelConnect: () -> Unit,
     onAddDevice: () -> Unit,
+    onScanDevices: () -> Unit,
+    connecting: Boolean = false,
     enabled: Boolean = true,
 ) {
     val haptic = LocalHapticFeedback.current
@@ -1487,7 +1585,7 @@ internal fun QuickConnectCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
             ) {
-                TextButton(
+                AutoSizeTextButton(
                     text = stringResource(R.string.button_add_device),
                     onClick = {
                         haptic.contextClick()
@@ -1496,16 +1594,28 @@ internal fun QuickConnectCard(
                     modifier = Modifier.weight(1f),
                     enabled = enabled,
                 )
-                TextButton(
-                    text = stringResource(R.string.button_direct_connect),
-                    onClick = {
-                        haptic.confirm()
-                        onConnect()
-                    },
+                AutoSizeTextButton(
+                    text = stringResource(R.string.button_scan_devices),
+                    onClick = onScanDevices,
                     modifier = Modifier.weight(1f),
                     enabled = enabled,
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
                 )
+                if (connecting) {
+                    AutoSizeTextButton(
+                        text = stringResource(R.string.button_cancel),
+                        onClick = onCancelConnect,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.textButtonColors(),
+                    )
+                } else {
+                    AutoSizeTextButton(
+                        text = stringResource(R.string.button_direct_connect),
+                        onClick = onConnect,
+                        modifier = Modifier.weight(1f),
+                        enabled = enabled,
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                    )
+                }
             }
         }
     }
