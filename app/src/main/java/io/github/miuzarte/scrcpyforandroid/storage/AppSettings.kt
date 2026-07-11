@@ -82,6 +82,19 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         }
     }
 
+    enum class FullscreenControlMode(val rawValue: String) {
+        VIRTUAL_BUTTONS("VIRTUAL_BUTTONS"),
+        SWIPE_FLOATING_BALL("SWIPE_FLOATING_BALL"),
+        OFF("OFF");
+
+        fun toStoredValue(): String = rawValue
+
+        companion object {
+            fun fromStoredValue(value: String) =
+                entries.firstOrNull { it.rawValue == value } ?: VIRTUAL_BUTTONS
+        }
+    }
+
     companion object {
         val LANGUAGE_TAG = Pair(
             stringPreferencesKey("language_tag"),
@@ -143,6 +156,10 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             intPreferencesKey("device_preview_card_height_dp"),
             1080 / 3,
         )
+        val PREVIEW_CARD_TAP_TO_FULLSCREEN = Pair(
+            booleanPreferencesKey("preview_card_tap_to_fullscreen"),
+            false,
+        )
         val REALTIME_CLIPBOARD_SYNC_TO_DEVICE = Pair(
             booleanPreferencesKey("realtime_clipboard_sync_to_device"),
             true,
@@ -171,11 +188,43 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         )
         val SHOW_FULLSCREEN_FLOATING_BUTTON = Pair(
             booleanPreferencesKey("show_fullscreen_floating_button"),
-            true,
+            false,
         )
         val FULLSCREEN_FLOATING_BUTTON_SIZE_DP = Pair(
             intPreferencesKey("fullscreen_floating_button_size_dp"),
             48,
+        )
+        val TEMP_FLOATING_BUTTON_SIZE_DP = Pair(
+            intPreferencesKey("temp_floating_button_size_dp"),
+            48,
+        )
+        val SWIPE_FLOATING_MENU_ITEM_COUNT = Pair(
+            intPreferencesKey("swipe_floating_menu_item_count"),
+            5,
+        )
+        val FULLSCREEN_CONTROL_MODE = Pair(
+            stringPreferencesKey("fullscreen_control_mode"),
+            FullscreenControlMode.VIRTUAL_BUTTONS.rawValue,
+        )
+        val SWIPE_FLOATING_BALL_OFFSET_X = Pair(
+            floatPreferencesKey("swipe_floating_ball_offset_x"),
+            0.85f,
+        )
+        val SWIPE_FLOATING_BALL_OFFSET_Y = Pair(
+            floatPreferencesKey("swipe_floating_ball_offset_y"),
+            0.85f,
+        )
+        val SWIPE_FLOATING_BALL_BACKGROUND_ALPHA_PERCENT = Pair(
+            intPreferencesKey("swipe_floating_ball_background_alpha_percent"),
+            50,
+        )
+        val SWIPE_FLOATING_BALL_RING_ALPHA_PERCENT = Pair(
+            intPreferencesKey("swipe_floating_ball_ring_alpha_percent"),
+            50,
+        )
+        val SHOW_SWIPE_FLOATING_BALL = Pair(
+            booleanPreferencesKey("show_swipe_floating_ball"),
+            false,
         )
         val FULLSCREEN_FLOATING_BUTTON_BACKGROUND_ALPHA_PERCENT = Pair(
             intPreferencesKey("fullscreen_floating_button_background_alpha_percent"),
@@ -202,22 +251,32 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             booleanPreferencesKey("preview_virtual_button_show_text"),
             false,
         )
+        // 虚拟按钮排序（格式：id:showOutside,id:showOutside,...）
+        // showOutside=1 表示显示在外部，=0 表示显示在更多菜单内
+        // 默认外部：更多、多任务、主页、返回、退出全屏
+        // 注意：HIDE_SWIPE_FLOATING_BALL 不在此默认布局中，由 parseStoredLayout 自动补充
         val VIRTUAL_BUTTONS_LAYOUT = Pair(
             stringPreferencesKey("virtual_buttons_layout"),
             "more:1" +
-
-                    ",app_switch:1,home:0,back:1" +
-
-                    ",password_input:0" +
-                    ",all_apps:0" +
-                    ",recent_tasks:0" +
-                    ",toggle_ime:0" +
-                    ",paste_local_clipboard:0" +
-
-                    ",menu:0,notification:0" +
+                    ",app_switch:1,home:1,back:1,exit_fullscreen:1" +
+                    ",show_swipe_floating_ball:0,power:0" +
+                    ",all_apps:0,paste_local_clipboard:0,recent_tasks:0,toggle_ime:0" +
+                    ",expand_status_bar:0,notification:0" +
                     ",volume_up:0,volume_down:0,volume_mute:0" +
-                    ",power:0,screenshot:0" +
-
+                    ",screenshot:0,menu:0,password_input:0" +
+                    "",
+        )
+        // 滑动悬浮球菜单项的独立排序（格式：id:visible,id:visible,...）
+        // 不包含 SHOW_SWIPE_FLOATING_BALL 和 MORE
+        // 默认滑动显示：锁屏、多任务、主页、退出全屏
+        val SWIPE_FLOATING_BALL_ACTIONS_LAYOUT = Pair(
+            stringPreferencesKey("swipe_floating_ball_actions_layout"),
+            "power:1,app_switch:1,home:1,exit_fullscreen:1" +
+                    ",hide_swipe_floating_ball:0,back:0" +
+                    ",all_apps:0,paste_local_clipboard:0,recent_tasks:0,toggle_ime:0" +
+                    ",expand_status_bar:0,notification:0" +
+                    ",volume_up:0,volume_down:0,volume_mute:0" +
+                    ",screenshot:0,menu:0,password_input:0" +
                     "",
         )
         val DEVICE_TWO_PANE_CONFIG_ON_RIGHT = Pair(
@@ -275,6 +334,10 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             stringPreferencesKey("terminal_font_display_name"),
             "",
         )
+        val TERMINAL_BOOKMARK_AUTO_ENTER = Pair(
+            booleanPreferencesKey("terminal_bookmark_auto_enter"),
+            false,
+        )
 
         val PASSWORD_REQUIRE_AUTH = Pair(
             booleanPreferencesKey("password_require_auth"),
@@ -301,6 +364,18 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             booleanPreferencesKey("hide_device_logs"),
             false,
         )
+        val FAVORITE_APPS = Pair(
+            stringPreferencesKey("favorite_apps"),
+            "",
+        )
+        val SHOW_APP_ICONS = Pair(
+            booleanPreferencesKey("show_app_icons"),
+            true,
+        )
+        val SNACKBAR_DURATION_MS = Pair(
+            intPreferencesKey("snackbar_duration_ms"),
+            3000,
+        )
     }
 
     @Parcelize
@@ -322,6 +397,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         val hideSimpleConfigItems: Boolean,
         val previewCardOnTop: Boolean,
         val devicePreviewCardHeightDp: Int,
+        val previewCardTapToFullscreen: Boolean,
         val realtimeClipboardSyncToDevice: Boolean,
 
         // Fullscreen
@@ -332,6 +408,14 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         val fullscreenVirtualButtonDock: String,
         val showFullscreenFloatingButton: Boolean,
         val fullscreenFloatingButtonSizeDp: Int,
+        val tempFloatingButtonSizeDp: Int,
+        val swipeFloatingMenuItemCount: Int,
+        val showSwipeFloatingBall: Boolean,
+        val fullscreenControlMode: String,
+        val swipeFloatingBallOffsetX: Float,
+        val swipeFloatingBallOffsetY: Float,
+        val swipeFloatingBallBackgroundAlphaPercent: Int,
+        val swipeFloatingBallRingAlphaPercent: Int,
         val fullscreenFloatingButtonBackgroundAlphaPercent: Int,
         val fullscreenFloatingButtonRingAlphaPercent: Int,
         val fullscreenCompatibilityMode: Boolean,
@@ -340,6 +424,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         val fullscreenFloatingButtonYFraction: Float,
         val previewVirtualButtonShowText: Boolean,
         val virtualButtonsLayout: String,
+        val swipeFloatingBallActionsLayout: String,
         val deviceTwoPaneConfigOnRight: Boolean,
 
         // Scrcpy Server
@@ -358,6 +443,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         // Terminal
         val terminalFontSizeSp: Float,
         val terminalFontDisplayName: String,
+        val terminalBookmarkAutoEnter: Boolean,
 
         val passwordRequireAuth: Boolean,
 
@@ -366,7 +452,10 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         val lastUpdateCheckAt: Long,
         val clearLogsOnExit: Boolean,
         val hideDeviceLogs: Boolean,
-    ): Parcelable {
+        val favoriteApps: String,
+        val showAppIcons: Boolean,
+        val snackbarDurationMs: Int,
+    ) : Parcelable {
     }
 
     private val bundleFields = arrayOf<BundleField<Bundle>>(
@@ -387,6 +476,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         bundleField(HIDE_SIMPLE_CONFIG_ITEMS) { it.hideSimpleConfigItems },
         bundleField(PREVIEW_CARD_ON_TOP) { it.previewCardOnTop },
         bundleField(DEVICE_PREVIEW_CARD_HEIGHT_DP) { it.devicePreviewCardHeightDp },
+        bundleField(PREVIEW_CARD_TAP_TO_FULLSCREEN) { it.previewCardTapToFullscreen },
         bundleField(REALTIME_CLIPBOARD_SYNC_TO_DEVICE) { it.realtimeClipboardSyncToDevice },
 
         // Fullscreen
@@ -397,6 +487,14 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         bundleField(FULLSCREEN_VIRTUAL_BUTTON_DOCK) { it.fullscreenVirtualButtonDock },
         bundleField(SHOW_FULLSCREEN_FLOATING_BUTTON) { it.showFullscreenFloatingButton },
         bundleField(FULLSCREEN_FLOATING_BUTTON_SIZE_DP) { it.fullscreenFloatingButtonSizeDp },
+        bundleField(TEMP_FLOATING_BUTTON_SIZE_DP) { it.tempFloatingButtonSizeDp },
+        bundleField(SWIPE_FLOATING_MENU_ITEM_COUNT) { it.swipeFloatingMenuItemCount },
+        bundleField(FULLSCREEN_CONTROL_MODE) { it.fullscreenControlMode },
+        bundleField(SWIPE_FLOATING_BALL_OFFSET_X) { it.swipeFloatingBallOffsetX },
+        bundleField(SWIPE_FLOATING_BALL_OFFSET_Y) { it.swipeFloatingBallOffsetY },
+        bundleField(SWIPE_FLOATING_BALL_BACKGROUND_ALPHA_PERCENT) { it.swipeFloatingBallBackgroundAlphaPercent },
+        bundleField(SWIPE_FLOATING_BALL_RING_ALPHA_PERCENT) { it.swipeFloatingBallRingAlphaPercent },
+        bundleField(SHOW_SWIPE_FLOATING_BALL) { it.showSwipeFloatingBall },
         bundleField(FULLSCREEN_FLOATING_BUTTON_BACKGROUND_ALPHA_PERCENT) { it.fullscreenFloatingButtonBackgroundAlphaPercent },
         bundleField(FULLSCREEN_FLOATING_BUTTON_RING_ALPHA_PERCENT) { it.fullscreenFloatingButtonRingAlphaPercent },
         bundleField(FULLSCREEN_COMPATIBILITY_MODE) { it.fullscreenCompatibilityMode },
@@ -405,6 +503,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         bundleField(FULLSCREEN_FLOATING_BUTTON_Y_FRACTION) { it.fullscreenFloatingButtonYFraction },
         bundleField(PREVIEW_VIRTUAL_BUTTON_SHOW_TEXT) { it.previewVirtualButtonShowText },
         bundleField(VIRTUAL_BUTTONS_LAYOUT) { it.virtualButtonsLayout },
+        bundleField(SWIPE_FLOATING_BALL_ACTIONS_LAYOUT) { it.swipeFloatingBallActionsLayout },
         bundleField(DEVICE_TWO_PANE_CONFIG_ON_RIGHT) { it.deviceTwoPaneConfigOnRight },
 
         // Scrcpy Server
@@ -423,6 +522,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         // Terminal
         bundleField(TERMINAL_FONT_SIZE_SP) { it.terminalFontSizeSp },
         bundleField(TERMINAL_FONT_DISPLAY_NAME) { it.terminalFontDisplayName },
+        bundleField(TERMINAL_BOOKMARK_AUTO_ENTER) { it.terminalBookmarkAutoEnter },
 
         bundleField(PASSWORD_REQUIRE_AUTH) { it.passwordRequireAuth },
 
@@ -431,6 +531,9 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         bundleField(LAST_UPDATE_CHECK_AT) { it.lastUpdateCheckAt },
         bundleField(CLEAR_LOGS_ON_EXIT) { it.clearLogsOnExit },
         bundleField(HIDE_DEVICE_LOGS) { it.hideDeviceLogs },
+        bundleField(FAVORITE_APPS) { it.favoriteApps },
+        bundleField(SHOW_APP_ICONS) { it.showAppIcons },
+        bundleField(SNACKBAR_DURATION_MS) { it.snackbarDurationMs },
     )
 
     val bundleState: StateFlow<Bundle> = createBundleState(::bundleFromPreferences)
@@ -453,6 +556,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         hideSimpleConfigItems = preferences.read(HIDE_SIMPLE_CONFIG_ITEMS),
         previewCardOnTop = preferences.read(PREVIEW_CARD_ON_TOP),
         devicePreviewCardHeightDp = preferences.read(DEVICE_PREVIEW_CARD_HEIGHT_DP),
+        previewCardTapToFullscreen = preferences.read(PREVIEW_CARD_TAP_TO_FULLSCREEN),
         realtimeClipboardSyncToDevice = preferences.read(REALTIME_CLIPBOARD_SYNC_TO_DEVICE),
 
         // Fullscreen
@@ -464,6 +568,16 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         fullscreenVirtualButtonDock = preferences.read(FULLSCREEN_VIRTUAL_BUTTON_DOCK),
         showFullscreenFloatingButton = preferences.read(SHOW_FULLSCREEN_FLOATING_BUTTON),
         fullscreenFloatingButtonSizeDp = preferences.read(FULLSCREEN_FLOATING_BUTTON_SIZE_DP),
+        tempFloatingButtonSizeDp = preferences.read(TEMP_FLOATING_BUTTON_SIZE_DP),
+        swipeFloatingMenuItemCount = preferences.read(SWIPE_FLOATING_MENU_ITEM_COUNT),
+        showSwipeFloatingBall = preferences.read(SHOW_SWIPE_FLOATING_BALL),
+        fullscreenControlMode = preferences.read(FULLSCREEN_CONTROL_MODE),
+        swipeFloatingBallOffsetX = preferences.read(SWIPE_FLOATING_BALL_OFFSET_X),
+        swipeFloatingBallOffsetY = preferences.read(SWIPE_FLOATING_BALL_OFFSET_Y),
+        swipeFloatingBallBackgroundAlphaPercent =
+            preferences.read(SWIPE_FLOATING_BALL_BACKGROUND_ALPHA_PERCENT),
+        swipeFloatingBallRingAlphaPercent =
+            preferences.read(SWIPE_FLOATING_BALL_RING_ALPHA_PERCENT),
         fullscreenFloatingButtonBackgroundAlphaPercent =
             preferences.read(FULLSCREEN_FLOATING_BUTTON_BACKGROUND_ALPHA_PERCENT),
         fullscreenFloatingButtonRingAlphaPercent =
@@ -474,6 +588,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         fullscreenFloatingButtonYFraction = preferences.read(FULLSCREEN_FLOATING_BUTTON_Y_FRACTION),
         previewVirtualButtonShowText = preferences.read(PREVIEW_VIRTUAL_BUTTON_SHOW_TEXT),
         virtualButtonsLayout = preferences.read(VIRTUAL_BUTTONS_LAYOUT),
+        swipeFloatingBallActionsLayout = preferences.read(SWIPE_FLOATING_BALL_ACTIONS_LAYOUT),
         deviceTwoPaneConfigOnRight = preferences.read(DEVICE_TWO_PANE_CONFIG_ON_RIGHT),
 
         // Scrcpy Server
@@ -493,6 +608,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         // Terminal
         terminalFontSizeSp = preferences.read(TERMINAL_FONT_SIZE_SP),
         terminalFontDisplayName = preferences.read(TERMINAL_FONT_DISPLAY_NAME),
+        terminalBookmarkAutoEnter = preferences.read(TERMINAL_BOOKMARK_AUTO_ENTER),
 
         passwordRequireAuth = preferences.read(PASSWORD_REQUIRE_AUTH),
         fileManagerSortBy = preferences.read(FILE_MANAGER_SORT_BY),
@@ -500,6 +616,9 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         lastUpdateCheckAt = preferences.read(LAST_UPDATE_CHECK_AT),
         clearLogsOnExit = preferences.read(CLEAR_LOGS_ON_EXIT),
         hideDeviceLogs = preferences.read(HIDE_DEVICE_LOGS),
+        favoriteApps = preferences.read(FAVORITE_APPS),
+        showAppIcons = preferences.read(SHOW_APP_ICONS),
+        snackbarDurationMs = preferences.read(SNACKBAR_DURATION_MS),
     )
 
     suspend fun loadBundle() = loadBundle(::bundleFromPreferences)

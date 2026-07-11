@@ -1,34 +1,116 @@
 package io.github.miuzarte.scrcpyforandroid.widgets
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarOutline
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.graphics.BitmapFactory
+import android.util.Base64
+import com.github.promeg.pinyinhelper.Pinyin
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
-import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.basic.DropdownColors
+import top.yukonga.miuix.kmp.basic.DropdownDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Search
+import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
 import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
+import java.util.Locale
 
 data class AppListEntry(
     val key: String,
     val title: String,
     val summary: String? = null,
     val system: Boolean? = null,
+    val favorite: Boolean = false,
+    val iconBase64: String? = null,
     val onClick: () -> Unit,
+    val onToggleFavorite: (() -> Unit)? = null,
 )
+
+private data class AppSortToken(
+    val priority: Int,
+    val value: String,
+)
+
+private fun appListSortKey(entry: AppListEntry): String {
+    val label = entry.title.takeIf { it.isNotBlank() } ?: entry.key
+    val tokens = label.map { char ->
+        when {
+            char.code <= 0x7F -> AppSortToken(
+                priority = 0,
+                value = char.lowercaseChar().toString(),
+            )
+            Pinyin.isChinese(char) -> AppSortToken(
+                priority = 1,
+                value = Pinyin.toPinyin(char).lowercase(Locale.ROOT),
+            )
+            else -> AppSortToken(
+                priority = 2,
+                value = char.lowercaseChar().toString(),
+            )
+        }
+    }
+    val firstToken = tokens.firstOrNull { it.value.any(Char::isLetterOrDigit) }
+        ?: tokens.firstOrNull()
+    val firstLetter = firstToken
+        ?.value
+        ?.firstOrNull(Char::isLetterOrDigit)
+        ?: Char.MAX_VALUE
+
+    return buildString {
+        append(firstLetter)
+        append('\u0000')
+        append(firstToken?.priority ?: 2)
+        append('\u0000')
+        tokens.forEach { token ->
+            append(token.value)
+            append('\u0000')
+        }
+        append('\u0001')
+        append(entry.key.lowercase(Locale.ROOT))
+    }
+}
 
 @Composable
 fun AppListBottomSheet(
@@ -36,11 +118,49 @@ fun AppListBottomSheet(
     title: String,
     loadingText: String,
     emptyText: String,
+    searchHint: String,
     entries: List<AppListEntry>,
     refreshBusy: Boolean,
     onDismissRequest: () -> Unit,
     onRefresh: () -> Unit,
+    onFetchIcons: (suspend (Set<String>) -> Map<String, String>)? = null,
 ) {
+    var searchQuery by remember(show) { mutableStateOf("") }
+    var iconMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+    val pkgKeys = remember(entries) { entries.map { it.key }.toSet() }
+
+    LaunchedEffect(show, pkgKeys) {
+        if (show && onFetchIcons != null && pkgKeys.isNotEmpty()) {
+            runCatching {
+                val result = withContext(Dispatchers.IO) { onFetchIcons(pkgKeys) }
+                iconMap = result
+            }
+        }
+        if (!show) {
+            iconMap = emptyMap()
+        }
+    }
+
+    val enrichedEntries = remember(entries, iconMap) {
+        entries.map { entry ->
+            val icon = iconMap[entry.key]
+            if (icon != null && entry.iconBase64 == null) entry.copy(iconBase64 = icon)
+            else entry
+        }
+    }
+
+    val filteredAndSorted = remember(enrichedEntries, searchQuery) {
+        val query = searchQuery.trim().lowercase(Locale.ROOT)
+        val filtered = if (query.isBlank()) enrichedEntries else enrichedEntries.filter { entry ->
+            entry.title.lowercase(Locale.ROOT).contains(query) ||
+                entry.summary?.lowercase(Locale.ROOT)?.contains(query) == true ||
+                entry.key.lowercase(Locale.ROOT).contains(query)
+        }
+        val (favorites, others) = filtered.partition { it.favorite }
+        favorites.sortedBy { appListSortKey(it) } + others.sortedBy { appListSortKey(it) }
+    }
+
     OverlayBottomSheet(
         show = show,
         title = title,
@@ -58,7 +178,7 @@ fun AppListBottomSheet(
         },
     ) {
         when {
-            entries.isEmpty() && refreshBusy -> {
+            enrichedEntries.isEmpty() && refreshBusy -> {
                 Text(
                     text = loadingText,
                     modifier = Modifier
@@ -68,7 +188,7 @@ fun AppListBottomSheet(
                 )
             }
 
-            entries.isEmpty() -> {
+            enrichedEntries.isEmpty() -> {
                 Text(
                     text = emptyText,
                     modifier = Modifier
@@ -79,16 +199,60 @@ fun AppListBottomSheet(
             }
 
             else -> {
-                LazyColumn(
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = searchHint,
+                    useLabelAsPlaceholder = true,
+                    singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .fillMaxHeight(2f / 3f),
-                ) {
-                    items(items = entries, key = { it.key }) { entry ->
-                        AppListBottomSheetItem(
-                            entry = entry,
-                            spinnerColors = DropdownDefaults.dropdownColors(),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    leadingIcon = {
+                        Icon(
+                            imageVector = MiuixIcons.Basic.Search,
+                            contentDescription = searchHint,
+                            tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
                         )
+                    },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = MiuixIcons.Basic.SearchCleanup,
+                                    contentDescription = stringResource(R.string.cd_clear),
+                                    tint = MiuixTheme.colorScheme.onSurfaceContainerHighest,
+                                )
+                            }
+                        }
+                    } else null,
+                )
+                if (filteredAndSorted.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(400.dp)
+                            .padding(bottom = UiSpacing.SheetBottom),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.bottomsheet_no_search_result),
+                            modifier = Modifier.padding(top = 16.dp),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(400.dp),
+                    ) {
+                        items(items = filteredAndSorted, key = { it.key }) { entry ->
+                            AppListBottomSheetItem(
+                                entry = entry,
+                                spinnerColors = DropdownDefaults.dropdownColors(),
+                            )
+                        }
                     }
                 }
             }
@@ -107,23 +271,45 @@ private fun AppListBottomSheetItem(
         modifier = Modifier
             .fillMaxWidth()
             .background(spinnerColors.containerColor)
-            .clickable(onClick = entry.onClick)
+            .combinedClickable(
+                onClick = entry.onClick,
+                onLongClick = entry.onToggleFavorite,
+            )
             .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector =
-                    if (entry.system == true) Icons.Rounded.Android
-                    else MiuixIcons.Store,
-                contentDescription = entry.title.ifBlank { entry.summary ?: "" },
-                modifier = Modifier
-                    .sizeIn(minWidth = 26.dp, minHeight = 26.dp)
-                    .padding(end = 12.dp),
-            )
-            Column {
+            val iconBitmap = remember(entry.iconBase64) {
+                entry.iconBase64?.let { b64 ->
+                    try {
+                        val bytes = Base64.decode(b64, Base64.DEFAULT)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    } catch (_: Exception) { null }
+                }
+            }
+            if (iconBitmap != null) {
+                Image(
+                    bitmap = iconBitmap.asImageBitmap(),
+                    contentDescription = entry.title.ifBlank { entry.summary ?: "" },
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape),
+                )
+            } else {
+                Icon(
+                    imageVector =
+                        if (entry.system == true) Icons.Rounded.Android
+                        else MiuixIcons.Store,
+                    contentDescription = entry.title.ifBlank { entry.summary ?: "" },
+                    modifier = Modifier
+                        .sizeIn(minWidth = 26.dp, minHeight = 26.dp),
+                )
+            }
+            Column(modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp)) {
                 Text(
                     text = entry.title,
                     fontSize = textStyles.body1.fontSize,
@@ -136,6 +322,17 @@ private fun AppListBottomSheetItem(
                         color = spinnerColors.summaryColor,
                     )
                 }
+            }
+        }
+        if (entry.onToggleFavorite != null) {
+            IconButton(
+                onClick = entry.onToggleFavorite,
+            ) {
+                Icon(
+                    imageVector = if (entry.favorite) Icons.Rounded.Star else Icons.Rounded.StarOutline,
+                    contentDescription = if (entry.favorite) stringResource(R.string.bottomsheet_remove_favorite) else stringResource(R.string.bottomsheet_add_favorite),
+                    modifier = Modifier.sizeIn(minWidth = 26.dp, minHeight = 26.dp),
+                )
             }
         }
     }

@@ -62,10 +62,14 @@ class TouchEventHandler(
     private val justPressedPointerIds = HashSet<Int>(10)
     private val pendingMoveJobs = HashMap<Int, Job>(10)
 
+    private var handleEventCount: Int = 0
+
     fun handleMotionEvent(event: MotionEvent): Boolean {
         if (touchAreaSize.width == 0 || touchAreaSize.height == 0) {
             return true
         }
+
+        handleEventCount++
 
         val bounds = calculateContentBounds()
 

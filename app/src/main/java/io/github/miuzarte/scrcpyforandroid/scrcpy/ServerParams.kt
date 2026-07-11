@@ -36,6 +36,7 @@ data class ServerParams(
     // val tunnelPort: UShort,
 
     val maxSize: UShort,
+    val videoSize: String,
     val minSizeAlignment: UByte,
 
     val videoBitRate: Int,
@@ -146,6 +147,11 @@ data class ServerParams(
         }
         if (maxSize > 0u) {
             cmd.add("max_size=$maxSize")
+        }
+        if (videoSize.isNotBlank()) {
+            validate(videoSize)
+            cmd.add("video_size=${videoSize.trim()}")
+            android.util.Log.d("ServerParams", "Added video_size=$videoSize")
         }
         if (maxFps.isNotBlank()) {
             validate(maxFps)

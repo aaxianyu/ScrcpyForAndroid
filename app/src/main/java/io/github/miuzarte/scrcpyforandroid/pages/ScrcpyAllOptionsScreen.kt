@@ -1,6 +1,10 @@
 package io.github.miuzarte.scrcpyforandroid.pages
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.text.KeyboardActions
@@ -16,6 +20,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
@@ -24,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.ScrcpyPresets
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
@@ -42,6 +49,8 @@ import io.github.miuzarte.scrcpyforandroid.storage.Settings
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.quickDevices
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.scrcpyOptions
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.scrcpyProfiles
+import io.github.miuzarte.scrcpyforandroid.storage.decodeBundleFromJson
+import io.github.miuzarte.scrcpyforandroid.storage.encodeBundleToJson
 import io.github.miuzarte.scrcpyforandroid.ui.*
 import io.github.miuzarte.scrcpyforandroid.widgets.RecordPreferences
 import kotlinx.coroutines.*
@@ -56,6 +65,7 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import org.json.JSONObject
 import kotlin.math.roundToInt
 
 @Composable
@@ -65,23 +75,25 @@ internal fun ScrcpyAllOptionsScreen(
 ) {
     val haptic = LocalHapticFeedback.current
     val navigator = LocalRootNavigator.current
+    val configuration = LocalConfiguration.current
+    val deviceScreenWidth = configuration.screenWidthDp
+    val deviceScreenHeight = configuration.screenHeightDp
+    // 获取本机物理分辨率（像素）
+    val resources = LocalResources.current
+    val devicePhysicalWidth = resources.displayMetrics.widthPixels
+    val devicePhysicalHeight = resources.displayMetrics.heightPixels
     val blurBackdrop = rememberBlurBackdrop(LocalEnableBlur.current)
     val blurActive = blurBackdrop != null
     val scope = rememberCoroutineScope()
+    val appContext = LocalContext.current
+    val textNewProfile = stringResource(ScrcpyOptions.NEW_PROFILE_NAME_RES_ID)
     var showManageProfilesSheet by rememberSaveable { mutableStateOf(false) }
     val qdBundleShared by quickDevices.bundleState.collectAsState()
     val soBundleShared by scrcpyOptions.bundleState.collectAsState()
     val scrcpyProfilesState by scrcpyProfiles.state.collectAsState()
-    val initialSelectedProfileId = remember(qdBundleShared.quickDevicesList) {
-        val currentTarget = AppRuntime.currentConnectionTarget
-        if (currentTarget == null) {
-            ScrcpyOptions.GLOBAL_PROFILE_ID
-        } else {
-            DeviceShortcuts.unmarshalFrom(qdBundleShared.quickDevicesList)
-                .firstOrNull { it.matchesAddress(currentTarget) }
-                ?.scrcpyProfileId
-                ?: ScrcpyOptions.GLOBAL_PROFILE_ID
-        }
+    val initialSelectedProfileId = remember {
+        // 直接从 session 级状态读取，不依赖快捷设备
+        AppRuntime.currentConnectionProfileId.value
     }
     val selectedProfileIdState = rememberSaveable(initialSelectedProfileId) {
         mutableStateOf(initialSelectedProfileId)
@@ -99,8 +111,20 @@ internal fun ScrcpyAllOptionsScreen(
     val lastValidSoBundleState = rememberSaveable(selectedProfileId) {
         mutableStateOf(soBundleState.value)
     }
-    val profileTabs = remember(scrcpyProfilesState.profiles) {
-        scrcpyProfilesState.profiles.map { it.name }
+    // 显式同步 bundle：确保 profile 切换时一定更新，绕过 rememberSaveable 缓存
+    LaunchedEffect(selectedProfileId) {
+        val bundle = if (selectedProfileId == ScrcpyOptions.GLOBAL_PROFILE_ID)
+            soBundleShared
+        else scrcpyProfilesState.profiles
+            .firstOrNull { it.id == selectedProfileId }
+            ?.bundle ?: soBundleShared
+        soBundleState.value = bundle
+    }
+    val textGlobal = stringResource(R.string.text_global)
+    val profileTabs = remember(scrcpyProfilesState.profiles, textGlobal) {
+        scrcpyProfilesState.profiles.map {
+            if (it.isBuiltinGlobal) textGlobal else it.name
+        }
     }
     val profileIds = remember(scrcpyProfilesState.profiles) {
         scrcpyProfilesState.profiles.map { it.id }
@@ -192,6 +216,35 @@ internal fun ScrcpyAllOptionsScreen(
                                             showManageProfilesSheet = true
                                         },
                                     ),
+                                    DropdownItem(
+                                        text = stringResource(R.string.scrcpyopt_paste_and_create),
+                                        onClick = {
+                                            scope.launch {
+                                                val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                val clipText = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+                                                if (clipText.isNullOrBlank()) {
+                                                    AppRuntime.snackbar(R.string.scrcpyopt_paste_invalid)
+                                                    return@launch
+                                                }
+                                                runCatching {
+                                                    val json = JSONObject(clipText)
+                                                    // 保存当前配置
+                                                    saveBundleForProfile(selectedProfileId, soBundleState.value)
+                                                    val bundle = decodeBundleFromJson(json)
+                                                    val created = scrcpyProfiles.createProfile(
+                                                        requestedName = textNewProfile,
+                                                        bundle = bundle,
+                                                    )
+                                                    selectedProfileId = created.id
+                                                    bindCurrentConnectedDevice(created.id)
+                                                    AppRuntime.currentConnectionProfileId.value = created.id
+                                                    AppRuntime.snackbar(R.string.scrcpyopt_paste_success)
+                                                }.onFailure {
+                                                    AppRuntime.snackbar(R.string.scrcpyopt_paste_invalid)
+                                                }
+                                            }
+                                        },
+                                    ),
                                 ),
                             ),
                         ) {
@@ -203,7 +256,6 @@ internal fun ScrcpyAllOptionsScreen(
                     },
                     scrollBehavior = scrollBehavior,
                     bottomContent = {
-                        val textGlobal = stringResource(R.string.text_global)
                         TabRow(
                             tabs = profileTabs,
                             selectedTabIndex = selectedProfileIndex,
@@ -216,6 +268,8 @@ internal fun ScrcpyAllOptionsScreen(
                                     saveBundleForProfile(selectedProfileId, soBundleState.value)
                                     bindCurrentConnectedDevice(nextProfileId)
                                     selectedProfileId = nextProfileId
+                                    // 写入 session 级状态，脱离快捷设备独立运作
+                                    AppRuntime.currentConnectionProfileId.value = nextProfileId
                                     val profileName = profileTabs.getOrElse(index) { textGlobal }
                                     currentConnectedDeviceName?.let { deviceName ->
                                         AppRuntime.snackbar(
@@ -255,6 +309,10 @@ internal fun ScrcpyAllOptionsScreen(
                 soBundleState = soBundleState,
                 lastValidSoBundleState = lastValidSoBundleState,
                 onSaveBundleForProfile = ::saveBundleForProfile,
+                deviceScreenWidth = deviceScreenWidth,
+                deviceScreenHeight = deviceScreenHeight,
+                devicePhysicalWidth = devicePhysicalWidth,
+                devicePhysicalHeight = devicePhysicalHeight,
             )
         }
 
@@ -287,6 +345,7 @@ internal fun ScrcpyAllOptionsScreen(
                         )
                         selectedProfileId = created.id
                         bindCurrentConnectedDevice(created.id)
+                        AppRuntime.currentConnectionProfileId.value = created.id
                     }
 
                     ProfileDialogMode.Rename -> {
@@ -366,10 +425,15 @@ internal fun ScrcpyAllOptionsPage(
     soBundleState: MutableState<ScrcpyOptions.Bundle>,
     lastValidSoBundleState: MutableState<ScrcpyOptions.Bundle>,
     onSaveBundleForProfile: suspend (String, ScrcpyOptions.Bundle) -> Unit,
+    deviceScreenWidth: Int,
+    deviceScreenHeight: Int,
+    devicePhysicalWidth: Int,
+    devicePhysicalHeight: Int,
 ) {
     val focusManager = LocalFocusManager.current
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
+    val pageContext = LocalContext.current
     val taskScope = remember { CoroutineScope(Dispatchers.IO + SupervisorJob()) }
 
     val refreshBusy by scrcpy.listings.refreshBusyState.collectAsState()
@@ -818,9 +882,15 @@ internal fun ScrcpyAllOptionsPage(
 
         lastValidSoBundle = soBundle
 
-        serverParamsPreview = clientOptions
+        val serverParamsList = clientOptions
             .toServerParams(0u)
             .toList(preview = true)
+            .toMutableList()
+        // 客户端自定义选项（非 scrcpy 协议参数），追加到预览末尾
+        if (soBundle.wakeScreenOnFullscreen) {
+            serverParamsList.add("wake_screen_on_fullscreen=true")
+        }
+        serverParamsPreview = serverParamsList
             // improve readability using hard line breaks
             .joinToString("\n")
     }
@@ -832,12 +902,22 @@ internal fun ScrcpyAllOptionsPage(
         bottomInnerPadding = UiSpacing.PageBottom,
     ) {
         item {
-            Card {
-                TextField(
-                    value = serverParamsPreview,
-                    onValueChange = {},
-                    readOnly = true,
-                    modifier = Modifier.fillMaxWidth(),
+            Card(
+                onClick = {
+                    // 将当前配置的JSON复制到剪贴板（用于粘贴新建配置）
+                    val jsonStr = encodeBundleToJson(soBundle).toString(2)
+                    val clipboard = pageContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("scrcpy_config", jsonStr))
+                    AppRuntime.snackbar(R.string.terminal_copied)
+                },
+            ) {
+                Text(
+                    text = serverParamsPreview,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(UiSpacing.Large),
+                    fontSize = 14.sp,
+                    color = colorScheme.onSurface.copy(alpha = 0.65f),
                 )
             }
         }
@@ -954,9 +1034,22 @@ internal fun ScrcpyAllOptionsPage(
                     title = stringResource(R.string.scrcpyopt_no_power_on),
                     summary = "--no-power-on",
                     checked = !soBundle.powerOn,
+                    onCheckedChange = { checked ->
+                        soBundle = soBundle.copy(powerOn = !checked)
+                        // 打开时提示：进入全屏画面可能静止
+                        if (checked) {
+                            AppRuntime.snackbar(R.string.vm_screen_off_hint)
+                        }
+                    },
+                )
+                // 进入全屏时点亮屏幕（客户端自定义选项，非 scrcpy 协议参数）
+                SwitchPreference(
+                    title = stringResource(R.string.scrcpyopt_wake_screen_on_fullscreen),
+                    summary = "wake_screen_on_fullscreen=true",
+                    checked = soBundle.wakeScreenOnFullscreen,
                     onCheckedChange = {
                         soBundle = soBundle.copy(
-                            powerOn = !it,
+                            wakeScreenOnFullscreen = it,
                         )
                     },
                 )
@@ -1261,6 +1354,137 @@ internal fun ScrcpyAllOptionsPage(
                                 )
                             },
                         )
+                        SwitchPreference(
+                            title = stringResource(R.string.pref_title_resolution_custom_enabled),
+                            summary = stringResource(R.string.pref_summary_resolution_custom_enabled),
+                            checked = soBundle.resolutionCustomEnabled,
+                            onCheckedChange = {
+                                soBundle = soBundle.copy(resolutionCustomEnabled = it)
+                            },
+                        )
+                        if (soBundle.resolutionCustomEnabled) {
+                            var resolutionWidthInput by rememberSaveable {
+                                mutableStateOf(soBundle.resolutionWidth.takeIf { it > 0 }?.toString() ?: "")
+                            }
+                            var resolutionHeightInput by rememberSaveable {
+                                mutableStateOf(soBundle.resolutionHeight.takeIf { it > 0 }?.toString() ?: "")
+                            }
+                            Column(
+                                modifier = Modifier.padding(horizontal = UiSpacing.Large),
+                                verticalArrangement = Arrangement.spacedBy(UiSpacing.Medium),
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+                                    ) {
+                                        SuperTextField(
+                                            label = stringResource(R.string.pref_title_resolution_width),
+                                            value = resolutionWidthInput,
+                                            onValueChange = {
+                                                resolutionWidthInput = it.filter(Char::isDigit)
+                                                val value = resolutionWidthInput.toIntOrNull() ?: 0
+                                                soBundle = soBundle.copy(resolutionWidth = value)
+                                            },
+                                            onFocusLost = {
+                                                val value = resolutionWidthInput.toIntOrNull() ?: 0
+                                                val clamped = when {
+                                                    value == 0 -> 0
+                                                    value < 200 -> 200
+                                                    value > 3000 -> 3000
+                                                    else -> value
+                                                }
+                                                if (clamped > 0) {
+                                                    resolutionWidthInput = clamped.toString()
+                                                } else {
+                                                    resolutionWidthInput = ""
+                                                }
+                                            },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Number,
+                                                imeAction = ImeAction.Next,
+                                            ),
+                                            keyboardActions = KeyboardActions(
+                                                onNext = { focusManager.moveFocus(FocusDirection.Next) },
+                                            ),
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        SuperTextField(
+                                            label = stringResource(R.string.pref_title_resolution_height),
+                                            value = resolutionHeightInput,
+                                            onValueChange = {
+                                                resolutionHeightInput = it.filter(Char::isDigit)
+                                                val value = resolutionHeightInput.toIntOrNull() ?: 0
+                                                soBundle = soBundle.copy(resolutionHeight = value)
+                                            },
+                                            onFocusLost = {
+                                                val value = resolutionHeightInput.toIntOrNull() ?: 0
+                                                val clamped = when {
+                                                    value == 0 -> 0
+                                                    value < 200 -> 200
+                                                    value > 3000 -> 3000
+                                                    else -> value
+                                                }
+                                                if (clamped > 0) {
+                                                    resolutionHeightInput = clamped.toString()
+                                                } else {
+                                                    resolutionHeightInput = ""
+                                                }
+                                            },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Number,
+                                                imeAction = ImeAction.Done,
+                                            ),
+                                            keyboardActions = KeyboardActions(
+                                                onDone = { focusManager.clearFocus() },
+                                            ),
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
+                                    BoxWithConstraints(
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        val gap = UiSpacing.ContentHorizontal
+                                        val inputWidth = (maxWidth - gap) / 2
+                                        val trailingButtonWidth = inputWidth
+                                        val resolutionAllBlank = resolutionWidthInput.isBlank() && resolutionHeightInput.isBlank()
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(gap),
+                                        ) {
+                                            TextButton(
+                                                text = stringResource(R.string.cd_clear),
+                                                onClick = {
+                                                    resolutionWidthInput = ""
+                                                    resolutionHeightInput = ""
+                                                    soBundle = soBundle.copy(
+                                                        resolutionWidth = 0,
+                                                        resolutionHeight = 0,
+                                                    )
+                                                },
+                                                modifier = Modifier.width(inputWidth),
+                                                enabled = !resolutionAllBlank,
+                                            )
+                                            TextButton(
+                                                text = stringResource(R.string.scrcpyopt_native),
+                                                onClick = {
+                                                    soBundle = soBundle.copy(
+                                                        resolutionWidth = devicePhysicalWidth,
+                                                        resolutionHeight = devicePhysicalHeight,
+                                                    )
+                                                    resolutionWidthInput = devicePhysicalWidth.toString()
+                                                    resolutionHeightInput = devicePhysicalHeight.toString()
+                                                },
+                                                modifier = Modifier.width(trailingButtonWidth),
+                                                colors = ButtonDefaults.textButtonColorsPrimary(),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         ArrowSlider(
                             title = stringResource(R.string.scrcpyopt_max_fps),
                             summary = "--max-fps",
@@ -1779,7 +2003,7 @@ internal fun ScrcpyAllOptionsPage(
                         )
                     },
                 )
-            }
+                }
         }
 
         if (soBundle.videoSource == "display") item {
@@ -2203,13 +2427,12 @@ private fun ProfileNameDialog(
             ProfileDialogMode.Rename -> stringResource(R.string.scrcpyopt_rename_profile)
         },
         summary = stringResource(R.string.scrcpyopt_duplicate_name_hint),
-        defaultWindowInsetsPadding = false,
         onDismissRequest = onDismissRequest,
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),
         ) {
-            TextField(
+            SuperTextField(
                 value = input,
                 onValueChange = { input = it },
                 label = stringResource(R.string.scrcpyopt_profile_name),
@@ -2289,12 +2512,13 @@ private fun ManageProfilesSheet(
         val textCurrent = stringResource(R.string.scrcpyopt_current_profile)
         val textRename = stringResource(R.string.scrcpyopt_rename_profile)
         val textDelete = stringResource(R.string.scrcpyopt_delete_profile)
+        val textGlobal = stringResource(R.string.text_global)
         ReorderableList(
             itemsProvider = {
                 profiles.map { profile ->
                     ReorderableList.Item(
                         id = profile.id,
-                        title = profile.name,
+                        title = if (profile.isBuiltinGlobal) textGlobal else profile.name,
                         subtitle =
                             if (profile.id == selectedProfileId) textCurrent
                             else "",
@@ -2343,7 +2567,6 @@ private fun DeleteProfileDialog(
         show = show,
         title = stringResource(R.string.scrcpyopt_delete_profile),
         summary = stringResource(R.string.scrcpyopt_delete_confirm, profileName),
-        defaultWindowInsetsPadding = false,
         onDismissRequest = onDismissRequest,
     ) {
         Row(

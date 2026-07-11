@@ -1,5 +1,7 @@
 package io.github.miuzarte.scrcpyforandroid.pages
 
+import android.annotation.SuppressLint
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.combinedClickable
@@ -8,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.*
@@ -29,12 +32,41 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
+import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
-import io.github.miuzarte.scrcpyforandroid.services.*
-import io.github.miuzarte.scrcpyforandroid.ui.*
-import top.yukonga.miuix.kmp.basic.*
+import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
+import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
+import io.github.miuzarte.scrcpyforandroid.services.DirectoryDownloadSnapshot
+import io.github.miuzarte.scrcpyforandroid.services.FileManagerService
+import io.github.miuzarte.scrcpyforandroid.services.RemoteFileEntry
+import io.github.miuzarte.scrcpyforandroid.services.RemoteFileKind
+import io.github.miuzarte.scrcpyforandroid.services.RemoteFileStat
+import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
+import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
+import io.github.miuzarte.scrcpyforandroid.ui.confirm
+import io.github.miuzarte.scrcpyforandroid.ui.contextClick
+import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
+import top.yukonga.miuix.kmp.basic.BreadcrumbBar
+import top.yukonga.miuix.kmp.basic.BreadcrumbItem
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.PullToRefresh
+import top.yukonga.miuix.kmp.basic.PullToRefreshState
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.menu.OverlayIconDropdownMenu
@@ -43,12 +75,15 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
 private const val INITIAL_REMOTE_PATH = "/storage/emulated/0"
+private const val LOG_TAG = "FileManagerScreen"
 
 @Composable
 fun FileManagerScreen(
     bottomInnerPadding: Dp,
     onCanNavigateUpChange: (Boolean) -> Unit = {},
     onNavigateUpActionChange: (((() -> Boolean)?) -> Unit)? = null,
+    onNavigateToDeviceTab: () -> Unit = {},
+    isActive: Boolean = true,
 ) {
     val viewModel: FileManagerViewModel = viewModel()
     val haptic = LocalHapticFeedback.current
@@ -85,6 +120,8 @@ fun FileManagerScreen(
     var showCreateFolderDialog by rememberSaveable { mutableStateOf(false) }
     var pathInput by rememberSaveable { mutableStateOf(INITIAL_REMOTE_PATH) }
     var newFolderName by rememberSaveable { mutableStateOf("") }
+    var showAdbDisconnected by rememberSaveable { mutableStateOf(false) }
+    var hasShownAdbDisconnected by rememberSaveable { mutableStateOf(false) }
 
     val uploadLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -128,6 +165,25 @@ fun FileManagerScreen(
 
     DisposableEffect(Unit) {
         onDispose { viewModel.clearDetails() }
+    }
+
+    LaunchedEffect(isActive) {
+        Log.d(LOG_TAG, "ADB check isActive=$isActive")
+        if (!isActive) return@LaunchedEffect
+        while (isActive) {
+            delay(5000)
+            val connected = try {
+                withContext(Dispatchers.IO) { NativeAdbService.isConnected() }
+            } catch (_: Exception) { false }
+            Log.d(LOG_TAG, "ADB check connected=$connected hasShown=$hasShownAdbDisconnected")
+            if (!connected && !hasShownAdbDisconnected) {
+                Log.d(LOG_TAG, "ADB check showing disconnected dialog")
+                showAdbDisconnected = true
+                hasShownAdbDisconnected = true
+            } else if (connected) {
+                hasShownAdbDisconnected = false
+            }
+        }
     }
 
     Scaffold(
@@ -252,8 +308,9 @@ fun FileManagerScreen(
                                             uploadLauncher.launch(arrayOf("*/*"))
                                         },
                                     ),
-                                ),
-                            ),
+
+                                )
+                            )
                         ) {
                             Icon(
                                 imageVector = MiuixIcons.More,
@@ -290,6 +347,18 @@ fun FileManagerScreen(
                     viewModel.openEntry(entry)
                 },
                 onShowEntryDetails = viewModel::showEntryDetails,
+            )
+            AdbDisconnectedDialog(
+                show = showAdbDisconnected,
+                onDismiss = {
+                    Log.d(LOG_TAG, "ADB dialog dismissed")
+                    showAdbDisconnected = false
+                },
+                onReconnect = {
+                    Log.d(LOG_TAG, "ADB dialog reconnect clicked, calling onNavigateToDeviceTab")
+                    showAdbDisconnected = false
+                    onNavigateToDeviceTab()
+                },
             )
         }
     }
@@ -599,11 +668,10 @@ private fun PathJumpDialog(
     OverlayDialog(
         show = show,
         title = stringResource(R.string.fm_goto_path),
-        defaultWindowInsetsPadding = false,
         onDismissRequest = onDismissRequest,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical)) {
-            TextField(
+            SuperTextField(
                 value = path,
                 onValueChange = onPathChange,
                 // label = "/storage/emulated/0",
@@ -647,11 +715,10 @@ private fun CreateFolderDialog(
     OverlayDialog(
         show = show,
         title = stringResource(R.string.fm_title_create_folder),
-        defaultWindowInsetsPadding = false,
         onDismissRequest = onDismissRequest,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical)) {
-            TextField(
+            SuperTextField(
                 value = folderName,
                 onValueChange = onFolderNameChange,
                 label = stringResource(R.string.fm_label_new_folder),

@@ -5,7 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import androidx.activity.compose.LocalActivity
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -15,7 +15,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.rounded.DriveFileMove
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,9 +54,31 @@ import io.github.miuzarte.scrcpyforandroid.storage.AppSettings.FullscreenVirtual
 import io.github.miuzarte.scrcpyforandroid.storage.Settings
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.adbClientData
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
-import io.github.miuzarte.scrcpyforandroid.ui.*
-import kotlinx.coroutines.*
-import top.yukonga.miuix.kmp.basic.*
+import io.github.miuzarte.scrcpyforandroid.widgets.VirtualButtonAction
+import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
+import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
+import io.github.miuzarte.scrcpyforandroid.ui.MonetKeyColorOptions
+import io.github.miuzarte.scrcpyforandroid.ui.confirm
+import io.github.miuzarte.scrcpyforandroid.ui.contextClick
+import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Download
@@ -139,7 +171,6 @@ fun SettingsPage(
     bottomInnerPadding: Dp,
     onOpenReorderDevices: () -> Unit,
 ) {
-    val activity = LocalActivity.current
     val context = LocalContext.current
     val updateState by AppUpdateChecker.state.collectAsState()
 
@@ -233,6 +264,70 @@ fun SettingsPage(
                 DirectAdbTransport.importPublicKey(readTextFromUri(context, uri), fileName)
             }.onSuccess {
                 AppRuntime.snackbar(R.string.pref_adb_public_key_imported_snackbar, it.fingerprint)
+            }.onFailure { e ->
+                AppRuntime.snackbar(
+                    R.string.pref_adb_key_import_failed,
+                    e.message ?: e.javaClass.simpleName,
+                )
+            }
+        }
+    }
+    val adbPrivateKeyExportPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("*/*")
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val privKeyB64 = acBundle.importedPrivateKey
+                    .ifBlank { acBundle.rsaPrivateKey }
+                if (privKeyB64.isBlank()) {
+                    Toast.makeText(context, "没有可导出的私钥", Toast.LENGTH_SHORT).show()
+                    return@runCatching
+                }
+                val keyDer = android.util.Base64.decode(privKeyB64, android.util.Base64.DEFAULT)
+                val b64Encoded = android.util.Base64.encodeToString(keyDer, android.util.Base64.NO_WRAP)
+                val keyPem = buildString {
+                    appendLine("-----BEGIN PRIVATE KEY-----")
+                    b64Encoded.chunked(64) { appendLine(it) }
+                    appendLine("-----END PRIVATE KEY-----")
+                }
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(keyPem.toByteArray(Charsets.UTF_8))
+                } ?: error("Cannot open output file")
+            }.onSuccess {
+                Toast.makeText(context, "私钥已导出", Toast.LENGTH_SHORT).show()
+            }.onFailure { e ->
+                AppRuntime.snackbar(
+                    R.string.pref_adb_key_import_failed,
+                    e.message ?: e.javaClass.simpleName,
+                )
+            }
+        }
+    }
+    val adbPublicKeyExportPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("*/*")
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val pubKeyB64 = acBundle.importedPublicKeyX509
+                    .ifBlank { acBundle.rsaPublicKeyX509 }
+                if (pubKeyB64.isBlank()) {
+                    Toast.makeText(context, "没有可导出的公钥", Toast.LENGTH_SHORT).show()
+                    return@runCatching
+                }
+                val keyDer = android.util.Base64.decode(pubKeyB64, android.util.Base64.DEFAULT)
+                val b64Encoded = android.util.Base64.encodeToString(keyDer, android.util.Base64.NO_WRAP)
+                val keyPem = buildString {
+                    appendLine("-----BEGIN PUBLIC KEY-----")
+                    b64Encoded.chunked(64) { appendLine(it) }
+                    appendLine("-----END PUBLIC KEY-----")
+                }
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(keyPem.toByteArray(Charsets.UTF_8))
+                } ?: error("Cannot open output file")
+            }.onSuccess {
+                Toast.makeText(context, "公钥已导出", Toast.LENGTH_SHORT).show()
             }.onFailure { e ->
                 AppRuntime.snackbar(
                     R.string.pref_adb_key_import_failed,
@@ -341,7 +436,6 @@ fun SettingsPage(
                                             languageTag = lang.second,
                                         )
                                         MainActivity.setAppLanguageTag(context, lang.second)
-                                        activity?.recreate()
                                     },
                                 )
                             },
@@ -523,6 +617,16 @@ fun SettingsPage(
                         }
                     },
                 )
+                SwitchPreference(
+                    title = stringResource(R.string.pref_title_preview_card_tap_fullscreen),
+                    summary = stringResource(R.string.pref_summary_preview_card_tap_fullscreen),
+                    checked = asBundle.previewCardTapToFullscreen,
+                    onCheckedChange = {
+                        asBundle = asBundle.copy(
+                            previewCardTapToFullscreen = it
+                        )
+                    },
+                )
                 ArrowPreference(
                     title = stringResource(R.string.pref_title_quick_device_sort),
                     summary = stringResource(R.string.pref_summary_quick_device_sort),
@@ -538,6 +642,11 @@ fun SettingsPage(
                         haptic.contextClick()
                         navigator.push(RootScreen.VirtualButtonOrder)
                     },
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.pref_title_swipe_floating_ball_sort),
+                    summary = stringResource(R.string.pref_summary_swipe_floating_ball_sort),
+                    onClick = { navigator.push(RootScreen.SwipeFloatingBallOrder) },
                 )
                 ArrowPreference(
                     title = stringResource(R.string.pref_title_password_autofill),
@@ -583,17 +692,45 @@ fun SettingsPage(
                         )
                     },
                 )
-                SwitchPreference(
-                    title = stringResource(R.string.pref_title_show_virtual_buttons),
-                    summary = stringResource(R.string.pref_summary_show_virtual_buttons),
-                    checked = asBundle.showFullscreenVirtualButtons,
-                    onCheckedChange = {
-                        asBundle = asBundle.copy(
-                            showFullscreenVirtualButtons = it,
+                // 全屏控制模式选择（三选一）
+                val controlMode = AppSettings.FullscreenControlMode.fromStoredValue(asBundle.fullscreenControlMode)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.pref_title_fullscreen_control_mode),
+                    entries = listOf(
+                        DropdownEntry(
+                            items = listOf(
+                                DropdownItem(
+                                    text = stringResource(R.string.vb_virtual_buttons),
+                                    selected = controlMode == AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS,
+                                    onClick = {
+                                        asBundle = asBundle.copy(
+                                            fullscreenControlMode = AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS.rawValue,
+                                        )
+                                    },
+                                ),
+                                DropdownItem(
+                                    text = stringResource(R.string.pref_title_show_swipe_floating_ball),
+                                    selected = controlMode == AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL,
+                                    onClick = {
+                                        asBundle = asBundle.copy(
+                                            fullscreenControlMode = AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL.rawValue,
+                                        )
+                                    },
+                                ),
+                                DropdownItem(
+                                    text = stringResource(R.string.pref_title_off),
+                                    selected = controlMode == AppSettings.FullscreenControlMode.OFF,
+                                    onClick = {
+                                        asBundle = asBundle.copy(
+                                            fullscreenControlMode = AppSettings.FullscreenControlMode.OFF.rawValue,
+                                        )
+                                    },
+                                ),
+                            )
                         )
-                    },
+                    ),
                 )
-                AnimatedVisibility(asBundle.showFullscreenVirtualButtons) {
+                AnimatedVisibility(controlMode == AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS) {
                     Column {
                         OverlayDropdownPreference(
                             entries = listOf(
@@ -671,95 +808,87 @@ fun SettingsPage(
                         )
                     }
                 }
-                SwitchPreference(
-                    title = stringResource(R.string.pref_title_show_floating_button),
-                    summary = stringResource(R.string.pref_summary_show_floating_button),
-                    checked = asBundle.showFullscreenFloatingButton,
-                    onCheckedChange = {
-                        asBundle = asBundle.copy(
-                            showFullscreenFloatingButton = it,
-                        )
-                    },
-                )
-                AnimatedVisibility(asBundle.showFullscreenFloatingButton) {
+                AnimatedVisibility(controlMode == AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL) {
                     Column {
                         ArrowSlider(
-                            title = stringResource(R.string.pref_title_floating_button_size),
-                            value = asBundle.fullscreenFloatingButtonSizeDp.toFloat(),
+                            title = stringResource(R.string.pref_title_temp_floating_button_size),
+                            value = asBundle.tempFloatingButtonSizeDp.toFloat(),
                             onValueChange = {
                                 asBundle = asBundle.copy(
-                                    fullscreenFloatingButtonSizeDp =
-                                        it.roundToInt().coerceIn(32, 64),
+                                    tempFloatingButtonSizeDp =
+                                        it.roundToInt().coerceIn(32, 64)
                                 )
                             },
                             valueRange = 32f..64f,
                             steps = 64 - 32 - 1,
                             unit = "dp",
                             displayFormatter = { it.roundToInt().toString() },
-                            inputInitialValue = asBundle.fullscreenFloatingButtonSizeDp.toString(),
+                            inputInitialValue = asBundle.tempFloatingButtonSizeDp.toString(),
                             inputFilter = { it.filter(Char::isDigit) },
-                            inputValueRange = 16f..96f,
+                            inputValueRange = 1f..160f,
                             onInputConfirm = { input ->
                                 input.toIntOrNull()?.let {
                                     asBundle = asBundle.copy(
-                                        fullscreenFloatingButtonSizeDp =
-                                            it.coerceIn(16, 96),
+                                        tempFloatingButtonSizeDp =
+                                            it.coerceIn(32, 64)
                                     )
                                 }
                             },
                         )
                         ArrowSlider(
-                            title = stringResource(R.string.pref_title_floating_button_bg_opacity),
-                            value = asBundle.fullscreenFloatingButtonBackgroundAlphaPercent.toFloat(),
+                            title = stringResource(R.string.pref_title_swipe_floating_ball_bg_opacity),
+                            value = asBundle.swipeFloatingBallBackgroundAlphaPercent.toFloat(),
                             onValueChange = {
                                 asBundle = asBundle.copy(
-                                    fullscreenFloatingButtonBackgroundAlphaPercent =
-                                        it.roundToInt().coerceIn(10, 100),
+                                    swipeFloatingBallBackgroundAlphaPercent =
+                                        it.roundToInt().coerceIn(10, 100)
                                 )
                             },
                             valueRange = 10f..100f,
                             steps = 100 - 10 - 1,
                             unit = "%",
                             displayFormatter = { it.roundToInt().toString() },
-                            inputInitialValue = asBundle.fullscreenFloatingButtonBackgroundAlphaPercent.toString(),
+                            inputInitialValue = asBundle.swipeFloatingBallBackgroundAlphaPercent.toString(),
                             inputFilter = { it.filter(Char::isDigit) },
                             inputValueRange = 10f..100f,
                             onInputConfirm = { input ->
                                 input.toIntOrNull()?.let {
                                     asBundle = asBundle.copy(
-                                        fullscreenFloatingButtonBackgroundAlphaPercent =
-                                            it.coerceIn(10, 100),
+                                        swipeFloatingBallBackgroundAlphaPercent =
+                                            it.coerceIn(10, 100)
                                     )
                                 }
                             },
                         )
                         ArrowSlider(
-                            title = stringResource(R.string.pref_title_floating_button_ring_opacity),
-                            value = asBundle.fullscreenFloatingButtonRingAlphaPercent.toFloat(),
+                            title = stringResource(R.string.pref_title_swipe_floating_ball_ring_opacity),
+                            value = asBundle.swipeFloatingBallRingAlphaPercent.toFloat(),
                             onValueChange = {
                                 asBundle = asBundle.copy(
-                                    fullscreenFloatingButtonRingAlphaPercent =
-                                        it.roundToInt().coerceIn(0, 100),
+                                    swipeFloatingBallRingAlphaPercent =
+                                        it.roundToInt().coerceIn(0, 100)
                                 )
                             },
                             valueRange = 0f..100f,
                             steps = 100 - 0 - 1,
                             unit = "%",
                             displayFormatter = { it.roundToInt().toString() },
-                            inputInitialValue = asBundle.fullscreenFloatingButtonRingAlphaPercent.toString(),
+                            inputInitialValue = asBundle.swipeFloatingBallRingAlphaPercent.toString(),
                             inputFilter = { it.filter(Char::isDigit) },
                             inputValueRange = 0f..100f,
                             onInputConfirm = { input ->
                                 input.toIntOrNull()?.let {
                                     asBundle = asBundle.copy(
-                                        fullscreenFloatingButtonRingAlphaPercent =
-                                            it.coerceIn(0, 100),
+                                        swipeFloatingBallRingAlphaPercent =
+                                            it.coerceIn(0, 100)
                                     )
                                 }
                             },
                         )
+
                     }
                 }
+                // 全屏悬浮球已隐藏，由滑动悬浮球替代
                 SwitchPreference(
                     title = stringResource(R.string.pref_title_fullscreen_compat_mode),
                     summary = stringResource(R.string.pref_summary_fullscreen_compat_mode),
@@ -934,6 +1063,9 @@ fun SettingsPage(
                     modifier = Modifier.padding(vertical = UiSpacing.Large),
                     verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),
                 ) {
+                    val hasImportedAdbKey =
+                        acBundle.importedPrivateKey.isNotBlank() ||
+                                acBundle.importedPublicKeyX509.isNotBlank()
                     Column(
                         modifier = Modifier.padding(horizontal = UiSpacing.Large),
                         verticalArrangement = Arrangement.spacedBy(UiSpacing.Medium),
@@ -963,9 +1095,6 @@ fun SettingsPage(
                         modifier = Modifier.padding(horizontal = UiSpacing.Large),
                         verticalArrangement = Arrangement.spacedBy(UiSpacing.Medium),
                     ) {
-                        val hasImportedAdbKey =
-                            acBundle.importedPrivateKey.isNotBlank() ||
-                                    acBundle.importedPublicKeyX509.isNotBlank()
                         Text(
                             text = stringResource(R.string.pref_title_adb_private_key),
                             fontWeight = FontWeight.Medium,
@@ -1240,6 +1369,11 @@ fun SettingsPage(
         item {
             SectionSmallTitle(stringResource(R.string.section_misc))
             Card {
+                ArrowPreference(
+                    title = stringResource(R.string.pref_title_view_local_ip),
+                    summary = stringResource(R.string.pref_summary_view_local_ip),
+                    onClick = { navigator.push(RootScreen.LocalIp) },
+                )
                 SwitchPreference(
                     title = stringResource(R.string.pref_title_clear_logs_on_exit),
                     summary = stringResource(R.string.pref_summary_clear_logs_on_exit),
@@ -1258,6 +1392,39 @@ fun SettingsPage(
                         asBundle = asBundle.copy(
                             hideDeviceLogs = it,
                         )
+                    },
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.pref_title_show_app_icons),
+                    summary = stringResource(R.string.pref_summary_show_app_icons),
+                    checked = asBundle.showAppIcons,
+                    onCheckedChange = {
+                        asBundle = asBundle.copy(
+                            showAppIcons = it
+                        )
+                    },
+                )
+                ArrowSlider(
+                    title = stringResource(R.string.pref_title_snackbar_duration),
+                    value = asBundle.snackbarDurationMs.toFloat(),
+                    onValueChange = {
+                        asBundle = asBundle.copy(
+                            snackbarDurationMs = it.roundToInt()
+                        )
+                    },
+                    valueRange = 500f..5000f,
+                    steps = 9,
+                    unit = "ms",
+                    displayFormatter = { it.roundToInt().toString() },
+                    inputInitialValue = asBundle.snackbarDurationMs.toString(),
+                    inputFilter = { input -> input.filter(Char::isDigit) },
+                    inputValueRange = 500f..5000f,
+                    onInputConfirm = { input ->
+                        input.toIntOrNull()?.let {
+                            asBundle = asBundle.copy(
+                                snackbarDurationMs = it.coerceIn(500, 5000)
+                            )
+                        }
                     },
                 )
             }

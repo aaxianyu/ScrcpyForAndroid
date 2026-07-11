@@ -107,6 +107,18 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
             intPreferencesKey("max_size"),
             0,
         )
+        val RESOLUTION_CUSTOM_ENABLED = Pair(
+            booleanPreferencesKey("resolution_custom_enabled"),
+            false,
+        )
+        val RESOLUTION_WIDTH = Pair(
+            intPreferencesKey("resolution_width"),
+            0,
+        )
+        val RESOLUTION_HEIGHT = Pair(
+            intPreferencesKey("resolution_height"),
+            0,
+        )
         val VIDEO_BIT_RATE = Pair(
             intPreferencesKey("video_bit_rate"),
             0,
@@ -283,6 +295,11 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
             booleanPreferencesKey("flex_display"),
             false,
         )
+        // 客户端自定义选项：进入全屏时点亮受控端屏幕（非 scrcpy 协议参数）
+        val WAKE_SCREEN_ON_FULLSCREEN = Pair(
+            booleanPreferencesKey("wake_screen_on_fullscreen"),
+            true,
+        )
 
         fun defaultBundle() = Bundle(
             crop = CROP.defaultValue,
@@ -307,6 +324,9 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
             cameraFacing = CAMERA_FACING.defaultValue,
             minSizeAlignment = MIN_SIZE_ALIGNMENT.defaultValue,
             maxSize = MAX_SIZE.defaultValue,
+            resolutionCustomEnabled = RESOLUTION_CUSTOM_ENABLED.defaultValue,
+            resolutionWidth = RESOLUTION_WIDTH.defaultValue,
+            resolutionHeight = RESOLUTION_HEIGHT.defaultValue,
             videoBitRate = VIDEO_BIT_RATE.defaultValue,
             audioBitRate = AUDIO_BIT_RATE.defaultValue,
             maxFps = MAX_FPS.defaultValue,
@@ -351,6 +371,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
             cameraTorch = CAMERA_TORCH.defaultValue,
             keepActive = KEEP_ACTIVE.defaultValue,
             flexDisplay = FLEX_DISPLAY.defaultValue,
+            wakeScreenOnFullscreen = WAKE_SCREEN_ON_FULLSCREEN.defaultValue,
         )
     }
 
@@ -378,6 +399,9 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         val cameraFacing: String,
         val minSizeAlignment: Int,
         val maxSize: Int,
+        val resolutionCustomEnabled: Boolean,
+        val resolutionWidth: Int,
+        val resolutionHeight: Int,
         val videoBitRate: Int,
         val audioBitRate: Int,
         val maxFps: String,
@@ -422,7 +446,8 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         val cameraTorch: Boolean,
         val keepActive: Boolean,
         val flexDisplay: Boolean,
-    ): Parcelable {
+        val wakeScreenOnFullscreen: Boolean,
+    ) : Parcelable {
     }
 
     private val bundleFields = arrayOf<BundleField<Bundle>>(
@@ -448,6 +473,9 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         bundleField(CAMERA_FACING) { it.cameraFacing },
         bundleField(MIN_SIZE_ALIGNMENT) { it.minSizeAlignment },
         bundleField(MAX_SIZE) { it.maxSize },
+        bundleField(RESOLUTION_CUSTOM_ENABLED) { it.resolutionCustomEnabled },
+        bundleField(RESOLUTION_WIDTH) { it.resolutionWidth },
+        bundleField(RESOLUTION_HEIGHT) { it.resolutionHeight },
         bundleField(VIDEO_BIT_RATE) { it.videoBitRate },
         bundleField(AUDIO_BIT_RATE) { it.audioBitRate },
         bundleField(MAX_FPS) { it.maxFps },
@@ -491,6 +519,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         bundleField(CAMERA_TORCH) { it.cameraTorch },
         bundleField(KEEP_ACTIVE) { it.keepActive },
         bundleField(FLEX_DISPLAY) { it.flexDisplay },
+        bundleField(WAKE_SCREEN_ON_FULLSCREEN) { it.wakeScreenOnFullscreen },
     )
 
     val bundleState: StateFlow<Bundle> = createBundleState(::bundleFromPreferences)
@@ -518,6 +547,9 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         cameraFacing = preferences.read(CAMERA_FACING),
         minSizeAlignment = preferences.read(MIN_SIZE_ALIGNMENT),
         maxSize = preferences.read(MAX_SIZE),
+        resolutionCustomEnabled = preferences.read(RESOLUTION_CUSTOM_ENABLED),
+        resolutionWidth = preferences.read(RESOLUTION_WIDTH),
+        resolutionHeight = preferences.read(RESOLUTION_HEIGHT),
         videoBitRate = preferences.read(VIDEO_BIT_RATE),
         audioBitRate = preferences.read(AUDIO_BIT_RATE),
         maxFps = preferences.read(MAX_FPS),
@@ -562,6 +594,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         cameraTorch = preferences.read(CAMERA_TORCH),
         keepActive = preferences.read(KEEP_ACTIVE),
         flexDisplay = preferences.read(FLEX_DISPLAY),
+        wakeScreenOnFullscreen = preferences.read(WAKE_SCREEN_ON_FULLSCREEN),
     )
 
     suspend fun loadBundle() = loadBundle(::bundleFromPreferences)
@@ -602,7 +635,11 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         recordFormat = RecordFormat.fromString(bundle.recordFormat),
         cameraFacing = CameraFacing.fromString(bundle.cameraFacing),
         minSizeAlignment = bundle.minSizeAlignment.toUByte(),
-        maxSize = bundle.maxSize.toUShort(),
+        maxSize = if (bundle.resolutionCustomEnabled && bundle.resolutionWidth >= 200 && bundle.resolutionHeight >= 200) 0u else bundle.maxSize.toUShort(),
+        videoSize = if (bundle.resolutionCustomEnabled && bundle.resolutionWidth >= 200 && bundle.resolutionHeight >= 200) {
+            android.util.Log.d("ScrcpyOptions", "Custom resolution enabled: ${bundle.resolutionWidth}x${bundle.resolutionHeight}")
+            "${bundle.resolutionWidth}:${bundle.resolutionHeight}"
+        } else "",
         videoBitRate = bundle.videoBitRate,
         audioBitRate = bundle.audioBitRate,
         maxFps = bundle.maxFps,
@@ -672,6 +709,9 @@ internal fun encodeBundleToJson(bundle: ScrcpyOptions.Bundle): JSONObject =
         .put("cameraFacing", bundle.cameraFacing)
         .put("minSizeAlignment", bundle.minSizeAlignment)
         .put("maxSize", bundle.maxSize)
+        .put("resolutionCustomEnabled", bundle.resolutionCustomEnabled)
+        .put("resolutionWidth", bundle.resolutionWidth)
+        .put("resolutionHeight", bundle.resolutionHeight)
         .put("videoBitRate", bundle.videoBitRate)
         .put("audioBitRate", bundle.audioBitRate)
         .put("maxFps", bundle.maxFps)
@@ -716,6 +756,7 @@ internal fun encodeBundleToJson(bundle: ScrcpyOptions.Bundle): JSONObject =
         .put("cameraTorch", bundle.cameraTorch)
         .put("keepActive", bundle.keepActive)
         .put("flexDisplay", bundle.flexDisplay)
+        .put("wakeScreenOnFullscreen", bundle.wakeScreenOnFullscreen)
 
 internal fun decodeBundleFromJson(bundleJson: JSONObject?): ScrcpyOptions.Bundle {
     val json = bundleJson ?: return ScrcpyOptions.defaultBundle()
@@ -807,6 +848,18 @@ internal fun decodeBundleFromJson(bundleJson: JSONObject?): ScrcpyOptions.Bundle
         maxSize = json.optIntOrDefault(
             "maxSize",
             ScrcpyOptions.MAX_SIZE.defaultValue,
+        ),
+        resolutionCustomEnabled = json.optBooleanOrDefault(
+            "resolutionCustomEnabled",
+            ScrcpyOptions.RESOLUTION_CUSTOM_ENABLED.defaultValue,
+        ),
+        resolutionWidth = json.optIntOrDefault(
+            "resolutionWidth",
+            ScrcpyOptions.RESOLUTION_WIDTH.defaultValue,
+        ),
+        resolutionHeight = json.optIntOrDefault(
+            "resolutionHeight",
+            ScrcpyOptions.RESOLUTION_HEIGHT.defaultValue,
         ),
         videoBitRate = json.optIntOrDefault(
             "videoBitRate",
@@ -983,6 +1036,10 @@ internal fun decodeBundleFromJson(bundleJson: JSONObject?): ScrcpyOptions.Bundle
         flexDisplay = json.optBooleanOrDefault(
             "flexDisplay",
             ScrcpyOptions.FLEX_DISPLAY.defaultValue,
+        ),
+        wakeScreenOnFullscreen = json.optBooleanOrDefault(
+            "wakeScreenOnFullscreen",
+            ScrcpyOptions.WAKE_SCREEN_ON_FULLSCREEN.defaultValue,
         ),
     )
 }

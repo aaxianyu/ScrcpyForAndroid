@@ -5,6 +5,7 @@ import android.app.PictureInPictureUiState
 import android.app.RemoteAction
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.drawable.Icon
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -13,14 +14,29 @@ import androidx.core.content.ContextCompat
 import androidx.core.pip.BasicPictureInPicture
 import androidx.fragment.app.FragmentActivity
 import io.github.miuzarte.scrcpyforandroid.pages.StreamScreen
+import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.AppScreenOn
 import io.github.miuzarte.scrcpyforandroid.services.PictureInPictureActionReceiver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.lang.ref.WeakReference
+import java.util.Locale
 
 class StreamActivity: FragmentActivity() {
     private val basicPip by lazy { BasicPictureInPicture(this, ContextCompat.getMainExecutor(this)) }
+
+    override fun attachBaseContext(newBase: Context) {
+        val languageTag = MainActivity.getAppLanguageTag(newBase)
+        val wrappedContext =
+            if (languageTag.isNotEmpty()) {
+                val config = Configuration(newBase.resources.configuration)
+                config.setLocale(Locale.forLanguageTag(languageTag))
+                newBase.createConfigurationContext(config)
+            } else {
+                newBase
+            }
+        super.attachBaseContext(wrappedContext)
+    }
 
     private val pipActionReceiver = PictureInPictureActionReceiver()
     private var isPipActionReceiverRegistered = false
@@ -149,7 +165,10 @@ class StreamActivity: FragmentActivity() {
         private var currentActivityRef: WeakReference<StreamActivity>? = null
 
         fun createIntent(context: Context): Intent {
-            return Intent(context, StreamActivity::class.java)
+            return Intent(context, StreamActivity::class.java).apply {
+                // 确保 StreamActivity 在新任务中启动，避免被系统回收或覆盖
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
         }
 
         fun dismissActivePictureInPicture() {

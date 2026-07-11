@@ -32,6 +32,7 @@ import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.password.*
 import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
 import io.github.miuzarte.scrcpyforandroid.scaffolds.ReorderableList
+import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.LocalSnackbarController
 import io.github.miuzarte.scrcpyforandroid.services.SnackbarController
@@ -570,7 +571,6 @@ private fun PasswordEditorSheet(
             if (mode == PasswordDialogMode.Create) R.string.password_create_new
             else R.string.password_rename,
         ),
-        defaultWindowInsetsPadding = false,
         onDismissRequest = onDismissRequest,
         startAction = {
             IconButton(
@@ -603,7 +603,7 @@ private fun PasswordEditorSheet(
             modifier = Modifier.padding(vertical = UiSpacing.Large),
             verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),
         ) {
-            TextField(
+            SuperTextField(
                 value = nameBuffer,
                 onValueChange = { nameBuffer = it },
                 label = stringResource(R.string.label_name),
@@ -614,7 +614,7 @@ private fun PasswordEditorSheet(
                     .padding(horizontal = UiSpacing.Large),
             )
             AnimatedVisibility(mode == PasswordDialogMode.Create) {
-                TextField(
+                SuperTextField(
                     value = passwordBuffer,
                     onValueChange = { passwordBuffer = it },
                     label = stringResource(R.string.password_lockscreen_label),

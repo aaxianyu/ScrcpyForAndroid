@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -34,11 +35,24 @@ import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
+import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
+import io.github.miuzarte.scrcpyforandroid.storage.Storage
 import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
-import top.yukonga.miuix.kmp.basic.*
+import io.github.miuzarte.scrcpyforandroid.widgets.CommandBookmarkBottomSheet
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.More
@@ -66,13 +80,42 @@ fun TerminalScreen(
     bottomInnerPadding: Dp,
     isActive: Boolean,
     onTerminalGestureLockChanged: (Boolean) -> Unit,
+    onNavigateToDeviceTab: () -> Unit = {},
 ) {
     val viewModel: TerminalViewModel = viewModel()
     val context = LocalContext.current
     val blurBackdrop = rememberBlurBackdrop(LocalEnableBlur.current)
     val blurActive = blurBackdrop != null
     var showOutputSheet by rememberSaveable { mutableStateOf(false) }
+    var showBookmarkSheet by rememberSaveable { mutableStateOf(false) }
+    var showAdbDisconnected by rememberSaveable { mutableStateOf(false) }
+    var hasShownAdbDisconnected by rememberSaveable { mutableStateOf(false) }
     var output by rememberSaveable { mutableStateOf("") }
+
+    val asBundle by Storage.appSettings.bundleState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        Storage.commandBookmarks.load()
+    }
+
+    LaunchedEffect(isActive) {
+        Log.d(LOG_TAG, "ADB check isActive=$isActive")
+        if (!isActive) return@LaunchedEffect
+        while (isActive) {
+            delay(5000)
+            val connected = try {
+                withContext(Dispatchers.IO) { NativeAdbService.isConnected() }
+            } catch (_: Exception) { false }
+            Log.d(LOG_TAG, "ADB check connected=$connected hasShown=$hasShownAdbDisconnected")
+            if (!connected && !hasShownAdbDisconnected) {
+                Log.d(LOG_TAG, "ADB check showing disconnected dialog")
+                showAdbDisconnected = true
+                hasShownAdbDisconnected = true
+            } else if (connected) {
+                hasShownAdbDisconnected = false
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -83,6 +126,14 @@ fun TerminalScreen(
                         if (blurActive) Color.Transparent
                         else colorScheme.surface,
                     actions = {
+                        IconButton(
+                            onClick = { showBookmarkSheet = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Bookmarks,
+                                contentDescription = stringResource(R.string.terminal_menu_command_bookmarks),
+                            )
+                        }
                         OverlayIconDropdownMenu(
                             entry = DropdownEntry(
                                 items = listOf(
@@ -133,6 +184,25 @@ fun TerminalScreen(
                 onCopyAll = {
                     LocalInputService.setClipboardText(context, output)
                     AppRuntime.snackbar(R.string.terminal_copied_all)
+                },
+            )
+            CommandBookmarkBottomSheet(
+                show = showBookmarkSheet,
+                onDismissRequest = { showBookmarkSheet = false },
+                onInputCommand = { command ->
+                    viewModel.writeLiteralKey(command)
+                },
+            )
+            AdbDisconnectedDialog(
+                show = showAdbDisconnected,
+                onDismiss = {
+                    Log.d(LOG_TAG, "ADB dialog dismissed")
+                    showAdbDisconnected = false
+                },
+                onReconnect = {
+                    Log.d(LOG_TAG, "ADB dialog reconnect clicked, calling onNavigateToDeviceTab")
+                    showAdbDisconnected = false
+                    onNavigateToDeviceTab()
                 },
             )
         }

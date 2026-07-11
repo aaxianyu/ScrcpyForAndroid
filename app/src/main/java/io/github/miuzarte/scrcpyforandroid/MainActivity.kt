@@ -7,9 +7,9 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
+import io.github.miuzarte.scrcpyforandroid.nativecore.UsbAdbDeviceWatcher
 import io.github.miuzarte.scrcpyforandroid.pages.MainScreen
 import io.github.miuzarte.scrcpyforandroid.password.BiometricGate
 import io.github.miuzarte.scrcpyforandroid.password.PasswordRepository
@@ -17,11 +17,15 @@ import io.github.miuzarte.scrcpyforandroid.password.hasAuthenticatedOrigin
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.AppScreenOn
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import java.util.Locale
 
 // 生物认证需要 FragmentActivity
 class MainActivity: FragmentActivity() {
+
+    // USB设备监听器
+    private lateinit var usbWatcher: UsbAdbDeviceWatcher
 
     override fun attachBaseContext(newBase: Context) {
         val languageTag = getAppLanguageTag(newBase)
@@ -44,14 +48,16 @@ class MainActivity: FragmentActivity() {
         AppRuntime.init(applicationContext)
         AppScreenOn.register(window)
 
+        // 初始化USB设备监听器
+        usbWatcher = UsbAdbDeviceWatcher(this)
+        usbWatcher.startWatching()
+
         runBlocking {
             PasswordRepository.refresh()
             val cached = getAppLanguageTag(applicationContext)
-            if (cached.isNotEmpty()) {
-                val bundle = appSettings.loadBundle()
-                if (bundle.languageTag != cached) {
-                    appSettings.updateBundle { it.copy(languageTag = cached) }
-                }
+            val bundle = appSettings.loadBundle()
+            if (bundle.languageTag != cached) {
+                appSettings.updateBundle { it.copy(languageTag = cached) }
             }
             // 认证不可用时, 清除经认证创建的密码
             if (!BiometricGate.canAuthenticate()) {
@@ -60,8 +66,6 @@ class MainActivity: FragmentActivity() {
                     .forEach { PasswordRepository.markInvalid(it.id) }
             }
         }
-
-        enableEdgeToEdge()
 
         setContent {
             MainScreen()
@@ -72,9 +76,19 @@ class MainActivity: FragmentActivity() {
         super.onResume()
         applyMainOrientationPolicy()
         StreamActivity.dismissActivePictureInPicture()
+        
+        // 恢复USB监听
+        if (::usbWatcher.isInitialized) {
+            usbWatcher.scanConnectedDevices()
+        }
     }
 
     override fun onDestroy() {
+        // 停止USB监听
+        if (::usbWatcher.isInitialized) {
+            usbWatcher.stopWatching()
+        }
+        
         AppScreenOn.unregister(window)
         super.onDestroy()
     }
@@ -107,12 +121,20 @@ class MainActivity: FragmentActivity() {
         private const val LOCALE_PREFS = "locale_cache"
         private const val KEY_LANGUAGE_TAG = "language_tag"
 
+        /**
+         * 语言版本号，每次切换语言时递增。
+         * Compose 观察此 Flow 后用新 Context 覆盖 LocalContext，触发 recompose 而无需重建 Activity。
+         */
+        val languageVersion = MutableStateFlow(0)
+
         fun getAppLanguageTag(context: Context) =
             context.getSharedPreferences(LOCALE_PREFS, MODE_PRIVATE)
                 .getString(KEY_LANGUAGE_TAG, "") ?: ""
 
-        fun setAppLanguageTag(context: Context, languageTag: String) =
+        fun setAppLanguageTag(context: Context, languageTag: String) {
             context.getSharedPreferences(LOCALE_PREFS, MODE_PRIVATE)
                 .edit { putString(KEY_LANGUAGE_TAG, languageTag) }
+            languageVersion.value++
+        }
     }
 }

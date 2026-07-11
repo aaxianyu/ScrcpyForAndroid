@@ -91,6 +91,7 @@ object FileManagerService {
     private val sizeFormatter = DecimalFormat("0.00")
 
     suspend fun listDirectory(path: String): List<RemoteFileEntry> = withContext(Dispatchers.IO) {
+        NativeAdbService.ensureConnectionResponsive()
         val command = "ls -aFil ${quoteShellArg(pathForListCommand(path))}"
         val output = NativeAdbService.shell(command)
         output.lineSequence()

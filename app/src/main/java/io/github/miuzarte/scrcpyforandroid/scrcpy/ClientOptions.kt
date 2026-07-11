@@ -73,6 +73,9 @@ data class ClientOptions(
     // --max-size
     var maxSize: UShort = 0u, // to server
 
+    // --video-size
+    var videoSize: String = "", // to server, format: width:height
+
     // --video-bit-rate
     var videoBitRate: Int = 0, // to server
     // --audio-bit-rate
@@ -212,6 +215,14 @@ data class ClientOptions(
 
     // --flex-display
     var flexDisplay: Boolean = false, // to server
+
+    // 投屏时修改分辨率设置
+    var wmSizeWidth: Int = 0,
+    var wmSizeHeight: Int = 0,
+    // wm size 命令的目标监视器ID，0表示默认监视器
+    var wmSizeMonitorId: Int = 0,
+    // 投屏结束时是否还原分辨率
+    var restoreWmSize: Boolean = false,
 ) {
     enum class KeyInjectMode(val string: String) {
         MIXED("mixed"),
@@ -591,6 +602,7 @@ data class ClientOptions(
             crop = crop,
 
             maxSize = maxSize,
+            videoSize = videoSize,
             minSizeAlignment = minSizeAlignment,
             videoBitRate = videoBitRate,
             audioBitRate = audioBitRate,

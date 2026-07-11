@@ -53,10 +53,12 @@ class Scrcpy(
     private val appContext: Context,
 
     private val serverAsset: String = DEFAULT_SERVER_ASSET,
-    private val customServerUri: String? = null,
-    private val serverVersion: String = DEFAULT_SERVER_VERSION,
-    private val serverRemotePath: String = DEFAULT_REMOTE_PATH,
-    private val lowLatency: Boolean = false,
+    // 以下配置改为 @Volatile var，使实例创建后永不替换
+    // 所有配置变更通过属性赋值动态更新，下次 start() 生效
+    @Volatile var customServerUri: String? = null,
+    @Volatile var serverVersion: String = DEFAULT_SERVER_VERSION,
+    @Volatile var serverRemotePath: String = DEFAULT_REMOTE_PATH,
+    @Volatile var lowLatency: Boolean = false,
 ) {
 
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -154,14 +156,18 @@ class Scrcpy(
             // Validate options
             options.validate()
 
+            // 局部快照，避免 LaunchedEffect 并发修改属性
+            val uri = customServerUri
+            val latency = lowLatency
+
             // Generate session ID
             val scid = generateScid()
             Log.d(TAG, "scid=0x${scid.toString(16)}")
 
-            val serverJar = if (customServerUri.isNullOrBlank()) {
+            val serverJar = if (uri.isNullOrBlank()) {
                 extractAssetToCache(serverAsset)
             } else {
-                extractUriToCache(customServerUri.toUri())
+                extractUriToCache(uri.toUri())
             }
 
             // Execute server
@@ -221,7 +227,7 @@ class Scrcpy(
                         info.audioCodecId.toUInt().toString(16)
                     }",
                 )
-                val player = ScrcpyAudioPlayer(appContext, info.audioCodecId, lowLatency)
+                val player = ScrcpyAudioPlayer(appContext, info.audioCodecId, latency)
                 audioPlayer = player
                 session.attachAudioConsumer { packet ->
                     player.feedPacket(packet.data, packet.ptsUs, packet.isConfig)
@@ -359,6 +365,8 @@ class Scrcpy(
 
     fun isStarted(): Boolean = isRunning && session.isStarted()
 
+    val controlChannelState: StateFlow<Session.ControlChannelState> = session.controlChannelState
+
     suspend fun startApp(name: String) = withContext(Dispatchers.IO) {
         session.startApp(name)
     }
@@ -437,6 +445,10 @@ class Scrcpy(
         withContext(Dispatchers.IO) {
             session.pressBackOrTurnScreenOn(action)
         }
+
+    suspend fun resetVideo() = withContext(Dispatchers.IO) {
+        session.resetVideo()
+    }
 
     fun updateCurrentSessionSize(width: Int, height: Int) {
         val current = _currentSessionState.value ?: return
@@ -712,13 +724,17 @@ class Scrcpy(
     private suspend fun executeList(list: ListOptions): String = withContext(Dispatchers.IO) {
         require(list != ListOptions.NULL) { "Nothing to do with ListOptions.NULL" }
 
-        val serverJar = if (customServerUri.isNullOrBlank()) {
+        // 局部快照，避免 LaunchedEffect 并发修改属性
+        val uri = customServerUri
+        val remotePath = serverRemotePath
+
+        val serverJar = if (uri.isNullOrBlank()) {
             extractAssetToCache(serverAsset)
         } else {
-            extractUriToCache(customServerUri.toUri())
+            extractUriToCache(uri.toUri())
         }
 
-        NativeAdbService.push(serverJar.toPath(), serverRemotePath)
+        NativeAdbService.push(serverJar.toPath(), remotePath)
 
         val scid = generateScid()
         val options = ClientOptions(
@@ -730,7 +746,7 @@ class Scrcpy(
         )
         val serverParams = options.toServerParams(scid)
         val serverCommand = serverParams.build(
-            "CLASSPATH=$serverRemotePath",
+            "CLASSPATH=$remotePath",
             "app_process",
             "/",
             "com.genymobile.scrcpy.Server",
@@ -938,12 +954,15 @@ class Scrcpy(
         options: ClientOptions,
         scid: UInt,
     ): Session.SessionInfo {
-        NativeAdbService.push(serverJar.toPath(), serverRemotePath)
+        // 局部快照，避免 LaunchedEffect 并发修改属性
+        val remotePath = serverRemotePath
+
+        NativeAdbService.push(serverJar.toPath(), remotePath)
 
         val serverParams = options.toServerParams(scid)
 
         val serverCommand = serverParams.build(
-            "CLASSPATH=$serverRemotePath",
+            "CLASSPATH=$remotePath",
             "app_process",
             "/",
             "com.genymobile.scrcpy.Server",
@@ -1017,6 +1036,36 @@ class Scrcpy(
         private var controlReaderThread: Thread? = null
 
         private val serverLogBuffer = ArrayDeque<String>()
+
+        @Volatile
+        private var controlErrorCount: Int = 0
+
+        @Volatile
+        private var controlBroken: Boolean = false
+
+        private val _controlChannelState = MutableStateFlow(ControlChannelState.IDLE)
+        val controlChannelState: StateFlow<ControlChannelState> = _controlChannelState.asStateFlow()
+
+        enum class ControlChannelState {
+            IDLE,
+            ACTIVE,
+            BROKEN,
+        }
+
+        private fun onControlChannelError(e: Exception) {
+            controlErrorCount++
+            if (controlErrorCount >= 3 && !controlBroken) {
+                controlBroken = true
+                _controlChannelState.value = ControlChannelState.BROKEN
+                Log.e(TAG, "控制通道已断开：连续${controlErrorCount}次写入失败", e)
+            }
+        }
+
+        private fun resetControlChannelState() {
+            controlErrorCount = 0
+            controlBroken = false
+            _controlChannelState.value = ControlChannelState.ACTIVE
+        }
 
         suspend fun start(
             serverCommand: String,
@@ -1178,6 +1227,8 @@ class Scrcpy(
             }
 
             videoReaderThread = thread(start = true, name = "scrcpy-video-reader") {
+                // 提升视频读取线程优先级，减少被系统调度导致的延迟和掉帧
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
                 try {
                     val sessionFlagByte = (PACKET_FLAG_SESSION ushr 56).toInt()
                     val headerBuf = ByteArray(12)
@@ -1373,6 +1424,10 @@ class Scrcpy(
             withControlWriter("setDisplayPower") { setDisplayPower(on) }
         }
 
+        suspend fun resetVideo() = mutex.withLock {
+            withControlWriter("resetVideo") { resetVideo() }
+        }
+
         suspend fun stop() = mutex.withLock {
             stopInternal()
         }
@@ -1383,6 +1438,9 @@ class Scrcpy(
             controlChannelAlive = false
             videoConsumers.clear()
             audioConsumers.clear()
+            controlBroken = false
+            controlErrorCount = 0
+            _controlChannelState.value = ControlChannelState.IDLE
 
             if (Thread.currentThread() !== videoReaderThread) {
                 runCatching { videoReaderThread?.interrupt() }
@@ -1649,6 +1707,8 @@ class Scrcpy(
         )
 
         private class ControlWriter(private val output: DataOutputStream) {
+            private var injectTouchCount: Int = 0
+
             @Synchronized
             fun injectKeycode(action: Int, keycode: Int, repeat: Int, metaState: Int) {
                 output.writeByte(TYPE_INJECT_KEYCODE)
@@ -1699,6 +1759,10 @@ class Scrcpy(
                 output.writeInt(actionButton)
                 output.writeInt(buttons)
                 output.flush()
+                injectTouchCount++
+                if (injectTouchCount <= 5 || injectTouchCount % 100 == 0) {
+                    Log.d(TAG, "ControlWriter.injectTouch #$injectTouchCount: action=$action, pointer=$pointerId, pos=($x,$y), screen=(${screenWidth}x$screenHeight)")
+                }
             }
 
             @Synchronized
@@ -1772,6 +1836,12 @@ class Scrcpy(
                 output.writeByte(TYPE_RESIZE_DISPLAY)
                 output.writeShort(width)
                 output.writeShort(height)
+                output.flush()
+            }
+
+            @Synchronized
+            fun resetVideo() {
+                output.writeByte(TYPE_RESET_VIDEO)
                 output.flush()
             }
 

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
@@ -46,6 +47,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import io.github.miuzarte.scrcpyforandroid.BuildConfig
+import io.github.miuzarte.scrcpyforandroid.MainActivity
 import io.github.miuzarte.scrcpyforandroid.NativeCoreFacade
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.UiMotion
@@ -61,8 +63,14 @@ import io.github.miuzarte.scrcpyforandroid.ui.component.FloatingBottomBar
 import io.github.miuzarte.scrcpyforandroid.ui.component.FloatingBottomBarItem
 import kotlinx.coroutines.*
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.LocalActivity
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.isSystemInDarkTheme
 import java.io.File
 import top.yukonga.miuix.kmp.blur.layerBackdrop as miuixLayerBackdrop
 
@@ -106,13 +114,17 @@ private enum class MainBottomTabDestination(
     Settings(labelResId = R.string.main_tab_settings, icon = Icons.Rounded.Settings);
 }
 
-sealed interface RootScreen: NavKey {
-    data object Home: RootScreen
-    data object Advanced: RootScreen
-    data object About: RootScreen
-    data object VirtualButtonOrder: RootScreen
-    data object FullscreenControl: RootScreen // compatibility mode
-    data class ScrcpyOptionRecord(val profileId: String): RootScreen
+sealed interface RootScreen : NavKey {
+    data object Home : RootScreen
+    data object Advanced : RootScreen
+    data object About : RootScreen
+    data object VirtualButtonOrder : RootScreen
+    data object SwipeFloatingBallOrder : RootScreen
+    data object FullscreenControl : RootScreen // compatibility mode
+    data object LocalIp : RootScreen
+    data object AppManager : RootScreen
+    data object UtilityTools : RootScreen
+    data class ScrcpyOptionRecord(val profileId: String) : RootScreen
 }
 
 @Composable
@@ -178,6 +190,7 @@ fun MainScreen() {
             when (currentRootScreen) {
                 is RootScreen.Advanced -> true
                 is RootScreen.VirtualButtonOrder -> true
+                is RootScreen.SwipeFloatingBallOrder -> true
                 is RootScreen.ScrcpyOptionRecord -> true
                 else -> false
             }
@@ -250,22 +263,30 @@ fun MainScreen() {
     val serverRemotePath = asBundle.serverRemotePath
         .ifBlank { AppSettings.SERVER_REMOTE_PATH.defaultValue }
     val lowLatency = asBundle.lowLatency
-    val scrcpy = remember(
-        appContext,
-        customServerUri,
-        customServerVersion,
-        serverRemotePath,
-        lowLatency,
-    ) {
-        Scrcpy(
-            appContext = appContext,
-            customServerUri = customServerUri,
-            serverVersion = customServerVersion,
-            serverRemotePath = serverRemotePath,
-            lowLatency = lowLatency,
-        ).also {
-            AppRuntime.scrcpy = it
+    // Scrcpy 实例只创建一次，永不替换
+    // 所有可变配置通过 LaunchedEffect 动态更新到现有实例
+    val scrcpy = remember(appContext) {
+        val existing = AppRuntime.scrcpy
+        if (existing != null) {
+            existing
+        } else {
+            Scrcpy(
+                appContext = appContext,
+                customServerUri = customServerUri,
+                serverVersion = customServerVersion,
+                serverRemotePath = serverRemotePath,
+                lowLatency = lowLatency,
+            ).also {
+                AppRuntime.scrcpy = it
+            }
         }
+    }
+    // 配置变化时动态更新到现有 Scrcpy 实例，下次 start() 生效
+    LaunchedEffect(customServerUri, customServerVersion, serverRemotePath, lowLatency, scrcpy) {
+        scrcpy.customServerUri = customServerUri
+        scrcpy.serverVersion = customServerVersion
+        scrcpy.serverRemotePath = serverRemotePath
+        scrcpy.lowLatency = lowLatency
     }
 
     val deviceConnectionServices = remember(scrcpy) {
@@ -370,7 +391,9 @@ fun MainScreen() {
 
     fun navigateToTab(tab: MainBottomTabDestination) {
         val targetIndex = tab.ordinal
+        Log.d("MainScreen", "navigateToTab called: $tab (target=$targetIndex, current=$selectedTabIndex)")
         if (targetIndex == selectedTabIndex) {
+            Log.d("MainScreen", "navigateToTab: already on target tab, skipping")
             return
         }
         pagerNavigationJob?.cancel()
@@ -380,6 +403,7 @@ fun MainScreen() {
             val job = coroutineContext[Job]
             pagerNavigationJob = job
             try {
+                Log.d("MainScreen", "navigateToTab: starting pager animation to page $targetIndex")
                 pagerState.animateScrollToPage(
                     page = targetIndex,
                     animationSpec = spring(
@@ -387,11 +411,13 @@ fun MainScreen() {
                         stiffness = UiMotion.PAGE_SWITCH_STIFFNESS,
                     ),
                 )
+                Log.d("MainScreen", "navigateToTab: pager animation completed, currentPage=${pagerState.currentPage}")
             } finally {
                 if (pagerNavigationJob == job) {
                     isPagerNavigating = false
                     pagerNavigationJob = null
                     if (pagerState.currentPage != targetIndex) {
+                        Log.w("MainScreen", "navigateToTab: animation ended but page not at target! current=${pagerState.currentPage} target=$targetIndex")
                         selectedTabIndex = pagerState.currentPage
                     }
                 }
@@ -573,12 +599,21 @@ fun MainScreen() {
                                         onTerminalGestureLockChanged = { locked ->
                                             terminalGestureLock = locked
                                         },
+                                        onNavigateToDeviceTab = {
+                                            Log.d("MainScreen", "TerminalScreen onNavigateToDeviceTab called")
+                                            navigateToTab(MainBottomTabDestination.Devices)
+                                        },
                                     )
 
                                     MainBottomTabDestination.Files -> FileManagerScreen(
                                         bottomInnerPadding = bottomInnerPadding,
                                         onCanNavigateUpChange = { fileTabCanNavigateUp = it },
                                         onNavigateUpActionChange = { fileTabNavigateUp = it },
+                                        onNavigateToDeviceTab = {
+                                            Log.d("MainScreen", "FileManagerScreen onNavigateToDeviceTab called")
+                                            navigateToTab(MainBottomTabDestination.Devices)
+                                        },
+                                        isActive = selectedTabIndex == MainBottomTabDestination.Files.ordinal,
                                     )
 
                                     MainBottomTabDestination.Settings -> SettingsScreen(
@@ -658,12 +693,42 @@ fun MainScreen() {
             )
         }
 
+        entry(RootScreen.SwipeFloatingBallOrder) {
+            SwipeFloatingBallOrderScreen(
+                scrollBehavior = advancedPageScrollBehavior,
+            )
+        }
+
         entry(RootScreen.FullscreenControl) {
             FullscreenControlRoute(
                 scrcpy = scrcpy,
                 onBack = rootNavigator.pop,
                 isInPip = false,
                 autoExitOnStop = true,
+            )
+        }
+
+        entry(RootScreen.LocalIp) {
+            LocalIpScreen(
+                onBack = rootNavigator.pop,
+            )
+        }
+
+        entry(RootScreen.AppManager) {
+            AppManagerScreen(
+                onBack = rootNavigator.pop,
+                scrcpy = scrcpy,
+            )
+        }
+
+        entry(RootScreen.UtilityTools) {
+            UtilityToolsScreen(
+                onBack = rootNavigator.pop,
+                scrcpy = scrcpy,
+                onNavigateToDeviceTab = {
+                    rootNavigator.pop()
+                    navigateToTab(MainBottomTabDestination.Devices)
+                },
             )
         }
 
@@ -691,10 +756,49 @@ fun MainScreen() {
         asBundle.createThemeController()
     }
 
+    // 根据 colorSchemeMode 正确计算 darkMode，而非依赖 themeController.isDark（始终为 null）
+    val darkMode = when (themeController.colorSchemeMode) {
+        ColorSchemeMode.Light, ColorSchemeMode.MonetLight -> false
+        ColorSchemeMode.Dark, ColorSchemeMode.MonetDark -> true
+        else -> isSystemInDarkTheme() // System / MonetSystem
+    }
+
+    DisposableEffect(darkMode) {
+        (activity as? ComponentActivity)?.enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { darkMode },
+            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { darkMode },
+        )
+        onDispose {}
+    }
+
+    // 观察语言版本号变化，用新语言 Context 覆盖 LocalContext
+    val languageVersion by MainActivity.languageVersion.collectAsState()
+    val langContext = remember(languageVersion) {
+        val langTag = MainActivity.getAppLanguageTag(context)
+        val locale = if (langTag.isNotEmpty()) {
+            java.util.Locale.forLanguageTag(langTag)
+        } else {
+            // 不能用 Locale.getDefault()：attachBaseContext 会污染进程级 locale
+            android.content.res.Resources.getSystem().configuration.locales[0]
+        }
+        val config = android.content.res.Configuration(context.resources.configuration)
+        config.setLocale(locale)
+        val langResources = context.createConfigurationContext(config).resources
+        object : android.content.ContextWrapper(context) {
+            override fun getResources() = langResources
+        }
+    }
+    LaunchedEffect(languageVersion) {
+        if (languageVersion > 0) {
+            AppRuntime.refreshAppContext(appContext)
+        }
+    }
+
     MiuixTheme(
         controller = themeController,
     ) {
         CompositionLocalProvider(
+            LocalContext provides langContext,
             LocalEnableBlur provides asBundle.blur,
             LocalEnableFloatingBottomBar provides asBundle.floatingBottomBar,
             LocalEnableFloatingBottomBarBlur provides asBundle.floatingBottomBarBlur,

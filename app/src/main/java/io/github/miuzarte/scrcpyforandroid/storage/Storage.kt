@@ -9,4 +9,5 @@ object Storage {
     val scrcpyOptions: ScrcpyOptions by lazy { ScrcpyOptions(AppRuntime.context) }
     val scrcpyProfiles: ScrcpyProfiles by lazy { ScrcpyProfiles(AppRuntime.context) }
     val adbClientData: AdbClientData by lazy { AdbClientData(AppRuntime.context) }
+    val commandBookmarks: CommandBookmarkStore by lazy { CommandBookmarkStore(AppRuntime.context) }
 }

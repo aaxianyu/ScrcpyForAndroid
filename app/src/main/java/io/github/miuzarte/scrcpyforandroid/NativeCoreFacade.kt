@@ -23,6 +23,7 @@ import java.util.concurrent.CopyOnWriteArraySet
  * Provides helpers for:
  * - Surface/Decoder management for video rendering
  * - Video size and FPS monitoring
+ * - Bandwidth statistics
  */
 object NativeCoreFacade {
     private val sessionLifecycleMutex = Mutex()
@@ -42,6 +43,10 @@ object NativeCoreFacade {
     @Volatile
     private var latestConfigPacket: CachedPacket? = null
     private var packetCount: Long = 0
+
+    // 带宽统计
+    private var bandwidthWindowStartNs = System.nanoTime()
+    private var bandwidthWindowBytes: Long = 0
 
     @Volatile
     private var currentSessionInfo: Scrcpy.Session.SessionInfo? = null
@@ -167,6 +172,16 @@ object NativeCoreFacade {
     fun addVideoFpsListener(listener: (Float) -> Unit) = videoFpsListeners.add(listener)
     fun removeVideoFpsListener(listener: (Float) -> Unit) = videoFpsListeners.remove(listener)
 
+    // 调试信息监听
+    private val debugInfoListeners = CopyOnWriteArraySet<(DebugInfo) -> Unit>()
+
+    data class DebugInfo(
+        val bandwidthBytesPerSec: Long,
+    )
+
+    fun addDebugInfoListener(listener: (DebugInfo) -> Unit) = debugInfoListeners.add(listener)
+    fun removeDebugInfoListener(listener: (DebugInfo) -> Unit) = debugInfoListeners.remove(listener)
+
     /**
      * Called by Scrcpy.kt when a session starts.
      * Sets up video decoders for registered surfaces.
@@ -183,6 +198,9 @@ object NativeCoreFacade {
             bootstrapPackets.clear()
             latestConfigPacket = null
         }
+        // 重置统计
+        bandwidthWindowStartNs = System.nanoTime()
+        bandwidthWindowBytes = 0
         if (activeSurfaceId != null || recordingSurfaceAttached) {
             // v4.0: width/height come from first video session packet, not from initial metadata
             if (session.width > 0 && session.height > 0) {
@@ -201,6 +219,24 @@ object NativeCoreFacade {
                     TAG,
                     "videoFeed(): packets=$packetCount key=${packet.isKeyFrame} cfg=${packet.isConfig} decoder=${decoder != null}",
                 )
+            }
+
+            val nowNs = System.nanoTime()
+            bandwidthWindowBytes += packet.data.size
+
+            val bwElapsedNs = nowNs - bandwidthWindowStartNs
+            if (bwElapsedNs >= BANDWIDTH_WINDOW_NS) {
+                val bwBytesPerSec = (bandwidthWindowBytes * 1_000_000_000L) / bwElapsedNs
+                bandwidthWindowStartNs = nowNs
+                bandwidthWindowBytes = 0
+                val info = DebugInfo(
+                    bandwidthBytesPerSec = bwBytesPerSec,
+                )
+                mainHandler.post {
+                    debugInfoListeners.forEach { listener ->
+                        runCatching { listener(info) }
+                    }
+                }
             }
 
             val dec = decoder ?: return@attachVideoConsumer
@@ -240,7 +276,15 @@ object NativeCoreFacade {
                         "onVideoSizeChanged(): rebuild decoder ${currentSessionInfo!!.width}x${currentSessionInfo!!.height} → ${info.width}x${info.height}",
                     )
                     currentSessionInfo = info
+                    // 清除旧分辨率的 bootstrap 缓存，避免向新 decoder 回放不兼容的包
+                    synchronized(bootstrapLock) {
+                        bootstrapPackets.clear()
+                        latestConfigPacket = null
+                    }
                     createOrReplaceDecoder(info)
+                    // 重建后主动请求关键帧，避免花屏（等待下一个关键帧到达前画面会模糊）
+                    runCatching { scrcpy.resetVideo() }
+                        .onFailure { e -> Log.w(TAG, "onVideoSizeChanged(): resetVideo failed", e) }
                 }
             }
         }
@@ -259,10 +303,14 @@ object NativeCoreFacade {
         scrcpyRef = null
         currentSessionInfo = null
         recordingSurfaceAttached = false
+        // 重置统计
+        bandwidthWindowStartNs = System.nanoTime()
+        bandwidthWindowBytes = 0
     }
 
     private const val TAG = "NativeCoreFacade"
     private const val MAX_BOOTSTRAP_PACKETS = 90
+    private const val BANDWIDTH_WINDOW_NS = 1_000_000_000L // 1秒窗口
 
     private data class CachedPacket(
         val data: ByteArray,

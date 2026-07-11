@@ -3,7 +3,10 @@ package io.github.miuzarte.scrcpyforandroid.pages
 import android.content.pm.ActivityInfo
 import android.graphics.Rect
 import android.util.Rational
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.LocalActivity
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -18,6 +21,7 @@ import io.github.miuzarte.scrcpyforandroid.ui.createThemeController
 import io.github.miuzarte.scrcpyforandroid.widgets.VideoOutputTarget
 import io.github.miuzarte.scrcpyforandroid.widgets.VideoOutputTargetState
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -78,6 +82,21 @@ fun StreamScreen(activity: StreamActivity) {
         asBundle.monetColorSpec,
     ) {
         asBundle.createThemeController()
+    }
+
+    // 根据 colorSchemeMode 正确计算 darkMode
+    val darkMode = when (themeController.colorSchemeMode) {
+        ColorSchemeMode.Light, ColorSchemeMode.MonetLight -> false
+        ColorSchemeMode.Dark, ColorSchemeMode.MonetDark -> true
+        else -> isSystemInDarkTheme()
+    }
+
+    DisposableEffect(darkMode) {
+        activity.enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { darkMode },
+            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { darkMode },
+        )
+        onDispose {}
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
