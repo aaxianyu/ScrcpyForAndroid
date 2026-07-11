@@ -36,9 +36,11 @@ import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.password.PasswordPickerPopupContent
 import io.github.miuzarte.scrcpyforandroid.scrcpy.ClientOptions
+import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
 import io.github.miuzarte.scrcpyforandroid.scrcpy.TouchEventHandler
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
+import io.github.miuzarte.scrcpyforandroid.services.AppManagerService
 import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
 import io.github.miuzarte.scrcpyforandroid.services.LocalSnackbarController
 import io.github.miuzarte.scrcpyforandroid.storage.AppSettings
@@ -104,11 +106,19 @@ fun FullscreenControlScreen(
         )
     }
     val floatingActions = remember(buttonItems) {
-        (buttonItems.first + buttonItems.second).filter { it != VirtualButtonAction.MORE }
+        (buttonItems.first + buttonItems.second).filter {
+            it != VirtualButtonAction.MORE &&
+            it != VirtualButtonAction.SHOW_SWIPE_FLOATING_BALL &&
+            it != VirtualButtonAction.HIDE_SWIPE_FLOATING_BALL
+        }
     }
     val fullscreenDebugInfo = asBundle.fullscreenDebugInfo
-    val showFullscreenVirtualButtons = asBundle.showFullscreenVirtualButtons
     val fullscreenVirtualButtonHeight = asBundle.fullscreenVirtualButtonHeightDp.dp
+
+    // 根据设置判断是否显示
+    val controlMode = AppSettings.FullscreenControlMode.fromStoredValue(asBundle.fullscreenControlMode)
+    val showSwipeFloatingBall = controlMode == AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL
+    val showFullscreenVirtualButtons = controlMode == AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS
     val fullscreenVirtualButtonDockSetting = remember(asBundle.fullscreenVirtualButtonDock) {
         AppSettings.FullscreenVirtualButtonDock.fromStoredValue(
             asBundle.fullscreenVirtualButtonDock,
@@ -198,16 +208,18 @@ fun FullscreenControlScreen(
             ?: false
     }
 
-    val bar = remember(buttonItems) {
+    val bar = remember(buttonItems, showSwipeFloatingBall) {
         VirtualButtonBar(
             outsideActions = buttonItems.first,
             moreActions = buttonItems.second,
+            showSwipeFloatingBall = showSwipeFloatingBall,
         )
     }
     val recentTasks = remember(listingsRefreshVersion) { scrcpy.listings.recentTasks }
     val apps = remember(listingsRefreshVersion) { scrcpy.listings.apps }
 
     var currentFps by remember { mutableFloatStateOf(0f) }
+    var debugBandwidthBytesPerSec by remember { mutableStateOf(0L) }
     var showRecentTasksSheet by rememberSaveable { mutableStateOf(false) }
     var showAllAppsSheet by rememberSaveable { mutableStateOf(false) }
     var imeRequestToken by rememberSaveable { mutableIntStateOf(0) }
@@ -238,12 +250,17 @@ fun FullscreenControlScreen(
     }
 
     DisposableEffect(Unit) {
-        val listener: (Float) -> Unit = { fps ->
+        val fpsListener: (Float) -> Unit = { fps ->
             currentFps = fps
         }
-        NativeCoreFacade.addVideoFpsListener(listener)
+        val debugListener: (NativeCoreFacade.DebugInfo) -> Unit = { info ->
+            debugBandwidthBytesPerSec = info.bandwidthBytesPerSec
+        }
+        NativeCoreFacade.addVideoFpsListener(fpsListener)
+        NativeCoreFacade.addDebugInfoListener(debugListener)
         onDispose {
-            NativeCoreFacade.removeVideoFpsListener(listener)
+            NativeCoreFacade.removeVideoFpsListener(fpsListener)
+            NativeCoreFacade.removeDebugInfoListener(debugListener)
         }
     }
 
@@ -323,6 +340,36 @@ fun FullscreenControlScreen(
 
             VirtualButtonAction.TOGGLE_IME -> imeRequestToken++
 
+            VirtualButtonAction.EXIT_FULLSCREEN -> {
+                // 退出全屏：模拟返回键行为
+                onBack()
+            }
+
+            VirtualButtonAction.SHOW_SWIPE_FLOATING_BALL -> {
+                asBundle = asBundle.copy(
+                    fullscreenControlMode = AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL.rawValue,
+                )
+            }
+
+            VirtualButtonAction.HIDE_SWIPE_FLOATING_BALL -> {
+                asBundle = asBundle.copy(
+                    fullscreenControlMode = AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS.rawValue,
+                )
+            }
+
+            VirtualButtonAction.EXPAND_STATUS_BAR -> {
+                taskScope.launch {
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            NativeAdbService.shell("cmd statusbar expand-settings")
+                        }
+                    }.onFailure { error ->
+                        Log.w("FullscreenControl", "expandStatusBar failed", error)
+                        AppRuntime.snackbar("Failed to expand status bar")
+                    }
+                }
+            }
+
             VirtualButtonAction.PASTE_LOCAL_CLIPBOARD ->
                 taskScope.launch {
                     val session = currentSession ?: return@launch
@@ -389,12 +436,13 @@ fun FullscreenControlScreen(
         ) {
             val session = currentSession ?: return@Box
             FullscreenControlPage(
-                scrcpy = scrcpy,
-                session = session,
-                onDismiss = onBack,
-                showDebugInfo = fullscreenDebugInfo && !isInPip,
-                currentFps = currentFps,
-                imeRequestToken = imeRequestToken,
+                    scrcpy = scrcpy,
+                    session = session,
+                    onDismiss = onBack,
+                    showDebugInfo = fullscreenDebugInfo && !isInPip,
+                    currentFps = currentFps,
+                    debugBandwidthBytesPerSec = debugBandwidthBytesPerSec,
+                    imeRequestToken = imeRequestToken,
                 enableBackHandler = false,
                 interactive = !isInPip,
                 onVideoBoundsInWindowChanged = onVideoBoundsInWindowChanged,
@@ -419,7 +467,7 @@ fun FullscreenControlScreen(
                 },
             )
 
-            if (showFullscreenVirtualButtons && !isInPip) {
+            if (showFullscreenVirtualButtons && !isInPip && !showSwipeFloatingBall) {
                 bar.Fullscreen(
                     modifier = Modifier.align(
                         when (fullscreenVirtualButtonDock) {
@@ -450,11 +498,28 @@ fun FullscreenControlScreen(
                 )
             }
 
+            // 临时隐藏虚拟按键时显示的悬浮球（三个点图标）
+            // 菜单包含所有勾选的功能（外显 + 更多菜单）
+            if (showSwipeFloatingBall && !isInPip) {
+                bar.TempFloatingBall(
+                    actions = buttonItems.first + buttonItems.second,
+                    modifier = Modifier.fillMaxSize(),
+                    onAction = ::handleButtonAction,
+                    passwordPopupContent = fragmentActivity?.let {
+                        { onDismissRequest -> PasswordPickerPopupContent(onDismissRequest = onDismissRequest) }
+                    },
+                )
+            }
+
+            val asBundle by appSettings.bundleState.collectAsState()
+            val showAppIcons = asBundle.showAppIcons
+
             AppListBottomSheet(
                 show = showRecentTasksSheet,
                 title = stringResource(R.string.bottomsheet_recent_tasks),
                 loadingText = stringResource(R.string.bottomsheet_loading_tasks),
                 emptyText = stringResource(R.string.bottomsheet_no_tasks),
+                searchHint = stringResource(R.string.bottomsheet_search_apps),
                 entries = recentTasks.map { task ->
                     val app = scrcpy.listings.findCachedApp(task.packageName)
                     AppListEntry(
@@ -476,22 +541,45 @@ fun FullscreenControlScreen(
                         refreshRecentTasks()
                     }
                 },
+                onFetchIcons = if (showAppIcons) { pkgs ->
+                    AppManagerService.scrcpy = scrcpy
+                    AppManagerService.appContext = context
+                    val result = AppManagerService.fetchLabelsViaHelper(pkgs)
+                    result.mapValues { it.value.iconBase64 ?: "" }
+                        .filterValues { it.isNotBlank() }
+                } else null,
             )
+
+            val favoriteApps = remember(asBundle.favoriteApps) {
+                asBundle.favoriteApps.split(',').filter { it.isNotBlank() }.toSet()
+            }
 
             AppListBottomSheet(
                 show = showAllAppsSheet,
                 title = stringResource(R.string.bottomsheet_all_apps),
                 loadingText = stringResource(R.string.bottomsheet_loading_apps),
                 emptyText = stringResource(R.string.bottomsheet_no_apps),
+                searchHint = stringResource(R.string.bottomsheet_search_apps),
                 entries = apps.map { app ->
+                    val isFavorite = app.packageName in favoriteApps
                     AppListEntry(
                         key = app.packageName,
                         title = app.label?.takeIf { it.isNotBlank() } ?: app.packageName,
                         summary = if (app.label != null) app.packageName else null,
                         system = app.system,
+                        favorite = isFavorite,
                         onClick = {
                             showAllAppsSheet = false
                             taskScope.launch { startApp(app.packageName) }
+                        },
+                        onToggleFavorite = {
+                            val current = asBundle.favoriteApps
+                                .split(',').filter { it.isNotBlank() }.toMutableSet()
+                            if (isFavorite) current.remove(app.packageName)
+                            else current.add(app.packageName)
+                            taskScope.launch {
+                                appSettings.updateBundle { it.copy(favoriteApps = current.joinToString(",")) }
+                            }
                         },
                     )
                 },
@@ -502,6 +590,13 @@ fun FullscreenControlScreen(
                         refreshApps()
                     }
                 },
+                onFetchIcons = if (showAppIcons) { pkgs ->
+                    AppManagerService.scrcpy = scrcpy
+                    AppManagerService.appContext = context
+                    val result = AppManagerService.fetchLabelsViaHelper(pkgs)
+                    result.mapValues { it.value.iconBase64 ?: "" }
+                        .filterValues { it.isNotBlank() }
+                } else null,
             )
         }
     }
@@ -611,6 +706,7 @@ fun FullscreenControlPage(
     onDismiss: () -> Unit,
     showDebugInfo: Boolean,
     currentFps: Float,
+    debugBandwidthBytesPerSec: Long = 0L,
     imeRequestToken: Int = 0,
     enableBackHandler: Boolean = true,
     interactive: Boolean = true,
@@ -630,6 +726,10 @@ fun FullscreenControlPage(
     BackHandler(enabled = enableBackHandler, onBack = onDismiss)
 
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(session, interactive) {
+        Log.d("FullscreenControl", "FullscreenControlPage: interactive=$interactive, session=${session.width}x${session.height}")
+    }
 
     var touchAreaSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -751,45 +851,60 @@ fun FullscreenControlPage(
             )
         }
 
-        if (showDebugInfo) Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = UiSpacing.ContentVertical, top = UiSpacing.ContentVertical)
-                .background(Color.Black.copy(alpha = 0.5f))
-                .padding(horizontal = UiSpacing.ContentVertical, vertical = UiSpacing.Medium),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.Tiny)) {
-                Text(
-                    text = stringResource(
-                        R.string.fullscreen_debug_resolution,
-                        session.width,
-                        session.height,
-                    ),
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = stringResource(
-                        R.string.fullscreen_debug_fps,
-                        currentFps.coerceAtLeast(0f),
-                    ),
-                    color = Color.White,
-                    fontSize = 13.sp,
-                )
-                Text(
-                    text = stringResource(
-                        R.string.fullscreen_debug_touches,
-                        activeTouchCount,
-                    ),
-                    color = Color.White,
-                    fontSize = 13.sp,
-                )
-                if (activeTouchDebug.isNotEmpty()) Text(
-                    text = activeTouchDebug,
-                    color = Color.White,
-                    fontSize = 13.sp,
-                )
+        if (showDebugInfo) {
+            val bwText = if (debugBandwidthBytesPerSec >= 1_000_000) {
+                String.format("%.1f MB/s", debugBandwidthBytesPerSec / 1_000_000f)
+            } else {
+                String.format("%.0f KB/s", debugBandwidthBytesPerSec / 1_000f)
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = UiSpacing.ContentVertical, top = UiSpacing.ContentVertical)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(horizontal = UiSpacing.ContentVertical, vertical = UiSpacing.Medium)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.Tiny)) {
+                    Text(
+                        text = stringResource(
+                            R.string.fullscreen_debug_resolution,
+                            session.width,
+                            session.height,
+                        ),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.fullscreen_debug_fps,
+                            currentFps.coerceAtLeast(0f),
+                        ),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.fullscreen_debug_bandwidth,
+                            bwText,
+                        ),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.fullscreen_debug_touches,
+                            activeTouchCount,
+                        ),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                    )
+                    if (activeTouchDebug.isNotEmpty()) Text(
+                        text = activeTouchDebug,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                    )
+                }
             }
         }
     }
