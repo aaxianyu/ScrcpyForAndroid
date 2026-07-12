@@ -605,12 +605,14 @@ class VirtualButtonBar(
                         offsetXFraction != latest.fullscreenFloatingButtonXFraction ||
                         offsetYFraction != latest.fullscreenFloatingButtonYFraction
                     ) {
-                        appSettings.saveBundle(
-                            latest.copy(
+                        // 使用 updateBundle 而非 saveBundle：只更新悬浮球位置字段，
+                        // 避免将过时的其他字段（如 fullscreenControlMode）写回 appSettings。
+                        appSettings.updateBundle { current ->
+                            current.copy(
                                 fullscreenFloatingButtonXFraction = offsetXFraction,
                                 fullscreenFloatingButtonYFraction = offsetYFraction,
-                            ),
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -758,7 +760,15 @@ class VirtualButtonBar(
         }
         LaunchedEffect(asBundle) {
             delay(500.milliseconds)
-            appSettings.saveBundle(asBundle)
+            // 使用 updateBundle 而非 saveBundle：只保存 TempFloatingBall 实际修改的字段
+            // （悬浮球位置），避免将过时的 fullscreenControlMode 等字段写回 appSettings，
+            // 从而防止覆盖 FullscreenControlScreen 中用户最新的控制模式切换。
+            appSettings.updateBundle { current ->
+                current.copy(
+                    swipeFloatingBallOffsetX = asBundle.swipeFloatingBallOffsetX,
+                    swipeFloatingBallOffsetY = asBundle.swipeFloatingBallOffsetY,
+                )
+            }
         }
 
         var offsetXFraction by rememberSaveable { mutableFloatStateOf(asBundle.swipeFloatingBallOffsetX) }

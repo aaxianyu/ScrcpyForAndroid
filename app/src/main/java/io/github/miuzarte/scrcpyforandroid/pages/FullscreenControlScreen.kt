@@ -100,6 +100,19 @@ fun FullscreenControlScreen(
         }
     }
 
+    // 分离 controlMode 状态：防止 asBundleShared 的延迟更新覆盖用户最新的切换操作。
+    // 竞态条件：用户切换控制模式后，上一次切换的 DataStore 写入可能延迟完成并更新
+    // asBundleShared，导致 rememberSaveable(asBundleShared) 重置 asBundle，回退用户的切换。
+    // 使用独立的 controlModeState 可以确保 UI 不受 asBundleShared 延迟更新的影响。
+    var controlModeState by remember { mutableStateOf(asBundle.fullscreenControlMode) }
+    // 当 asBundle 被重置后，确保 asBundle.fullscreenControlMode 与 controlModeState 同步，
+    // 防止过时的值被 LaunchedEffect(asBundle) 或 DisposableEffect 保存回去。
+    LaunchedEffect(asBundle, controlModeState) {
+        if (asBundle.fullscreenControlMode != controlModeState) {
+            asBundle = asBundle.copy(fullscreenControlMode = controlModeState)
+        }
+    }
+
     val buttonItems = remember(asBundle.virtualButtonsLayout) {
         VirtualButtonActions.splitLayout(
             VirtualButtonActions.parseStoredLayout(asBundle.virtualButtonsLayout),
@@ -115,8 +128,9 @@ fun FullscreenControlScreen(
     val fullscreenDebugInfo = asBundle.fullscreenDebugInfo
     val fullscreenVirtualButtonHeight = asBundle.fullscreenVirtualButtonHeightDp.dp
 
-    // 根据设置判断是否显示
-    val controlMode = AppSettings.FullscreenControlMode.fromStoredValue(asBundle.fullscreenControlMode)
+    // 根据设置判断是否显示（使用 controlModeState 而非 asBundle.fullscreenControlMode，
+    // 避免 asBundleShared 延迟更新导致的竞态条件）
+    val controlMode = AppSettings.FullscreenControlMode.fromStoredValue(controlModeState)
     val showSwipeFloatingBall = controlMode == AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL
     val showFullscreenVirtualButtons = controlMode == AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS
     val fullscreenVirtualButtonDockSetting = remember(asBundle.fullscreenVirtualButtonDock) {
@@ -346,12 +360,14 @@ fun FullscreenControlScreen(
             }
 
             VirtualButtonAction.SHOW_SWIPE_FLOATING_BALL -> {
+                controlModeState = AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL.rawValue
                 asBundle = asBundle.copy(
                     fullscreenControlMode = AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL.rawValue,
                 )
             }
 
             VirtualButtonAction.HIDE_SWIPE_FLOATING_BALL -> {
+                controlModeState = AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS.rawValue
                 asBundle = asBundle.copy(
                     fullscreenControlMode = AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS.rawValue,
                 )
