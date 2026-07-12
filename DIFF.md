@@ -109,7 +109,7 @@
 ### 3.5 存储/模型修改
 | 文件 | 变更 | 说明 |
 |------|------|------|
-| `storage/AppSettings.kt` | +126/-2 | 新增设置项（低延迟视频、Snackbar 时长、熄屏待机、图标显示、USB 相关等） |
+| `storage/AppSettings.kt` | +126/-2 | 新增设置项（Snackbar 时长、熄屏待机、图标显示、USB 相关等） |
 | `models/DeviceModels.kt` | +103/-11 | 新增 USB 连接类型枚举、连接目标字段、HDCP、Snackbar 时长等配置项 |
 
 ### 3.6 服务层
@@ -128,7 +128,7 @@
 |------|------|
 | `AndroidManifest.xml` | +43/-1（USB host 权限、设备过滤器声明、Activity 启动标志等） |
 | `.gitignore` | +16（添加构建产物忽略规则） |
-| `scrcpy/Scrcpy.kt` | +101/-2（新增低延迟视频开关、锁屏检测、唤醒逻辑、重连优化） |
+| `scrcpy/Scrcpy.kt` | +101/-2（锁屏检测、唤醒逻辑、重连优化） |
 | `StreamActivity.kt` | +20/-1（NEW_TASK + CLEAR_TOP 启动标志） |
 | `MainActivity.kt` | +18/-0（语言切换、USB 监听器启动、adjustResize） |
 
@@ -144,7 +144,6 @@
 | 滑动悬浮球 | 位置持久化、透明度设置、项排序 |
 | 局域网 IP 扫描 | 本机 IP 显示、局域网设备扫描 |
 | 命令书签 | 终端命令书签持久化 |
-| 低延迟视频开关 | 独立开关，与原版低延迟音频分离 |
 | Snackbar 显示时长设置 | 500ms-5000ms 可调 |
 | 熄屏待机功能 | 锁屏深睡后自动点亮屏幕 |
 | ADB 重连自动检测与恢复 | 连接中断自动重连 |
