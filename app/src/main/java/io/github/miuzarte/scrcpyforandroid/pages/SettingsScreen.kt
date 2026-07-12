@@ -562,6 +562,16 @@ fun SettingsPage(
                     },
                 )
                 SwitchPreference(
+                    title = stringResource(R.string.pref_title_downsize_on_decode_error),
+                    summary = stringResource(R.string.pref_summary_downsize_on_decode_error),
+                    checked = asBundle.downsizeOnDecodeError,
+                    onCheckedChange = {
+                        asBundle = asBundle.copy(
+                            downsizeOnDecodeError = it,
+                        )
+                    },
+                )
+                SwitchPreference(
                     title = stringResource(R.string.pref_title_debug_info),
                     summary = stringResource(R.string.pref_summary_debug_info),
                     checked = asBundle.fullscreenDebugInfo,

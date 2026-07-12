@@ -150,6 +150,7 @@ class DeviceShortcuts(val devices: List<DeviceShortcut>): List<DeviceShortcut> b
                 val p = port ?: old.port
                 listOf("$host:$p")
             }
+
             updateById -> old.addresses
 
             newPort != null -> {

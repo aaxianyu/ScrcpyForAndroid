@@ -174,6 +174,8 @@
     <string name="section_screen_mirroring">投屏</string>
     <string name="pref_title_low_latency_audio">低延迟音频（实验性）</string>
     <string name="pref_summary_low_latency_audio">启用后将尝试使用低延迟音频路径\n推荐配合 RAW PCM 编解码\n修改后建议划卡重启应用</string>
+    <string name="pref_title_downsize_on_decode_error">解码出错时自动降级</string>
+    <string name="pref_summary_downsize_on_decode_error">当本机解码器不支持当前视频分辨率时，自动以较低的 max_size 重启会话，关闭后仅提示错误</string>
     <string name="pref_title_debug_info">启用调试信息</string>
     <string name="pref_summary_debug_info">在全屏界面悬浮显示分辨率、帧率、带宽和触点信息</string>
     <string name="pref_title_hide_simple_settings">设备页隐藏简单设置项</string>
@@ -615,6 +617,9 @@
     <string name="vm_clipboard_synced_paste">已同步本机剪贴板到设备并触发粘贴</string>
     <string name="vm_clipboard_paste_failed">本机剪贴板粘贴失败</string>
     <string name="vm_session_disconnected">Scrcpy 连接已断开</string>
+    <string name="vm_decoder_unsupported_size">设备解码器不支持 %1$dx%2$d，正在降级为 max_size=%3$d 并重启</string>
+    <string name="vm_decoder_init_failed">解码器初始化失败：%1$s</string>
+    <string name="vm_decoder_error_restarting">解码器错误，正在重启会话</string>
     <string name="vm_ime_text_failed">输入法文本提交失败：%1$s</string>
     <string name="vm_adb_disconnected_device">ADB 已断开：%1$s</string>
     <string name="vm_mdns_updated">mDNS 发现新端口，已更新快速设备：%1$s:%2$s -> %1$s:%3$s</string>

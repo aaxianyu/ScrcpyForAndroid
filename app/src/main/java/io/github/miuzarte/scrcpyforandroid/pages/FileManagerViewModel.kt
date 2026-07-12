@@ -54,8 +54,11 @@ internal class FileManagerViewModel: ViewModel() {
 
     private fun longestHistoricalPrefix(current: String): String {
         val prefixMatch: (String) -> Boolean =
-            if (current == ROOT_REMOTE_PATH) { { true } }
-            else { { hist -> hist == current || hist.startsWith("$current/") } }
+            if (current == ROOT_REMOTE_PATH) {
+                { true }
+            } else {
+                { hist -> hist == current || hist.startsWith("$current/") }
+            }
         var best = current
         var bestLen = current.length
         pathHistory.forEach { hist ->

@@ -62,6 +62,75 @@ class PersistentVideoRenderer {
         }
     }
 
+    /**
+     * Atomically tear down and recreate the decoder-side surface (SurfaceTexture + OES texture
+     * + Surface), returning a fresh [Surface] for a new MediaCodec to render into.
+     *
+     * This is needed because some OMX decoders (notably MTK) fail when a new codec is configured
+     * against a surface that still has pending buffers from a previously released codec.
+     * By recreating the underlying SurfaceTexture + texture, the new codec gets a clean buffer
+     * queue with no leftover state.
+     *
+     * - Must be called after the old decoder has been released, so no producer is writing to
+     *   the old surface at the same time.
+     * - Runs on the renderer HandlerThread (via [handler]) so it is serialized with [drawFrame].
+     * - EGL context, display/record EGL surfaces, and the shader program are preserved; only
+     *   `oesTextureId` / `decoderSurfaceTexture` / `decoderSurface` are recreated.
+     */
+    fun recreateDecoderSurface(): Surface {
+        ensureInitialized()
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var result: Surface? = null
+        handler.post {
+            try {
+                if (released) {
+                    error("renderer already released")
+                }
+                recreateDecoderSurfaceLocked()
+                result = decoderSurface
+            } finally {
+                latch.countDown()
+            }
+        }
+        latch.await()
+        return result ?: error("failed to recreate decoder surface")
+    }
+
+    private fun recreateDecoderSurfaceLocked() {
+        Log.i(tag, "recreateDecoderSurfaceLocked(): rebuilding decoder surface")
+
+        // Tear down old decoder-side resources. drawFrame() won't run concurrently
+        // because we're on the same HandlerThread.
+        runCatching { decoderSurface?.release() }
+        decoderSurface = null
+        runCatching { decoderSurfaceTexture?.release() }
+        decoderSurfaceTexture = null
+        if (oesTextureId != 0) {
+            GLES20.glDeleteTextures(1, intArrayOf(oesTextureId), 0)
+            oesTextureId = 0
+        }
+
+        // Recreate from scratch (mirrors initializeLocked lines 243-259)
+        oesTextureId = createExternalTexture()
+        decoderSurfaceTexture = SurfaceTexture(oesTextureId).apply {
+            setOnFrameAvailableListener(
+                {
+                    val n = frameAvailableCount.incrementAndGet()
+                    if (n == 1L || n % 120L == 0L) {
+                        Log.i(
+                            tag,
+                            "onFrameAvailable(): available=$n consumed=${frameConsumedCount.get()} rendered=${frameRenderedCount.get()} display=${displaySurfaceId != null}",
+                        )
+                    }
+                    drawFrame()
+                },
+                handler,
+            )
+        }
+        decoderSurface = Surface(decoderSurfaceTexture)
+        Log.i(tag, "recreateDecoderSurfaceLocked(): decoder surface rebuilt, texture=$oesTextureId")
+    }
+
     fun attachDisplaySurface(surface: Surface) {
         ensureInitialized()
         val newId = System.identityHashCode(surface)

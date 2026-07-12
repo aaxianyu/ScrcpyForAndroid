@@ -1,6 +1,7 @@
 package io.github.miuzarte.scrcpyforandroid.storage
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +34,7 @@ class ScrcpyProfiles(context: Context): Settings(context, "ScrcpyProfiles") {
 
     val state: StateFlow<State> = createBundleState(::stateFromPreferences)
 
-    private fun stateFromPreferences(preferences: androidx.datastore.preferences.core.Preferences): State {
+    private fun stateFromPreferences(preferences: Preferences): State {
         val raw = preferences.read(PROFILES_JSON)
         return normalizeState(
             runCatching { decodeState(raw) }.getOrNull() ?: State(emptyList()),

@@ -339,8 +339,7 @@ internal object DirectAdbTransport {
     private fun generatePkcs8PrivateKey(der: ByteArray): PrivateKey {
         val kf = KeyFactory.getInstance("RSA")
         val key = runCatching { kf.generatePrivate(PKCS8EncodedKeySpec(der)) }.getOrNull()
-        return if (key is RSAPrivateCrtKey) key
-        else kf.generatePrivate(parsePkcs8PrivateKey(der))
+        return key as? RSAPrivateCrtKey ?: kf.generatePrivate(parsePkcs8PrivateKey(der))
     }
 
     private fun parsePublicKey(content: String): PublicKey {
@@ -397,7 +396,25 @@ internal object DirectAdbTransport {
     private data class PemBlock(
         val label: String,
         val bytes: ByteArray,
-    )
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as PemBlock
+
+            if (label != other.label) return false
+            if (!bytes.contentEquals(other.bytes)) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = label.hashCode()
+            result = 31 * result + bytes.contentHashCode()
+            return result
+        }
+    }
 
     private fun readPem(content: String): PemBlock? {
         val begin = Regex("-----BEGIN ([A-Z0-9 ]+)-----").find(content) ?: return null
@@ -814,9 +831,13 @@ internal class DirectAdbConnection(
     fun openStream(service: String): AdbSocketStream {
         val localId = nextLocalId.getAndIncrement()
         val flowControlWindow = Storage.appSettings.bundleState.value.adbFlowControlWindow
-        val stream = AdbSocketStream(localId, { command, arg0, arg1, data ->
-            sendMsg(command, arg0, arg1, data)
-        }, flowControlWindow)
+        val stream = AdbSocketStream(
+            localId,
+            { command, arg0, arg1, data ->
+                sendMsg(command, arg0, arg1, data)
+            },
+            flowControlWindow,
+        )
         streams[localId] = stream
         sendMsg(A_OPEN, localId, 0, (service + "\u0000").toByteArray(Charsets.UTF_8))
         try {
@@ -1183,8 +1204,9 @@ class AdbSocketStream(
     private val queue = LinkedBlockingQueue<Any>()
 
     // need notifyAll() / wait()
-    private val writeLock = java.lang.Object()
-    @Volatile private var inflightWrites = 0
+    private val writeLock = Object()
+    @Volatile
+    private var inflightWrites = 0
 
     private object EndOfStreamMarker
 

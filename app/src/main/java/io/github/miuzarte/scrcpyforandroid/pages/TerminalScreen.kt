@@ -1,6 +1,7 @@
 package io.github.miuzarte.scrcpyforandroid.pages
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.Typeface
 import android.util.Log
 import android.view.KeyEvent
@@ -66,10 +67,10 @@ import kotlin.math.max
 private const val FONT_SCALE_STEP_THRESHOLD = 1.08f
 private const val LOG_TAG = "TerminalScreen"
 
-private fun terminalFontFile(context: android.content.Context) =
+private fun terminalFontFile(context: Context) =
     File(context.filesDir, "terminal/font.ttf")
 
-private fun loadTerminalTypeface(context: android.content.Context): Typeface? {
+private fun loadTerminalTypeface(context: Context): Typeface? {
     val file = terminalFontFile(context)
     if (!file.exists()) return null
     return runCatching { Typeface.createFromFile(file) }.getOrNull()

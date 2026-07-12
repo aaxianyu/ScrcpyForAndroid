@@ -41,9 +41,23 @@ class AnnexBDecoder(
     @Volatile
     private var released = false
 
+    /**
+     * Set when the codec reports an unrecoverable error (either during configure/start
+     * or at runtime via [MediaCodec.CodecException] / [IllegalStateException]).
+     *
+     * Once non-null, [isUsable] returns false and subsequent [feedAnnexB] calls are no-ops.
+     * The controller ([VideoDecoderController]) checks this to trigger session restart.
+     */
+    @Volatile
+    internal var codecError: Throwable? = null
+        private set
+
     init {
         if (!outputSurface.isValid) {
-            throw IllegalStateException("Cannot initialize decoder: output surface is not valid")
+            throw DecoderException(
+                mimeType, width, height,
+                IllegalStateException("Output surface is not valid"),
+            )
         }
         val format = MediaFormat.createVideoFormat(mimeType, width, height)
         if (sps != null) {
@@ -52,8 +66,14 @@ class AnnexBDecoder(
         if (pps != null) {
             format.setByteBuffer("csd-1", java.nio.ByteBuffer.wrap(pps))
         }
-        codec.configure(format, outputSurface, null, 0)
-        codec.start()
+        try {
+            codec.configure(format, outputSurface, null, 0)
+            codec.start()
+        } catch (e: Exception) {
+            runCatching { codec.release() }
+            codecError = e
+            throw DecoderException(mimeType, width, height, e)
+        }
     }
 
     /**
@@ -68,7 +88,7 @@ class AnnexBDecoder(
      */
     @Synchronized
     fun feedAnnexB(data: ByteArray, ptsUs: Long, isKeyFrame: Boolean, isConfig: Boolean = false) {
-        if (released) {
+        if (released || codecError != null) {
             return
         }
         runCatching {
@@ -107,9 +127,13 @@ class AnnexBDecoder(
             }
             drainOutput()
         }.onFailure {
-            Log.w(
+            // MediaCodec.CodecException and IllegalStateException indicate the codec is in an
+            // unrecoverable error state (e.g. MTK OMX fatal error after surface conflicts).
+            // Record the error so isUsable() returns false and the controller can react.
+            codecError = it
+            Log.e(
                 TAG,
-                "feed failed: mime=$decoderMime size=${data.size} key=$isKeyFrame cfg=$isConfig",
+                "feed failed (codec marked unusable): mime=$decoderMime size=${data.size} key=$isKeyFrame cfg=$isConfig",
                 it,
             )
         }
@@ -144,6 +168,12 @@ class AnnexBDecoder(
         runCatching { codec.stop() }
         runCatching { codec.release() }
     }
+
+    /**
+     * Returns true when the decoder is still alive and the codec has not reported
+     * an unrecoverable error.
+     */
+    fun isUsable(): Boolean = !released && codecError == null
 
     private fun drainOutput() {
         while (true) {
