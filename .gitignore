@@ -64,3 +64,4 @@ test_task1_*.log
 debug.log
 ScrcpyForAndroid.code-workspace
 docs/
+build_log.txt
