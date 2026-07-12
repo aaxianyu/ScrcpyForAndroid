@@ -60,7 +60,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 35
-        versionName = "0.4.5mod"
+        versionName = "0.4.5-enhanced"
 
         externalNativeBuild {
             cmake {

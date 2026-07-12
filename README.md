@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD033 -->
 
-# Scrcpy for Android
+# Scrcpy for Android (Enhanced)
 
 <a href="https://github.com/Genymobile/scrcpy/blob/master/app/data/icon.svg" title="Modified from the original version">
   <img src="app/src/main/assets/icon/icon.svg" width="128" height="128" alt="scrcpy" align="right" />
@@ -16,49 +16,70 @@
 
 > [!NOTE]
 > 本项目基于 scrcpy，但并非其官方版本，与原作者及维护团队不存在任何隶属或合作关系
+> 原项目 [Miuzarte/ScrcpyForAndroid](https://github.com/Miuzarte/ScrcpyForAndroid)
 
 ## 下载
 
-\> [releases](https://github.com/Miuzarte/ScrcpyForAndroid/releases)
+\> [releases](https://github.com/aaxianyu/ScrcpyForAndroid/releases)
 
 ## 截图
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/00bf5e7c-2e37-4e99-976e-06a56232a628" height="300" alt="Devices" />
-  <img src="https://github.com/user-attachments/assets/a423cf0e-5514-423e-8daf-818add2b5558" height="300" alt="Recent Tasks" />
-  <img src="https://github.com/user-attachments/assets/f1271cc7-ce45-46d2-8a01-0f4a367c0e4a" height="300" alt="Streaming" />
-  <img src="https://github.com/user-attachments/assets/220fc973-f3b7-4bec-8733-95bbddf95a7a" height="300" alt="Scrcpy All Options" />
-  <img src="https://github.com/user-attachments/assets/6d4cff1b-1277-44e4-bcfa-18201738a703" height="300" alt="Terminal" />
-  <img src="https://github.com/user-attachments/assets/3e4edc6c-ddfc-478b-aa7d-aa797a9f0e74" height="300" alt="Files" />
-  <img src="https://github.com/user-attachments/assets/d3b29861-6e86-4301-9b1d-1f7836ad9b7e" height="300" alt="Settings" />
-  <img src="https://github.com/user-attachments/assets/f513b7ba-0389-4176-8382-c1a08c4eba99" height="300" alt="Multi Touch Test" />
-  <img src="https://github.com/user-attachments/assets/7a50bd1f-8095-4269-8e58-88316d86e3d8" height="300" alt="Virtual Buttons Reorder" />
-  <img src="https://github.com/user-attachments/assets/448481df-c15b-4580-af96-141e9b56c41f" height="300" alt="About" />
-</p>
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/558bd1b1-15d2-47f8-bdc5-aac9cca689f5" height="180" alt="PiP" />
-  <img src="https://github.com/user-attachments/assets/1b52a662-108d-49cb-a86e-eccc8ac12d64" height="180" alt="Gaming" />
+  <img src="https://github.com/user-attachments/assets/077d4aaa-f81a-44ef-8987-d6cd4ba66cd1" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/ad586c34-a1fd-4c9c-b3a8-838b33e1cd79" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/8b3f982f-51e7-4206-8426-8535894a9cf0" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/d15daef4-ec37-437e-9dc8-49419f426745" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/9889aeab-d7a8-415e-b95e-fb86048a8071" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/372373cd-164c-48f3-b1ee-ce0e83cef59c" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/ba4282fe-d4f0-4f1c-8b37-426ce449763b" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/e124c60c-617f-474d-ae0e-4fc390e778da" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/03cae984-aef2-4a85-a7a8-4b2ae8ca8fe9" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/476846e2-d459-4ba3-a3ba-5f54c7c067cf" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/f894852d-6897-4e4a-8fcd-a1966e66f649" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/63b6d003-5259-49ea-8c2d-7e3035864697" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/9dd48404-2b67-4cad-b155-443a3223ef9e" height="300" alt="截图" />
+  <img src="https://github.com/user-attachments/assets/a05c13c4-be5c-483a-bc51-07da1d13b16a" height="300" alt="截图" />
 </p>
 
 ## Features
 
+### 原版功能
+
 - 控制时可拉起本机输入法，且支持输入中文
 - 剪贴板同步
 - 低延迟音频链路 (默认未启用)
-  - 受控设备播放 `USAGE_MEDIA` 流时 ([namidaco/namida](https://github.com/namidaco/namida)) ，两设备的音频延迟只差半拍 (没有具体测量能力)
-  - 受控设备播放 `USAGE_GAME` 流时 (明日方舟 Bilibili 服) ，仍存在 100~200ms 的有感延迟
 - 带生物认证的锁屏密码自动填充 (入口位于虚拟按钮中)
 - 多配置切换，设备绑定配置，连接后直接进入全屏
 - 可替换 scrcpy-server
 - 利用 mDNS 服务实现自动连接启用无线调试的设备、自动发现等待配对设备的IP与端口
-- 自动横竖屏切换（算吗
-- 横屏布局
-  - 仅屏幕比例小于 16:9 的设备
+- 自动横竖屏切换
+- 横屏布局（仅屏幕比例小于 16:9 的设备）
 - 全屏下映射返回键到远程
 - 画中画
 - 双向文件传输
 - 流式 adb 终端
 - 内置录制
+
+### 增强功能
+
+除 scrcpy 原有功能外，此分支新增/增强以下功能：
+
+- **USB 有线 ADB 连接**：USB 设备插拔监听、自动连接、隧道封装
+- **应用管理**：安装/卸载/导出/停用/启用/清除数据，应用搜索/收藏/置顶排序
+- **实用工具**：截图、系统重启、DPI/分辨率修改、进程管理、无线 ADB 开关、设备信息面板、熄屏待机
+- **悬浮球增强**：滑动悬浮球、滑动排序、虚拟按键二选一
+- **局域网 IP 扫描**：本机 IP 显示、局域网设备扫描
+- **命令书签**：终端命令书签持久化、自动回车开关
+- **低延迟视频开关（实验性）**：独立开关，与原版低延迟音频分离
+- **Snackbar 显示时长**：500-5000ms 可配置（默认 3000ms）
+- **自定义分辨率**：连接时修改分辨率，退出时自动还原
+- **ADB 重连**：连接中断自动检测与恢复
+- **深色模式修复**：状态栏图标深色/浅色正确切换
+- **语言切换修复**：跟随系统/手动中英文，不重建 Activity，HyperOS 状态栏沉浸修复
+- **全局配置名动态翻译**：设置页配置名实时翻译
+- **MTK 解码器兼容**：自动检测解码器能力，不支持时自动降级分辨率（上游 v0.4.5_pre1）
+
+以上增强功能基于上游 v0.4.5_pre1，更多细节见 [DIFF.md](DIFF.md)。
 
 ## 已知问题
 
@@ -126,28 +147,56 @@
 6. MIUI 虚拟屏没有桌面 / 虚拟屏白屏
    - 装个第三方桌面
 
-## 构建
+## 构建说明
 
-- JDK 17+
-- Android SDK (`compileSdk 37` / `buildTools 37.0.0`)
-- Android NDK `29.0.14206865`
+本项目使用 [miuix](https://github.com/compose-miuix-ui/miuix) 作为 Git 子模块（submodule）。
+
+### 克隆项目
 
 ```bash
-git clone --recursive https://github.com/Miuzarte/ScrcpyForAndroid.git
-cd ScrcpyForAndroid
-./gradlew assembleDebug
+git clone --recursive https://github.com/aaxianyu/ScrcpyForAndroid.git
 ```
 
-已克隆但没有拉取子模块：
+如果已克隆但子模块为空：
 
 ```bash
 git submodule update --init --recursive
 ```
 
+### 构建环境
+
+- JDK 17+
+- Android SDK (`compileSdk 37` / `buildTools 37.0.0`)
+- Android NDK `29.0.14206865`
+
+### 构建命令
+
+```bash
+./gradlew assembleRelease
+```
+
+> **注意**：请勿直接下载 ZIP 源码包构建，ZIP 不包含子模块内容。必须使用 `git clone --recursive`。
+
 specific abi:
 
 ```bash
 ./gradlew assembleRelease -PabiList=arm64-v8a
+```
+
+### miuix 子模块版本
+
+本项目已将 miuix 子模块锁定到 `fd5362ce`（2026-07-08），请勿手动更新到 miuix main 分支的最新版本，否则可能出现兼容性问题。
+
+如需验证 miuix 版本：
+
+```bash
+cd submodule/miuix
+git log -1 --pretty=format:"%h %ci %s"
+```
+
+预期输出：
+```
+fd5362ce 2026-07-08 17:22:12 +0800 feat: implement BreadcrumbBar (#371)
 ```
 
 ## Credits
@@ -166,10 +215,10 @@ specific abi:
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=Miuzarte%2FScrcpyForAndroid&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=aaxianyu%2FScrcpyForAndroid&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Miuzarte/ScrcpyForAndroid&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Miuzarte/ScrcpyForAndroid&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Miuzarte/ScrcpyForAndroid&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=aaxianyu/ScrcpyForAndroid&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=aaxianyu/ScrcpyForAndroid&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=aaxianyu/ScrcpyForAndroid&type=date&legend=top-left" />
  </picture>
 </a>
