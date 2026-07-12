@@ -17,11 +17,21 @@ import java.net.URL
 object AppUpdateChecker {
     private const val TAG = "AppUpdateChecker"
     const val RELEASES_API_URL =
-        "https://api.github.com/repos/Miuzarte/ScrcpyForAndroid/releases?per_page=10"
+        "https://api.github.com/repos/aaxianyu/ScrcpyForAndroid/releases?per_page=10"
     const val RELEASES_URL =
-        "https://github.com/Miuzarte/ScrcpyForAndroid/releases"
+        "https://github.com/aaxianyu/ScrcpyForAndroid/releases"
     const val REPO_URL =
         "https://github.com/Miuzarte/ScrcpyForAndroid"
+    const val UPSTREAM_REPO_URL =
+        "https://github.com/Miuzarte/ScrcpyForAndroid"
+    const val UPSTREAM_RELEASES_API_URL =
+        "https://api.github.com/repos/Miuzarte/ScrcpyForAndroid/releases?per_page=10"
+    const val UPSTREAM_RELEASES_URL =
+        "https://github.com/Miuzarte/ScrcpyForAndroid/releases"
+    const val BRANCH_REPO_URL =
+        "https://github.com/aaxianyu/ScrcpyForAndroid"
+    const val BRANCH_RELEASES_URL =
+        "https://github.com/aaxianyu/ScrcpyForAndroid/releases"
     const val CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000L
 
     data class ReleaseInfo(
@@ -42,6 +52,10 @@ object AppUpdateChecker {
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
 
+    private val upstreamMutex = Mutex()
+    private val _upstreamState = MutableStateFlow<State>(State.Idle)
+    val upstreamState: StateFlow<State> = _upstreamState.asStateFlow()
+
     suspend fun ensureChecked(currentVersion: String = BuildConfig.VERSION_NAME) {
         checkMutex.withLock {
             if (_state.value is State.Ready || _state.value is State.Checking) return
@@ -60,9 +74,31 @@ object AppUpdateChecker {
         }
     }
 
-    private suspend fun fetchLatestRelease(currentVersion: String): ReleaseInfo =
+    suspend fun ensureUpstreamChecked(currentVersion: String = BuildConfig.VERSION_NAME) {
+        upstreamMutex.withLock {
+            if (_upstreamState.value is State.Ready || _upstreamState.value is State.Checking) return
+            _upstreamState.value = State.Checking
+            runCatching { fetchLatestRelease(currentVersion, UPSTREAM_RELEASES_API_URL, UPSTREAM_RELEASES_URL) }
+                .onSuccess { _upstreamState.value = State.Ready(it) }
+                .onFailure { error ->
+                    EventLogger.logEvent(
+                        R.string.main_update_check_failed,
+                        error.message ?: error.javaClass.simpleName,
+                        level = Log.WARN,
+                        error = error,
+                    )
+                    _upstreamState.value = State.Error
+                }
+        }
+    }
+
+    private suspend fun fetchLatestRelease(
+        currentVersion: String,
+        apiUrl: String = RELEASES_API_URL,
+        fallbackUrl: String = RELEASES_URL,
+    ): ReleaseInfo =
         withContext(Dispatchers.IO) {
-            val connection = (URL(RELEASES_API_URL).openConnection() as HttpURLConnection).apply {
+            val connection = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 10_000
                 readTimeout = 10_000
@@ -92,7 +128,7 @@ object AppUpdateChecker {
                     currentVersion = currentVersion,
                     latestVersion = latestVersion.removePrefix("v").removePrefix("V"),
                     hasUpdate = compareVersions(currentVersion, latestVersion) < 0,
-                    htmlUrl = targetRelease.optString("html_url").ifBlank { RELEASES_URL },
+                    htmlUrl = targetRelease.optString("html_url").ifBlank { fallbackUrl },
                 )
             } finally {
                 connection.disconnect()

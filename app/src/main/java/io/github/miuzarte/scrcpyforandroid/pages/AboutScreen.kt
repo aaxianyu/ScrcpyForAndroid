@@ -57,9 +57,10 @@ internal fun AboutScreen() {
     val lazyListState = rememberLazyListState()
     var logoHeightPx by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(Unit) {
-        AppUpdateChecker.ensureChecked(BuildConfig.VERSION_NAME)
-    }
+LaunchedEffect(Unit) {
+AppUpdateChecker.ensureChecked(BuildConfig.VERSION_NAME)
+AppUpdateChecker.ensureUpstreamChecked(BuildConfig.VERSION_NAME)
+}
 
     val scrollProgress by remember {
         derivedStateOf {
@@ -126,6 +127,7 @@ private fun AboutContent(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val updateState by AppUpdateChecker.state.collectAsState()
+val upstreamState by AppUpdateChecker.upstreamState.collectAsState()
     val backdrop = rememberLayerBackdrop()
     var isOs3Effect by remember { mutableStateOf(true) }
     val blurEnabled = remember(enableBlur) { enableBlur && isRenderEffectSupported() }
@@ -141,14 +143,23 @@ private fun AboutContent(
     var initialLogoAreaY by remember { mutableFloatStateOf(0f) }
 
     val textAboutError = stringResource(R.string.about_error)
-    val (releaseStatusText, releasesUrl) = remember(textAboutError, updateState) {
-        when (val state = updateState) {
-            AppUpdateChecker.State.Idle -> null to AppUpdateChecker.RELEASES_URL
-            AppUpdateChecker.State.Checking -> "..." to AppUpdateChecker.RELEASES_URL
-            is AppUpdateChecker.State.Ready -> state.release.latestVersion to state.release.htmlUrl
-            is AppUpdateChecker.State.Error -> textAboutError to AppUpdateChecker.RELEASES_URL
-        }
-    }
+val (releaseStatusText, releasesUrl) = remember(textAboutError, updateState) {
+when (val state = updateState) {
+AppUpdateChecker.State.Idle -> null to AppUpdateChecker.RELEASES_URL
+AppUpdateChecker.State.Checking -> "..." to AppUpdateChecker.RELEASES_URL
+is AppUpdateChecker.State.Ready -> state.release.latestVersion to state.release.htmlUrl
+is AppUpdateChecker.State.Error -> textAboutError to AppUpdateChecker.RELEASES_URL
+}
+}
+
+val upstreamVersionText = remember(textAboutError, upstreamState) {
+when (val state = upstreamState) {
+AppUpdateChecker.State.Idle -> null
+AppUpdateChecker.State.Checking -> "..."
+is AppUpdateChecker.State.Ready -> state.release.latestVersion
+is AppUpdateChecker.State.Error -> textAboutError
+}
+}
 
     LaunchedEffect(lazyListState) {
         snapshotFlow { lazyListState.firstVisibleItemScrollOffset }
@@ -295,7 +306,7 @@ private fun AboutContent(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = AppUpdateChecker.REPO_URL.removePrefix("https://"),
+                text = AppUpdateChecker.BRANCH_REPO_URL.removePrefix("https://"),
                 modifier = Modifier
                     .fillMaxWidth()
                     .graphicsLayer {
@@ -354,24 +365,61 @@ private fun AboutContent(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     AboutCard {
+ArrowPreference(
+title = stringResource(R.string.about_upstream_repo),
+endActions = {
+Text(
+text = "Github/Miuzarte",
+fontSize = textStyles.body2.fontSize,
+color = colorScheme.onSurfaceVariantActions,
+)
+},
+onClick = {
+haptic.contextClick()
+context.startActivity(
+Intent(Intent.ACTION_VIEW, AppUpdateChecker.UPSTREAM_REPO_URL.toUri()),
+)
+},
+)
+ArrowPreference(
+title = stringResource(R.string.about_branch_repo),
+endActions = {
+Text(
+text = "Github/aaxianyu",
+fontSize = textStyles.body2.fontSize,
+color = colorScheme.onSurfaceVariantActions,
+)
+},
+onClick = {
+haptic.contextClick()
+context.startActivity(
+Intent(Intent.ACTION_VIEW, AppUpdateChecker.BRANCH_REPO_URL.toUri()),
+)
+},
+)
+ArrowPreference(
+title = stringResource(R.string.about_upstream_releases),
+endActions = {
+upstreamVersionText?.let {
+Text(
+text = it,
+fontSize = textStyles.body2.fontSize,
+color = colorScheme.onSurfaceVariantActions,
+)
+}
+},
+onClick = {
+haptic.contextClick()
+context.startActivity(
+Intent(
+Intent.ACTION_VIEW,
+AppUpdateChecker.UPSTREAM_RELEASES_URL.toUri(),
+),
+)
+},
+)
                         ArrowPreference(
-                            title = stringResource(R.string.about_project_repo),
-                            endActions = {
-                                Text(
-                                    text = "GitHub",
-                                    fontSize = textStyles.body2.fontSize,
-                                    color = colorScheme.onSurfaceVariantActions,
-                                )
-                            },
-                            onClick = {
-                                haptic.contextClick()
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, AppUpdateChecker.REPO_URL.toUri()),
-                                )
-                            },
-                        )
-                        ArrowPreference(
-                            title = stringResource(R.string.about_releases),
+                            title = stringResource(R.string.about_branch_releases),
                             endActions = {
                                 releaseStatusText?.let {
                                     Text(

@@ -15,8 +15,10 @@
 
     <!-- About -->
     <string name="about_title">关于</string>
-    <string name="about_project_repo">项目仓库</string>
-    <string name="about_releases">版本发布</string>
+    <string name="about_upstream_repo">原项目仓库</string>
+    <string name="about_branch_repo">本分支仓库</string>
+    <string name="about_upstream_releases">原项目版本发布</string>
+    <string name="about_branch_releases">本分支发布</string>
     <string name="about_error">错误</string>
 
     <!-- Common / Shared -->

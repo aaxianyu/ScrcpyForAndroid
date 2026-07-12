@@ -15,8 +15,10 @@
 
     <!-- About -->
     <string name="about_title">About</string>
-    <string name="about_project_repo">Project repo</string>
-    <string name="about_releases">Releases</string>
+    <string name="about_upstream_repo">Original repo</string>
+    <string name="about_branch_repo">Branch repo</string>
+    <string name="about_upstream_releases">Original releases</string>
+    <string name="about_branch_releases">Branch releases</string>
     <string name="about_error">Error</string>
 
     <!-- Common / Shared -->
