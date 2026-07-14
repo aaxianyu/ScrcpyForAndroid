@@ -49,6 +49,8 @@ object AppRuntime {
         get() = appContext
 
     var scrcpy: Scrcpy? = null
+
+val connectionTargetKey = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     var currentConnectionTarget: ConnectionTarget? = null
     var currentConnectedDevice: ConnectedDeviceInfo? = null
 

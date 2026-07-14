@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -74,7 +76,6 @@ import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
-private const val INITIAL_REMOTE_PATH = "/storage/emulated/0"
 private const val LOG_TAG = "FileManagerScreen"
 
 @Composable
@@ -118,7 +119,7 @@ fun FileManagerScreen(
     var showSortMenu by rememberSaveable { mutableStateOf(false) }
     var showPathDialog by rememberSaveable { mutableStateOf(false) }
     var showCreateFolderDialog by rememberSaveable { mutableStateOf(false) }
-    var pathInput by rememberSaveable { mutableStateOf(INITIAL_REMOTE_PATH) }
+    var pathInput by rememberSaveable { mutableStateOf(currentPath) }
     var newFolderName by rememberSaveable { mutableStateOf("") }
     var showAdbDisconnected by rememberSaveable { mutableStateOf(false) }
     var hasShownAdbDisconnected by rememberSaveable { mutableStateOf(false) }
@@ -664,6 +665,14 @@ private fun PathJumpDialog(
     onConfirm: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
+    var textFieldValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(path))
+    }
+    LaunchedEffect(path) {
+        if (textFieldValue.text != path) {
+            textFieldValue = TextFieldValue(path, TextRange(path.length))
+        }
+    }
 
     OverlayDialog(
         show = show,
@@ -672,10 +681,11 @@ private fun PathJumpDialog(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical)) {
             SuperTextField(
-                value = path,
-                onValueChange = onPathChange,
-                // label = "/storage/emulated/0",
-                // useLabelAsPlaceholder = true,
+                value = textFieldValue,
+                onValueChange = {
+                    textFieldValue = it
+                    onPathChange(it.text)
+                },
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
@@ -711,6 +721,14 @@ private fun CreateFolderDialog(
     onConfirm: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
+    var textFieldValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(folderName))
+    }
+    LaunchedEffect(folderName) {
+        if (textFieldValue.text != folderName) {
+            textFieldValue = TextFieldValue(folderName, TextRange(folderName.length))
+        }
+    }
 
     OverlayDialog(
         show = show,
@@ -719,8 +737,11 @@ private fun CreateFolderDialog(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical)) {
             SuperTextField(
-                value = folderName,
-                onValueChange = onFolderNameChange,
+                value = textFieldValue,
+                onValueChange = {
+                    textFieldValue = it
+                    onFolderNameChange(it.text)
+                },
                 label = stringResource(R.string.fm_label_new_folder),
                 useLabelAsPlaceholder = true,
             )

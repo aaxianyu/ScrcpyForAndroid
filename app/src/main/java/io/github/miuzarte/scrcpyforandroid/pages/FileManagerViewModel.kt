@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.services.*
 import io.github.miuzarte.scrcpyforandroid.storage.BundleSyncDelegate
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
@@ -16,7 +17,23 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 private const val ROOT_REMOTE_PATH = "/"
-private const val INITIAL_REMOTE_PATH = "/storage/emulated/0"
+private val INITIAL_REMOTE_PATH_CANDIDATES = listOf("/storage/emulated/0", "/storage/sdcard", "/sdcard")
+private var cachedInitialRemotePath: String? = null
+
+private suspend fun resolveInitialRemotePath(): String {
+    cachedInitialRemotePath?.let { return it }
+    for (candidate in INITIAL_REMOTE_PATH_CANDIDATES) {
+        val result = runCatching {
+            NativeAdbService.shell("ls ${FileManagerService.quoteShellArg(candidate)} 2>/dev/null")
+        }
+        if (result.isSuccess && result.getOrNull()?.isNotBlank() == true) {
+            cachedInitialRemotePath = candidate
+            return candidate
+        }
+    }
+    cachedInitialRemotePath = ROOT_REMOTE_PATH
+    return ROOT_REMOTE_PATH
+}
 
 internal enum class FileManagerSortField { NAME, SIZE, TIME, EXTENSION }
 
@@ -36,10 +53,10 @@ internal class FileManagerViewModel: ViewModel() {
     )
     private val asBundle = asBundleSync.value
 
-    private val _currentPath = MutableStateFlow(INITIAL_REMOTE_PATH)
-    val currentPath: StateFlow<String> = _currentPath.asStateFlow()
+private val _currentPath = MutableStateFlow(ROOT_REMOTE_PATH)
+val currentPath: StateFlow<String> = _currentPath.asStateFlow()
 
-    private val pathHistory = ArrayDeque<String>().apply { addLast(INITIAL_REMOTE_PATH) }
+private val pathHistory = ArrayDeque<String>().apply { addLast(ROOT_REMOTE_PATH) }
     private val historyCapacity = 20
 
     private fun addToHistory(path: String) {
@@ -85,7 +102,7 @@ internal class FileManagerViewModel: ViewModel() {
         .stateIn(
             viewModelScope,
             SharingStarted.Eagerly,
-            BreadcrumbState(buildPathStack(INITIAL_REMOTE_PATH), buildPathStack(INITIAL_REMOTE_PATH).lastIndex),
+            BreadcrumbState(buildPathStack(ROOT_REMOTE_PATH), buildPathStack(ROOT_REMOTE_PATH).lastIndex),
         )
 
     val canNavigateUp: StateFlow<Boolean> = _currentPath
@@ -178,9 +195,36 @@ internal class FileManagerViewModel: ViewModel() {
     private val _pendingTreeDownload = MutableStateFlow<PendingTreeDownload?>(null)
     val pendingTreeDownload: StateFlow<PendingTreeDownload?> = _pendingTreeDownload.asStateFlow()
 
-    init {
-        asBundleSync.start()
-    }
+init {
+asBundleSync.start()
+viewModelScope.launch(Dispatchers.IO) {
+val initialPath = resolveInitialRemotePath()
+withContext(Dispatchers.Main) {
+_currentPath.value = initialPath
+pathHistory.clear()
+pathHistory.addLast(initialPath)
+}
+}
+viewModelScope.launch(Dispatchers.IO) {
+var lastKey: String? = AppRuntime.connectionTargetKey.value
+AppRuntime.connectionTargetKey.collect { newKey ->
+if (newKey != null && lastKey != null && newKey != lastKey) {
+cachedInitialRemotePath = null
+_directoryCache.value = emptyMap()
+val initialPath = resolveInitialRemotePath()
+withContext(Dispatchers.Main) {
+_currentPath.value = initialPath
+pathHistory.clear()
+pathHistory.addLast(initialPath)
+_isRefreshing.value = true
+}
+}
+if (newKey != null) {
+lastKey = newKey
+}
+}
+}
+}
 
     override fun onCleared() {
         clearDetailsInternal()

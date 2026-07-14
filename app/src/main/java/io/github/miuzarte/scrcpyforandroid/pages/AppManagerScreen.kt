@@ -187,10 +187,10 @@ internal class AppManagerViewModel : ViewModel() {
                 _userApps.value = result.userApps
                 _systemApps.value = result.systemApps
                 if (result.userApps.isEmpty() && result.systemApps.isEmpty()) {
-                    _error.value = "未连接设备或设备上无应用"
+                    _error.value = AppRuntime.stringResource(R.string.appmgr_error_no_device)
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "加载失败"
+                _error.value = e.message ?: AppRuntime.stringResource(R.string.appmgr_error_no_device)
             } finally {
                 _loading.value = false
             }
@@ -604,10 +604,10 @@ fun AppManagerScreen(
                                 text = error!!,
                                 color = MiuixTheme.colorScheme.error,
                             )
-                            TextButton(
-                                text = stringResource(R.string.cd_refresh),
-                                onClick = { viewModel.loadApps() },
-                            )
+TextButton(
+text = stringResource(R.string.appmgr_refresh),
+onClick = { viewModel.loadApps() },
+)
                         }
                     }
                 }
@@ -703,19 +703,35 @@ fun AppManagerScreen(
 
             val currentSelectedApp = selectedApp
             if (currentSelectedApp != null) {
-                AppActionSheet(
-                    show = true,
-                    app = currentSelectedApp,
-                    onDismiss = { viewModel.selectApp(null) },
-                    onActionComplete = {
-                        viewModel.refreshApp()
-                        viewModel.selectApp(null)
-                    },
-                    onExport = {
-                        viewModel.selectApp(null)
-                        viewModel.exportApk(currentSelectedApp)
-                    },
-                )
+AppActionSheet(
+show = true,
+app = currentSelectedApp,
+onDismiss = { viewModel.selectApp(null) },
+onActionComplete = {
+viewModel.refreshApp()
+viewModel.selectApp(null)
+},
+onExport = {
+viewModel.selectApp(null)
+viewModel.exportApk(currentSelectedApp)
+},
+onOpen = {
+val appToOpen = currentSelectedApp
+scope.launch(Dispatchers.IO) {
+val result = runCatching {
+NativeAdbService.shell(
+"monkey -p ${appToOpen.packageName} -c android.intent.category.LAUNCHER 1 2>&1"
+)
+}
+val output = result.getOrDefault("")
+if (result.isSuccess && output.contains("Events injected")) {
+AppRuntime.snackbar(R.string.appmgr_open_success, appToOpen.label)
+} else {
+AppRuntime.snackbar(R.string.appmgr_open_failed, appToOpen.label)
+}
+}
+},
+)
             }
 
             UploadingDialog(
@@ -1148,25 +1164,35 @@ private fun ExportingDialog(
 
 @Composable
 private fun AppActionSheet(
-    show: Boolean,
-    app: RemoteAppInfo,
-    onDismiss: () -> Unit,
-    onActionComplete: () -> Unit,
-    onExport: () -> Unit,
+show: Boolean,
+app: RemoteAppInfo,
+onDismiss: () -> Unit,
+onActionComplete: () -> Unit,
+onExport: () -> Unit,
+onOpen: () -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    var showConfirmDialog by rememberSaveable { mutableStateOf<String?>(null) }
+val scope = rememberCoroutineScope()
+var showConfirmDialog by rememberSaveable { mutableStateOf<String?>(null) }
 
-    OverlayBottomSheet(
-        show = show,
-        title = app.label,
-        defaultWindowInsetsPadding = false,
-        onDismissRequest = onDismiss,
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 4.dp),
-        ) {
-            if (!app.isSystem) {
+OverlayBottomSheet(
+show = show,
+title = app.label,
+defaultWindowInsetsPadding = false,
+onDismissRequest = onDismiss,
+) {
+Column(
+modifier = Modifier.padding(vertical = 4.dp),
+) {
+ActionItem(
+text = stringResource(R.string.appmgr_action_open),
+enabled = app.isEnabled,
+onClick = {
+onDismiss()
+onOpen()
+},
+)
+
+if (!app.isSystem) {
                 ActionItem(
                     text = stringResource(R.string.appmgr_action_uninstall),
                     onClick = { showConfirmDialog = "uninstall" },
@@ -1334,25 +1360,28 @@ private fun AppActionSheet(
 
 @Composable
 private fun ActionItem(
-    text: String,
-    onClick: () -> Unit,
+text: String,
+onClick: () -> Unit,
+enabled: Boolean = true,
 ) {
-    MiuixCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 1.dp),
-        pressFeedbackType = PressFeedbackType.Sink,
-        showIndication = true,
-        onClick = onClick,
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(UiSpacing.ContentVertical),
-            fontSize = 15.sp,
-        )
-    }
+MiuixCard(
+modifier = Modifier
+.fillMaxWidth()
+.padding(vertical = 1.dp),
+pressFeedbackType = PressFeedbackType.Sink,
+showIndication = enabled,
+onClick = { if (enabled) onClick() },
+) {
+Text(
+text = text,
+modifier = Modifier
+.fillMaxWidth()
+.padding(UiSpacing.ContentVertical),
+fontSize = 15.sp,
+color = if (enabled) MiuixTheme.colorScheme.onSurface
+else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+)
+}
 }
 
 @Composable

@@ -1069,6 +1069,18 @@ fun SettingsPage(
                             .onFailure { AppRuntime.snackbar(R.string.pref_cannot_open_settings) }
                     },
                 )
+                ArrowPreference(
+                    title = stringResource(R.string.pref_title_notification_keepalive),
+                    summary = stringResource(R.string.pref_summary_notification_keepalive),
+                    onClick = {
+                        haptic.contextClick()
+                        val intent = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+                        }
+                        runCatching { context.startActivity(intent) }
+                            .onFailure { AppRuntime.snackbar(R.string.pref_cannot_open_settings) }
+                    },
+                )
                 Column(
                     modifier = Modifier.padding(vertical = UiSpacing.Large),
                     verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),

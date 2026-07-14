@@ -865,4 +865,21 @@
     <string name="usb_permission_request_hint">Please authorize USB debugging on the device</string>
     <string name="vm_screen_off_hint">Screen will not be woken on start. Display may appear frozen until you send input.</string>
 
+    <!-- Process Manager -->
+    <string name="tools_process_not_connected">No device connected</string>
+
+    <!-- App Manager -->
+    <string name="appmgr_refresh">Refresh</string>
+    <string name="appmgr_error_no_device">No device connected or no apps on device</string>
+    <string name="appmgr_action_open">Open</string>
+    <string name="appmgr_open_success">Opened: %1$s</string>
+    <string name="appmgr_open_failed">Open failed: %1$s</string>
+
+    <!-- ADB Keep Alive Service -->
+    <string name="adb_keepalive_channel_name">ADB Connection</string>
+    <string name="adb_keepalive_channel_desc">Keeps the ADB connection alive in the background</string>
+    <string name="adb_keepalive_notification_text">ADB connection active</string>
+    <string name="pref_title_notification_keepalive">Enable keep-alive notifications</string>
+    <string name="pref_summary_notification_keepalive">When ADB is connected, a persistent notification keeps the app alive in the background to prevent the connection from being killed.\nPlease make sure notifications are enabled for this app.</string>
+
 </resources>

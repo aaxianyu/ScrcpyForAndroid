@@ -1,7 +1,12 @@
 package io.github.miuzarte.scrcpyforandroid.nativecore
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -139,6 +144,7 @@ object NativeAdbService {
                 connection = conn
                 connectedHost = host
                 connectedPort = port
+                startConnectionGuard()
             } catch (e: Exception) {
                 Log.e(TAG, "connect(): failed host=$host port=$port", e)
                 val detail = e.message ?: "${e.javaClass.simpleName} (no message)"
@@ -250,9 +256,10 @@ object NativeAdbService {
         val script = buildString {
             builder.commands.forEachIndexed { index, command ->
                 append(command)
-                append("; printf '\\n")
+                // Android 5 的 /system/bin/sh 没有 printf，用 echo 替代
+                append("; echo ''; echo '")
                 append(markers[index])
-                append("\\n'")
+                append("'")
                 if (index != builder.commands.lastIndex) {
                     append("; ")
                 }
@@ -345,12 +352,63 @@ object NativeAdbService {
         disconnect()
     }
 
-    private fun disconnectInternal() {
-        runCatching { connection?.close() }
-        connection = null
-        connectedHost = null
-        connectedPort = null
+private fun disconnectInternal() {
+    stopConnectionGuard()
+    runCatching { connection?.close() }
+    connection = null
+    connectedHost = null
+    connectedPort = null
+}
+
+private var guardJob: Job? = null
+
+private fun startConnectionGuard() {
+    guardJob?.cancel()
+    guardJob = CoroutineScope(Dispatchers.IO + Job()).launch {
+        while (isActive) {
+            delay(3_000)
+            try {
+                val conn = connection ?: continue
+                if (!conn.isAlive()) {
+                    val host = connectedHost
+                    val port = connectedPort
+                    if (host != null && port != null) {
+                        Log.i(TAG, "guard: connection lost, attempting reconnect to $host:$port")
+                        runCatching { conn.close() }
+                        try {
+                            val timeoutMs = 10_000
+                            val newConn = DirectAdbConnection(
+                                host, port,
+                                transport.privateKey,
+                                transport.publicKeyX509,
+                                transport.keyName.ifBlank { AppSettings.ADB_KEY_NAME.defaultValue },
+                                tcpMarker = true
+                            )
+                            newConn.handshake(timeoutMs)
+                            mutex.withLock {
+                                connection = newConn
+                                connectedHost = host
+                                connectedPort = port
+                            }
+                            Log.i(TAG, "guard: reconnected to $host:$port")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "guard: reconnect failed", e)
+                        }
+                    }
+                } else {
+                    runCatching { conn.shell("true") }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "guard: check failed", e)
+            }
+        }
     }
+}
+
+private fun stopConnectionGuard() {
+    guardJob?.cancel()
+    guardJob = null
+}
 
     private fun requireConnection(): DirectAdbConnection {
         return connection?.takeIf { it.isAlive() }

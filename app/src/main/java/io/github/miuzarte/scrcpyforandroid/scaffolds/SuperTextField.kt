@@ -15,6 +15,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,66 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
  * @param leadingIcon The leading icon to be displayed in the [TextField].
  * @param trailingIcon The trailing icon to be displayed in the [TextField].
  */
+@Composable
+fun SuperTextField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = "",
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
+    singleLine: Boolean = false,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    minLines: Int = 1,
+    useLabelAsPlaceholder: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    onFocusGained: (() -> Unit)? = null,
+    onFocusLost: (() -> Unit)? = null,
+    insideMargin: DpSize = DpSize(16.dp, 16.dp),
+    textStyle: TextStyle = textStyles.main,
+    cursorBrush: Brush = SolidColor(colorScheme.primary),
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
+
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .onFocusChanged { focusState ->
+                val wasFocused = isFocused
+                isFocused = focusState.isFocused
+                if (wasFocused && !focusState.isFocused) {
+                    onFocusLost?.invoke()
+                } else if (!wasFocused && focusState.isFocused) {
+                    onFocusGained?.invoke()
+                }
+            }
+            .focusRequester(focusRequester),
+        label = label,
+        enabled = enabled,
+        readOnly = readOnly,
+        singleLine = singleLine,
+        maxLines = maxLines,
+        minLines = minLines,
+        useLabelAsPlaceholder = useLabelAsPlaceholder,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        visualTransformation = visualTransformation,
+        insideMargin = insideMargin,
+        textStyle = textStyle,
+        cursorBrush = cursorBrush,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
+        interactionSource = interactionSource,
+    )
+}
+
 @Composable
 fun SuperTextField(
     value: String,

@@ -88,6 +88,14 @@ object FileManagerService {
     private val listLineRegex = Regex(
         """^\s*(\d+)\s+([\-bcdlps][rwxstST-]{9})\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.+)$""",
     )
+    // Android 5 toybox: ls -aFil 输出格式（含 inode，无 hardlinks，目录无 size）
+    private val listLineRegexAndroid5 = Regex(
+        """^\s*(\d+)\s+([\-bcdlps][rwxstST-]{9})\s+(\S+)\s+(\S+)\s+(?:(\d+)\s+)?(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.+)$""",
+    )
+    // Android 5/6 toolbox: ls -la 输出格式（无 inode，无 hardlinks，目录无 size）
+    private val listLineRegexLegacy = Regex(
+        """^\s*([\-bcdlps][rwxstST-]{9})\s+(\S+)\s+(\S+)\s+(?:(\d+)\s+)?(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.+)$""",
+    )
     private val sizeFormatter = DecimalFormat("0.00")
 
     suspend fun listDirectory(path: String): List<RemoteFileEntry> = withContext(Dispatchers.IO) {
@@ -98,7 +106,8 @@ object FileManagerService {
             .map(String::trimEnd)
             .filter { it.isNotBlank() }
             .filterNot { it.startsWith("total ") }
-            .mapNotNull { parseListEntry(path, it) }
+            .filterNot { it.startsWith("lstat ") }
+            .mapNotNull { parseListEntry(path, it) ?: parseListEntryAndroid5(path, it) }
             .filterNot { it.name == "." || it.name == ".." }
             .sortedWith(
                 compareByDescending<RemoteFileEntry> { it.isDirectory }
@@ -345,6 +354,39 @@ object FileManagerService {
             owner = match.groupValues[4].ifBlank { null },
             group = match.groupValues[5].ifBlank { null },
             sizeBytes = match.groupValues[6].toLongOrNull(),
+            modifiedAt = dateTime,
+            name = cleanedName,
+            fullPath = fullPath,
+            symlinkTarget = symlinkTarget,
+            kind = guessKind(cleanedName, isDirectory, permissions),
+            isDirectory = isDirectory,
+        )
+    }
+
+    // Android 5 toybox ls -aFil 输出格式解析（含 inode，无 hardlinks，目录无 size）
+    private fun parseListEntryAndroid5(parentPath: String, rawLine: String): RemoteFileEntry? {
+        val match = listLineRegexAndroid5.matchEntire(rawLine) ?: return null
+        val permissions = match.groupValues[2]
+        val dateTime = runCatching {
+            LocalDateTime.parse(
+                "${match.groupValues[6]} ${match.groupValues[7]}",
+                listTimeFormatter,
+            )
+        }.getOrNull()
+        val nameField = match.groupValues[8]
+        val rawName = nameField.substringBefore(" -> ")
+        val symlinkTarget = nameField.substringAfter(" -> ", missingDelimiterValue = "")
+            .takeIf { it.isNotBlank() }
+        val cleanedName = stripListSuffix(unescapeLsName(rawName), permissions)
+        val fullPath = joinRemotePath(parentPath, cleanedName)
+        val isDirectory = permissions.startsWith("d") || rawName.endsWith("/")
+        return RemoteFileEntry(
+            inode = match.groupValues[1].toLongOrNull(),
+            permissions = permissions,
+            hardLinks = null,
+            owner = match.groupValues[3].ifBlank { null },
+            group = match.groupValues[4].ifBlank { null },
+            sizeBytes = match.groupValues[5].toLongOrNull(),
             modifiedAt = dateTime,
             name = cleanedName,
             fullPath = fullPath,
@@ -733,11 +775,11 @@ private class InteractiveShellSession private constructor(
             val marker = "__SCRCPY_FILEMANAGER_${System.nanoTime()}__"
             val commandBytes = buildString {
                 append("(")
-                append(command)
-                append(")\n")
-                append("printf '\\n")
-                append(marker)
-                append(":%d\\n' $?\n")
+            append(command)
+            append(")\n")
+            append("echo ''; echo '")
+            append(marker)
+            append(":'$?\n")
             }.toByteArray(StandardCharsets.UTF_8)
             stream.outputStream.write(commandBytes)
             stream.outputStream.flush()

@@ -864,4 +864,21 @@
     <string name="vm_screen_off_hint">已启用不唤醒屏幕，进入全屏画面可能静止，发送操作即可恢复</string>
     <string name="usb_permission_request_hint">请在设备上授权USB调试权限</string>
 
+    <!-- 进程管理 -->
+    <string name="tools_process_not_connected">未连接设备</string>
+
+    <!-- 应用管理 -->
+    <string name="appmgr_refresh">刷新</string>
+    <string name="appmgr_error_no_device">未连接设备或设备上无应用</string>
+    <string name="appmgr_action_open">打开</string>
+    <string name="appmgr_open_success">已打开：%1$s</string>
+    <string name="appmgr_open_failed">打开失败：%1$s</string>
+
+    <!-- ADB 保活服务 -->
+    <string name="adb_keepalive_channel_name">ADB 连接</string>
+    <string name="adb_keepalive_channel_desc">保持后台 ADB 连接不断开</string>
+    <string name="adb_keepalive_notification_text">ADB 连接保持中</string>
+    <string name="pref_title_notification_keepalive">开启通知保活</string>
+    <string name="pref_summary_notification_keepalive">ADB 连接时会在状态栏显示常驻通知，保持应用在后台不被系统杀死，防止连接断开。\n请确保已允许此应用的通知权限。</string>
+
 </resources>

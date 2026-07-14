@@ -1194,36 +1194,38 @@ private fun ProcessManagerSheet(
     val scope = rememberCoroutineScope()
     var processes by remember { mutableStateOf<List<AppProcessInfo>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
+    var notConnected by remember { mutableStateOf(false) }
     var pendingKill by remember { mutableStateOf<AppProcessInfo?>(null) }
     var hideSystemApps by rememberSaveable { mutableStateOf(false) }
 
     val loadProcesses: () -> Unit = {
         loading = true
+        notConnected = false
         scope.launch(Dispatchers.IO) {
             try {
+                val connected = NativeAdbService.isConnected()
+                if (!connected) {
+                    withContext(Dispatchers.Main) {
+                        processes = emptyList()
+                        notConnected = true
+                        loading = false
+                    }
+                    return@launch
+                }
                 val rawItems = mutableListOf<Triple<String, String, Long>>()
                 val seen = mutableSetOf<String>()
-                val psResult = NativeAdbService.shell("ps -A")
-                for (line in psResult.lineSequence().drop(1)) {
-                    val parts = line.trim().split(Regex("\\s+"))
-                    if (parts.size < 9) continue
-                    val pid = parts[1]
-                    val rss = parts[4].toLongOrNull() ?: 0L
-                    val name = parts[8]
-                    if (name.contains(".") && !name.startsWith("/") && !name.startsWith("[")) {
-                        if (seen.add(name)) {
-                            rawItems.add(Triple(name, pid, rss))
-                        }
-                    }
-                }
-                if (rawItems.isEmpty()) {
-                    val psResult2 = NativeAdbService.shell("ps -A -o PID,RSS,NAME 2>/dev/null")
-                    for (line in psResult2.lineSequence().drop(1)) {
-                        val parts = line.trim().split(Regex("\\s+"), limit = 3)
-                        if (parts.size < 3) continue
-                        val pid = parts[0]
-                        val rss = parts[1].toLongOrNull() ?: continue
-                        val name = parts[2]
+                // Android 7+ (toybox) 支持 "ps -A"，Android 5/6 仅支持 "ps"
+                // 两者输出格式相同：USER PID PPID VSIZE RSS WCHAN PC NAME
+                val psCommands = listOf("ps -A", "ps")
+                for (psCmd in psCommands) {
+                    if (rawItems.isNotEmpty()) break
+                    val psResult = NativeAdbService.shell(psCmd)
+                    for (line in psResult.lineSequence().drop(1)) {
+                        val parts = line.trim().split(Regex("\\s+"))
+                        if (parts.size < 9) continue
+                        val pid = parts[1]
+                        val rss = parts[4].toLongOrNull() ?: 0L
+                        val name = parts[8]
                         if (name.contains(".") && !name.startsWith("/") && !name.startsWith("[")) {
                             if (seen.add(name)) {
                                 rawItems.add(Triple(name, pid, rss))
@@ -1395,12 +1397,12 @@ private fun ProcessManagerSheet(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = stringResource(R.string.tools_process_empty),
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            }
-        } else {
-            val displayProcesses = if (hideSystemApps) processes.filter { !it.isSystem } else processes
+            text = stringResource(if (notConnected) R.string.tools_process_not_connected else R.string.tools_process_empty),
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+    }
+} else {
+    val displayProcesses = if (hideSystemApps) processes.filter { !it.isSystem } else processes
             if (displayProcesses.isEmpty()) {
                 Box(
                     modifier = Modifier

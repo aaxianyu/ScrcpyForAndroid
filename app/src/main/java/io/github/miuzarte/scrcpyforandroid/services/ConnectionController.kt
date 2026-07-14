@@ -37,9 +37,11 @@ internal class ConnectionController(
         AppRuntime.currentConnectionTarget = null
         AppRuntime.currentConnectedDevice = null
         AppRuntime.currentConnectionProfileId.value = "global"
+        AppRuntime.connectionTargetKey.value = null
         runCatching { scrcpy.stop() }
         runCatching { adbCoordinator.disconnect() }
         AppScreenOn.release()
+        AdbKeepAliveService.stop(AppRuntime.context)
         return ConnectionDisconnectResult(clearedTarget = clearQuickOnlineForTarget)
     }
 
@@ -134,6 +136,8 @@ internal class ConnectionController(
         stateStore.markConnected(target = target, scrcpyProfileId = scrcpyProfileId)
         AppRuntime.currentConnectionTarget = target
         AppRuntime.currentConnectionProfileId.value = scrcpyProfileId
+        AppRuntime.connectionTargetKey.value = "${host}:${port}"
+        AdbKeepAliveService.start(AppRuntime.context)
 
         val info = adbCoordinator.fetchConnectedDeviceInfo(host, port)
         stateStore.updateSession {
