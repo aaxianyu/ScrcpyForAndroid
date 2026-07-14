@@ -1765,6 +1765,16 @@ internal fun ScrcpyAllOptionsPage(
                         )
                     },
                 )
+                SwitchPreference(
+                    title = stringResource(R.string.scrcpyopt_ignore_video_encoder_constraints),
+                    summary = "--ignore-video-encoder-constraints",
+                    checked = soBundle.ignoreVideoEncoderConstraints,
+                    onCheckedChange = {
+                        soBundle = soBundle.copy(
+                            ignoreVideoEncoderConstraints = it,
+                        )
+                    },
+                )
             }
         }
 

@@ -2,6 +2,11 @@
 <resources>
     <string name="app_name">Scrcpy for Android</string>
 
+    <!-- ADB Keep Alive Service -->
+    <string name="adb_keepalive_channel_name">ADB 连接</string>
+    <string name="adb_keepalive_channel_desc">保持后台 ADB 连接不断开</string>
+    <string name="adb_keepalive_notification_text">ADB 连接保持中</string>
+
     <!-- Main Tab Labels -->
     <string name="main_tab_devices">设备</string>
     <string name="main_tab_terminal">终端</string>
@@ -236,8 +241,10 @@
 
     <!-- Settings - ADB -->
     <string name="section_adb">ADB</string>
-    <string name="pref_title_battery_optimization">调整后台电池策略</string>
-    <string name="pref_summary_battery_optimization">解决 Scrcpy 切换到后台时无法联网导致 ADB 断连\n应用的电池使用情况 -> 允许后台使用 -> 无限制\n国产ROM魔改的电源设置一般都可在对应的魔改应用设置中找到</string>
+<string name="pref_title_battery_optimization">调整后台电池策略</string>
+<string name="pref_summary_battery_optimization">解决 Scrcpy 切换到后台时无法联网导致 ADB 断连\n应用的电池使用情况 -> 允许后台使用 -> 无限制\n国产ROM魔改的电源设置一般都可在对应的魔改应用设置中找到</string>
+<string name="pref_title_notification_keepalive">开启通知保活</string>
+<string name="pref_summary_notification_keepalive">ADB 连接时会在状态栏显示常驻通知，保持应用在后台不被系统杀死，防止连接断开。\n请确保已允许此应用的通知权限。</string>
     <string name="pref_title_app_info">应用信息</string>
     <string name="pref_title_custom_adb_key">自定义 ADB 密钥名</string>
     <string name="pref_title_adb_private_key">ADB 私钥</string>
@@ -574,6 +581,7 @@
     <string name="scrcpyopt_flex_display">自动调整尺寸以匹配界面</string>
     <string name="scrcpyopt_wake_screen_on_fullscreen">进入全屏时点亮屏幕</string>
     <string name="scrcpyopt_wake_screen_on_fullscreen_desc">进入全屏时点亮受控端屏幕\n关闭后，进入全屏时不会点亮屏幕</string>
+    <string name="scrcpyopt_ignore_video_encoder_constraints">忽略视频编码器约束</string>
     <string name="scrcpyopt_start_app">scrcpy 启动后打开应用</string>
     <string name="scrcpyopt_native">本机</string>
     <string name="scrcpyopt_log_level">日志等级</string>
@@ -685,6 +693,11 @@
     <string name="appmgr_tab_system_apps">系统应用</string>
     <string name="appmgr_search_hint">搜索应用名或包名</string>
     <string name="appmgr_loading">加载应用列表…</string>
+    <string name="appmgr_error_no_device">未连接设备或设备上无应用</string>
+    <string name="appmgr_refresh">刷新</string>
+    <string name="appmgr_action_open">打开</string>
+    <string name="appmgr_open_success">已打开：%1$s</string>
+    <string name="appmgr_open_failed">打开失败：%1$s</string>
     <string name="appmgr_no_apps">未找到应用</string>
     <string name="appmgr_disabled">已停用</string>
     <string name="appmgr_upload_apk">安装应用</string>
@@ -796,6 +809,7 @@
     <string name="tools_process_hide_system">隐藏系统应用</string>
     <string name="tools_process_loading">加载进程中…</string>
     <string name="tools_process_empty">未找到进程</string>
+    <string name="tools_process_not_connected">未连接设备</string>
     <string name="tools_process_kill">结束</string>
     <string name="tools_process_killed">已结束进程：%1$s</string>
     <string name="tools_process_kill_failed">结束进程失败：%1$s</string>
@@ -863,22 +877,5 @@
     <string name="usb_status_authorized">已授权</string>
     <string name="vm_screen_off_hint">已启用不唤醒屏幕，进入全屏画面可能静止，发送操作即可恢复</string>
     <string name="usb_permission_request_hint">请在设备上授权USB调试权限</string>
-
-    <!-- 进程管理 -->
-    <string name="tools_process_not_connected">未连接设备</string>
-
-    <!-- 应用管理 -->
-    <string name="appmgr_refresh">刷新</string>
-    <string name="appmgr_error_no_device">未连接设备或设备上无应用</string>
-    <string name="appmgr_action_open">打开</string>
-    <string name="appmgr_open_success">已打开：%1$s</string>
-    <string name="appmgr_open_failed">打开失败：%1$s</string>
-
-    <!-- ADB 保活服务 -->
-    <string name="adb_keepalive_channel_name">ADB 连接</string>
-    <string name="adb_keepalive_channel_desc">保持后台 ADB 连接不断开</string>
-    <string name="adb_keepalive_notification_text">ADB 连接保持中</string>
-    <string name="pref_title_notification_keepalive">开启通知保活</string>
-    <string name="pref_summary_notification_keepalive">ADB 连接时会在状态栏显示常驻通知，保持应用在后台不被系统杀死，防止连接断开。\n请确保已允许此应用的通知权限。</string>
 
 </resources>

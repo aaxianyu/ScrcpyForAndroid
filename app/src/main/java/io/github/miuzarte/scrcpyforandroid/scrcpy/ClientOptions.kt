@@ -223,6 +223,12 @@ data class ClientOptions(
     var wmSizeMonitorId: Int = 0,
     // 投屏结束时是否还原分辨率
     var restoreWmSize: Boolean = false,
+
+    // --ignore-video-encoder-constraints
+    var ignoreVideoEncoderConstraints: Boolean = false, // to server
+
+    // --no-terminal-title
+    // var updateTerminalTitle: Boolean = true,
 ) {
     enum class KeyInjectMode(val string: String) {
         MIXED("mixed"),
@@ -645,6 +651,7 @@ data class ClientOptions(
             vdSystemDecorations = vdSystemDecorations,
             keepActive = keepActive,
             flexDisplay = flexDisplay,
+            ignoreVideoEncoderConstraints = ignoreVideoEncoderConstraints,
             list = list,
         )
     }

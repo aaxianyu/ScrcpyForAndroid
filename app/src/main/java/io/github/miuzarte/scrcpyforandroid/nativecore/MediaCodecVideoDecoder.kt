@@ -6,19 +6,21 @@ import android.util.Log
 import android.view.Surface
 
 /**
- * AnnexBDecoder
+ * MediaCodecVideoDecoder
  *
  * Purpose:
- * - Wraps Android MediaCodec for Annex-B framed codecs (H.264/H.265/AV1).
+ * - Wraps Android MediaCodec for all video codecs (H.264/H.265/AV1/VP8/VP9).
  * - Handles critical startup packets (config/keyframes) and provides callbacks
  *   for output size changes and FPS updates.
+ * - Codecs without Annex-B config packets (VP8/VP9) work natively: no CSD is
+ *   required for MediaCodec initialization.
  *
  * Threading / safety:
  * - Public methods are synchronized to allow calls from multiple threads
  *   (packet producer vs. teardown). Internally, MediaCodec callbacks and
  *   buffer queues are used on the calling thread.
  */
-class AnnexBDecoder(
+class MediaCodecVideoDecoder(
     width: Int,
     height: Int,
     outputSurface: Surface,
@@ -232,11 +234,10 @@ class AnnexBDecoder(
     }
 
     companion object {
-        private const val TAG = "AnnexBDecoder"
+        private const val TAG = "MediaCodecVideoDecoder"
         private const val MIME_AVC = "video/avc"
-        // 增大解码器输入超时，减少高码率下的丢帧
-        private const val INPUT_TIMEOUT_US = 50_000L
-        private const val CRITICAL_INPUT_TIMEOUT_US = 100_000L
+        private const val INPUT_TIMEOUT_US = 10_000L
+        private const val CRITICAL_INPUT_TIMEOUT_US = 50_000L
         private const val OUTPUT_TIMEOUT_US = 0L
         private const val FPS_WINDOW_NS = 1_000_000_000L
     }

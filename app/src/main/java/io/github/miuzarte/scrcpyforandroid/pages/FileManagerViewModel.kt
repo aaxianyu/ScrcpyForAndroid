@@ -53,10 +53,10 @@ internal class FileManagerViewModel: ViewModel() {
     )
     private val asBundle = asBundleSync.value
 
-private val _currentPath = MutableStateFlow(ROOT_REMOTE_PATH)
-val currentPath: StateFlow<String> = _currentPath.asStateFlow()
+    private val _currentPath = MutableStateFlow(ROOT_REMOTE_PATH)
+    val currentPath: StateFlow<String> = _currentPath.asStateFlow()
 
-private val pathHistory = ArrayDeque<String>().apply { addLast(ROOT_REMOTE_PATH) }
+    private val pathHistory = ArrayDeque<String>().apply { addLast(ROOT_REMOTE_PATH) }
     private val historyCapacity = 20
 
     private fun addToHistory(path: String) {
@@ -195,36 +195,40 @@ private val pathHistory = ArrayDeque<String>().apply { addLast(ROOT_REMOTE_PATH)
     private val _pendingTreeDownload = MutableStateFlow<PendingTreeDownload?>(null)
     val pendingTreeDownload: StateFlow<PendingTreeDownload?> = _pendingTreeDownload.asStateFlow()
 
-init {
-asBundleSync.start()
-viewModelScope.launch(Dispatchers.IO) {
-val initialPath = resolveInitialRemotePath()
-withContext(Dispatchers.Main) {
-_currentPath.value = initialPath
-pathHistory.clear()
-pathHistory.addLast(initialPath)
-}
-}
-viewModelScope.launch(Dispatchers.IO) {
-var lastKey: String? = AppRuntime.connectionTargetKey.value
-AppRuntime.connectionTargetKey.collect { newKey ->
-if (newKey != null && lastKey != null && newKey != lastKey) {
-cachedInitialRemotePath = null
-_directoryCache.value = emptyMap()
-val initialPath = resolveInitialRemotePath()
-withContext(Dispatchers.Main) {
-_currentPath.value = initialPath
-pathHistory.clear()
-pathHistory.addLast(initialPath)
-_isRefreshing.value = true
-}
-}
-if (newKey != null) {
-lastKey = newKey
-}
-}
-}
-}
+    init {
+        asBundleSync.start()
+        viewModelScope.launch(Dispatchers.IO) {
+            val initialPath = resolveInitialRemotePath()
+            withContext(Dispatchers.Main) {
+                _currentPath.value = initialPath
+                pathHistory.clear()
+                pathHistory.addLast(initialPath)
+            }
+        }
+        // 监听连接目标变化：切换设备时重置文件管理器状态
+        viewModelScope.launch(Dispatchers.IO) {
+            // 只记录非 null 的 key，断开时（null）不覆盖 lastKey
+            var lastKey: String? = AppRuntime.connectionTargetKey.value
+            AppRuntime.connectionTargetKey.collect { newKey ->
+                if (newKey != null && lastKey != null && newKey != lastKey) {
+                    // 设备已切换，清除缓存的初始路径并重新探测
+                    cachedInitialRemotePath = null
+                    _directoryCache.value = emptyMap()
+                    val initialPath = resolveInitialRemotePath()
+                    withContext(Dispatchers.Main) {
+                        _currentPath.value = initialPath
+                        pathHistory.clear()
+                        pathHistory.addLast(initialPath)
+                        _isRefreshing.value = true
+                    }
+                }
+                // 只在 newKey 非空时更新 lastKey，避免断开→重连序列中 lastKey 被清空
+                if (newKey != null) {
+                    lastKey = newKey
+                }
+            }
+        }
+    }
 
     override fun onCleared() {
         clearDetailsInternal()

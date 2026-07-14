@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Refresh
@@ -31,7 +30,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
@@ -294,8 +292,7 @@ private fun AppListBottomSheetItem(
                     bitmap = iconBitmap.asImageBitmap(),
                     contentDescription = entry.title.ifBlank { entry.summary ?: "" },
                     modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape),
+                        .size(26.dp),
                 )
             } else {
                 Icon(

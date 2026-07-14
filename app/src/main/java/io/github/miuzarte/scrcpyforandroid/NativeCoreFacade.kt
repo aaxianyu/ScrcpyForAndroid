@@ -9,7 +9,6 @@ import io.github.miuzarte.scrcpyforandroid.nativecore.PersistentVideoRenderer
 import io.github.miuzarte.scrcpyforandroid.nativecore.VideoDecoderController
 import io.github.miuzarte.scrcpyforandroid.scrcpy.ClientOptions
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
-import io.github.miuzarte.scrcpyforandroid.scrcpy.Shared.Codec
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.storage.Storage
 import kotlinx.coroutines.CoroutineScope
@@ -233,7 +232,7 @@ object NativeCoreFacade {
                 val info = scrcpy.currentSessionState.value ?: return@withLock
                 if (info.width <= 0 || info.height <= 0) return@withLock
 
-                val mime = mimeForCodec(info.codec)
+                val mime = info.codec?.mime ?: "video/avc"
                 if (!DecoderCapabilities.isSizeSupported(mime, info.width, info.height)) {
                     Log.w(
                         TAG,
@@ -269,7 +268,6 @@ object NativeCoreFacade {
                 "videoFeed(): packets=$packetCount key=${packet.isKeyFrame} cfg=${packet.isConfig} usable=${controller.isDecoderUsable()}",
             )
         }
-
         // 带宽统计
         val nowNs = System.nanoTime()
         bandwidthWindowBytes += packet.data.size
@@ -366,13 +364,6 @@ object NativeCoreFacade {
         runCatching { scrcpy.stop(Scrcpy.StopReason.USER) }
         Log.i(TAG, "restartSessionWith(): starting new session with max_size=${options.maxSize}")
         runCatching { scrcpy.start(options) }
-    }
-
-    private fun mimeForCodec(codec: Codec?): String = when (codec) {
-        Codec.H264 -> "video/avc"
-        Codec.H265 -> "video/hevc"
-        Codec.AV1 -> "video/av01"
-        else -> "video/avc"
     }
 
     private const val TAG = "NativeCoreFacade"

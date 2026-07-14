@@ -50,7 +50,7 @@ android {
                 enableV1Signing = true
                 enableV2Signing = true
                 enableV3Signing = true
-                enableV4Signing = true
+                enableV4Signing = false
             }
         }
     }
@@ -59,8 +59,8 @@ android {
         applicationId = "io.github.miuzarte.scrcpyforandroid"
         minSdk = 26
         targetSdk = 37
-        versionCode = 35
-        versionName = "0.4.5-enhanced"
+versionCode = 36
+versionName = "0.5.0-enhanced"
 
         externalNativeBuild {
             cmake {
@@ -107,6 +107,17 @@ android {
         compose = true
         prefab = true
         buildConfig = true
+    }
+
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/LICENSE.md",
+                "META-INF/LICENSE",
+                "META-INF/NOTICE.md",
+                "META-INF/NOTICE",
+            )
+        }
     }
 
     externalNativeBuild {
@@ -171,12 +182,12 @@ dependencies {
 }
 
 val scrcpyServerAssetDir = "${project.projectDir}/src/main/assets/bin"
-val scrcpyServerAssetFile = "$scrcpyServerAssetDir/scrcpy-server-v4.0"
+val scrcpyServerAssetFile = "$scrcpyServerAssetDir/scrcpy-server-v4.1"
 val scrcpyServerDownloadUrls = listOf(
-    "https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-server-v4.0",
-    "https://mirror.ghproxy.com/https://github.com/Genymobile/scrcpy/releases/download/v4.0/scrcpy-server-v4.0",
+    "https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-server-v4.1",
+    "https://mirror.ghproxy.com/https://github.com/Genymobile/scrcpy/releases/download/v4.1/scrcpy-server-v4.1",
 )
-val scrcpyServerSha256 = "84924bd564a1eb6089c872c7521f968058977f91f5ff02514a8c74aff3210f3a"
+val scrcpyServerSha256 = "deacb991ed2509715160ffdc7907e47b4160eb30d1566217e9047fd5b8850cae"
 
 val downloadScrcpyServer by tasks.registering {
     description = "Download scrcpy-server binary from GitHub releases if absent or SHA256 mismatch"
@@ -212,7 +223,7 @@ val downloadScrcpyServer by tasks.registering {
             var lastError: Exception? = null
             var downloaded = false
             for (url in urls) {
-                logger.lifecycle("Downloading scrcpy-server-v4.0 from $url ...")
+                logger.lifecycle("Downloading scrcpy-server-v4.1 from $url ...")
                 try {
                     URI(url).toURL().openStream().use { input ->
                         file.outputStream().use { output ->
@@ -234,7 +245,7 @@ val downloadScrcpyServer by tasks.registering {
             }
             if (!downloaded) {
                 throw GradleException(
-                    "Failed to download scrcpy-server-v4.0 from all mirrors.\n" +
+                    "Failed to download scrcpy-server-v4.1 from all mirrors.\n" +
                     "  Tried: ${urls.joinToString("\n         ")}\n" +
                     "  You may download it manually and place it at: ${file.absolutePath}\n" +
                     "  If you are behind a proxy, check your Gradle proxy settings\n" +
@@ -242,9 +253,9 @@ val downloadScrcpyServer by tasks.registering {
                     lastError
                 )
             }
-            logger.lifecycle("scrcpy-server-v4.0 downloaded and verified.")
+            logger.lifecycle("scrcpy-server-v4.1 downloaded and verified.")
         } else {
-            logger.lifecycle("scrcpy-server-v4.0 exists with correct SHA256, skip download.")
+            logger.lifecycle("scrcpy-server-v4.1 exists with correct SHA256, skip download.")
         }
     }
 }

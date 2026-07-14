@@ -300,6 +300,10 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
             booleanPreferencesKey("wake_screen_on_fullscreen"),
             true,
         )
+        val IGNORE_VIDEO_ENCODER_CONSTRAINTS = Pair(
+            booleanPreferencesKey("ignore_video_encoder_constraints"),
+            false,
+        )
 
         fun defaultBundle() = Bundle(
             crop = CROP.defaultValue,
@@ -372,6 +376,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
             keepActive = KEEP_ACTIVE.defaultValue,
             flexDisplay = FLEX_DISPLAY.defaultValue,
             wakeScreenOnFullscreen = WAKE_SCREEN_ON_FULLSCREEN.defaultValue,
+            ignoreVideoEncoderConstraints = IGNORE_VIDEO_ENCODER_CONSTRAINTS.defaultValue,
         )
     }
 
@@ -447,6 +452,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         val keepActive: Boolean,
         val flexDisplay: Boolean,
         val wakeScreenOnFullscreen: Boolean,
+        val ignoreVideoEncoderConstraints: Boolean,
     ) : Parcelable {
     }
 
@@ -520,6 +526,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         bundleField(KEEP_ACTIVE) { it.keepActive },
         bundleField(FLEX_DISPLAY) { it.flexDisplay },
         bundleField(WAKE_SCREEN_ON_FULLSCREEN) { it.wakeScreenOnFullscreen },
+        bundleField(IGNORE_VIDEO_ENCODER_CONSTRAINTS) { it.ignoreVideoEncoderConstraints },
     )
 
     val bundleState: StateFlow<Bundle> = createBundleState(::bundleFromPreferences)
@@ -595,6 +602,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         keepActive = preferences.read(KEEP_ACTIVE),
         flexDisplay = preferences.read(FLEX_DISPLAY),
         wakeScreenOnFullscreen = preferences.read(WAKE_SCREEN_ON_FULLSCREEN),
+        ignoreVideoEncoderConstraints = preferences.read(IGNORE_VIDEO_ENCODER_CONSTRAINTS),
     )
 
     suspend fun loadBundle() = loadBundle(::bundleFromPreferences)
@@ -682,6 +690,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         cameraTorch = bundle.cameraTorch,
         keepActive = bundle.keepActive,
         flexDisplay = bundle.flexDisplay,
+        ignoreVideoEncoderConstraints = bundle.ignoreVideoEncoderConstraints,
     )
 }
 
@@ -757,6 +766,7 @@ internal fun encodeBundleToJson(bundle: ScrcpyOptions.Bundle): JSONObject =
         .put("keepActive", bundle.keepActive)
         .put("flexDisplay", bundle.flexDisplay)
         .put("wakeScreenOnFullscreen", bundle.wakeScreenOnFullscreen)
+        .put("ignoreVideoEncoderConstraints", bundle.ignoreVideoEncoderConstraints)
 
 internal fun decodeBundleFromJson(bundleJson: JSONObject?): ScrcpyOptions.Bundle {
     val json = bundleJson ?: return ScrcpyOptions.defaultBundle()
@@ -1040,6 +1050,10 @@ internal fun decodeBundleFromJson(bundleJson: JSONObject?): ScrcpyOptions.Bundle
         wakeScreenOnFullscreen = json.optBooleanOrDefault(
             "wakeScreenOnFullscreen",
             ScrcpyOptions.WAKE_SCREEN_ON_FULLSCREEN.defaultValue,
+        ),
+        ignoreVideoEncoderConstraints = json.optBooleanOrDefault(
+            "ignoreVideoEncoderConstraints",
+            ScrcpyOptions.IGNORE_VIDEO_ENCODER_CONSTRAINTS.defaultValue,
         ),
     )
 }
