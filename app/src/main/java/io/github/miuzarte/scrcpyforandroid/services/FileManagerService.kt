@@ -118,7 +118,13 @@ object FileManagerService {
 
     suspend fun stat(path: String): RemoteFileStat = withContext(Dispatchers.IO) {
         val output = NativeAdbService.shell("stat ${quoteShellArg(path)}")
-        parseStat(path, output)
+        // Android 5 的 /system/bin/sh 没有 stat 命令，回退到 ls -ld 解析
+        if (output.contains("stat: not found")) {
+            val lsOutput = NativeAdbService.shell("ls -ld ${quoteShellArg(path)} 2>&1")
+            parseStatFromLs(path, lsOutput)
+        } else {
+            parseStat(path, output)
+        }
     }
 
     suspend fun uploadFile(
@@ -487,6 +493,64 @@ object FileManagerService {
             changeTime = changeTime,
             device = device,
             deviceType = deviceType,
+            symlinkTarget = symlinkTarget,
+            rawOutput = rawOutput.trim(),
+        )
+    }
+
+    /**
+     * Android 5 回退：从 `ls -ld` 输出解析文件信息
+     *
+     * Android 5 的 toolbox 没有 `stat` 命令，使用 `ls -ld <path>` 获取基本信息。
+     * 输出格式（Android 5 toolbox）：
+     *   permissions  owner  group  [size]  date  time  name
+     *   drwxrwx--x root sdcard_r 2026-07-14 10:33 /storage/sdcard
+     *   -rwxrwx--- root sdcard_r 6 2026-07-14 10:33 test.txt
+     */
+    private fun parseStatFromLs(path: String, rawOutput: String): RemoteFileStat {
+        val line = rawOutput.lineSequence().firstOrNull { it.isNotBlank() } ?: ""
+        // 复用 listLineRegexLegacy（格式相同：permissions owner group [size] date time name）
+        val match = listLineRegexLegacy.matchEntire(line.trim())
+        val permissions = match?.groupValues?.getOrNull(1)
+        val owner = match?.groupValues?.getOrNull(2)
+        val group = match?.groupValues?.getOrNull(3)
+        val sizeBytes = match?.groupValues?.getOrNull(4)?.toLongOrNull()
+        val dateStr = match?.groupValues?.getOrNull(5)
+        val timeStr = match?.groupValues?.getOrNull(6)
+        val nameField = match?.groupValues?.getOrNull(7)
+        val rawName = nameField?.substringBefore(" -> ") ?: path.substringAfterLast('/')
+        val symlinkTarget = nameField?.substringAfter(" -> ", missingDelimiterValue = "")
+            ?.takeIf { it.isNotBlank() }
+        val isDirectory = permissions?.startsWith("d") == true
+        val typeLabel = when {
+            permissions == null -> null
+            isDirectory -> "directory"
+            permissions.startsWith("l") -> "symbolic link"
+            permissions.startsWith("-") -> "regular file"
+            else -> null
+        }
+        val modifyTime = if (dateStr != null && timeStr != null) "${dateStr} ${timeStr}" else null
+
+        return RemoteFileStat(
+            path = path,
+            name = rawName,
+            typeLabel = typeLabel,
+            sizeBytes = sizeBytes,
+            blocks = null,
+            ioBlockBytes = null,
+            inode = null,
+            hardLinks = null,
+            octalMode = null,
+            permissions = permissions,
+            uid = null,
+            uidName = owner,
+            gid = null,
+            gidName = group,
+            accessTime = null,
+            modifyTime = modifyTime,
+            changeTime = null,
+            device = null,
+            deviceType = null,
             symlinkTarget = symlinkTarget,
             rawOutput = rawOutput.trim(),
         )
