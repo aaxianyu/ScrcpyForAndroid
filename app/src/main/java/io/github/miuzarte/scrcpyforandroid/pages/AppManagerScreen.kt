@@ -1023,14 +1023,13 @@ private fun AppIconPlaceholder(label: String, packageName: String, iconBase64: S
     }
 
     if (bitmap != null) {
-        Image(
-            bitmap = bitmap.asImageBitmap(),
-            contentDescription = label,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape),
-        )
+Image(
+bitmap = bitmap.asImageBitmap(),
+contentDescription = label,
+contentScale = ContentScale.Fit,
+modifier = Modifier
+.size(40.dp),
+)
     } else {
         val color = remember(packageName) {
             IconColors[Math.abs(packageName.hashCode()) % IconColors.size]
@@ -1671,14 +1670,13 @@ private fun LocalAppItem(
         ) {
             val bitmap = app.icon
             if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = app.label,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape),
-                )
+Image(
+bitmap = bitmap.asImageBitmap(),
+contentDescription = app.label,
+contentScale = ContentScale.Fit,
+modifier = Modifier
+.size(36.dp),
+)
             } else {
                 val color = remember(app.packageName) {
                     IconColors[Math.abs(app.packageName.hashCode()) % IconColors.size]

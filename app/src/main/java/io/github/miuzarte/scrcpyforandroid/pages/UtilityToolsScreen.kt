@@ -1475,14 +1475,13 @@ private fun AppProcessRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = process.appName,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape),
-                )
+Image(
+bitmap = bitmap.asImageBitmap(),
+contentDescription = process.appName,
+contentScale = ContentScale.Fit,
+modifier = Modifier
+.size(40.dp),
+)
             } else {
                 val appColor = remember(process.packageName) {
                     IconColors[Math.abs(process.packageName.hashCode()) % IconColors.size]
