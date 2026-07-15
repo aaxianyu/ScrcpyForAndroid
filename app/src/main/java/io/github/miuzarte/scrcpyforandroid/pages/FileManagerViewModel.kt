@@ -205,25 +205,26 @@ internal class FileManagerViewModel: ViewModel() {
                 pathHistory.addLast(initialPath)
             }
         }
-        // 监听连接目标变化：切换设备时重置文件管理器状态
+        // 监听连接目标变化：首次连接或切换设备时重置文件管理器状态
         viewModelScope.launch(Dispatchers.IO) {
             // 只记录非 null 的 key，断开时（null）不覆盖 lastKey
             var lastKey: String? = AppRuntime.connectionTargetKey.value
             AppRuntime.connectionTargetKey.collect { newKey ->
-                if (newKey != null && lastKey != null && newKey != lastKey) {
-                    // 设备已切换，清除缓存的初始路径并重新探测
-                    cachedInitialRemotePath = null
-                    _directoryCache.value = emptyMap()
-                    val initialPath = resolveInitialRemotePath()
-                    withContext(Dispatchers.Main) {
-                        _currentPath.value = initialPath
-                        pathHistory.clear()
-                        pathHistory.addLast(initialPath)
-                        _isRefreshing.value = true
-                    }
-                }
-                // 只在 newKey 非空时更新 lastKey，避免断开→重连序列中 lastKey 被清空
                 if (newKey != null) {
+                    val isInitialConnection = lastKey == null
+                    val isDeviceSwitch = lastKey != null && newKey != lastKey
+                    if (isInitialConnection || isDeviceSwitch) {
+                        // 首次连接或设备切换：清除缓存的初始路径并重新探测
+                        cachedInitialRemotePath = null
+                        _directoryCache.value = emptyMap()
+                        val initialPath = resolveInitialRemotePath()
+                        withContext(Dispatchers.Main) {
+                            _currentPath.value = initialPath
+                            pathHistory.clear()
+                            pathHistory.addLast(initialPath)
+                            _isRefreshing.value = true
+                        }
+                    }
                     lastKey = newKey
                 }
             }

@@ -94,7 +94,7 @@
 | `pages/DeviceTabScreen.kt` | +131/-13 | 集成 USB 设备卡片、扫描设备按钮、应用搜索/收藏 |
 | `pages/DeviceTabViewModel.kt` | +422/-11 | 新增分辨率/唤醒/应用/DPI/连接状态管理等 |
 | `pages/SettingsScreen.kt` | +265/-55 | 新增应用图标显示开关、命令书签、语言选择、Snackbar 时长、熄屏待机、悬浮球透明度、通知保活等 |
-| `pages/MainScreen.kt` | +72/-15 | 新增应用管理入口、实用工具入口、守护进程模式 |
+| `pages/MainScreen.kt` | +72/-15 | 新增应用管理入口、实用工具入口、守护进程模式、Scrcpy 实例单例化 |
 | `pages/FullscreenControlScreen.kt` | +167/-52 | 新增虚拟按钮显示图标、USB 断开按钮、唤醒检测优化 |
 | `pages/ScrcpyAllOptionsScreen.kt` | +233/-27 | 新增应用收藏置顶、界面优化 |
 | `pages/FileManagerScreen.kt` | +73/-9 | 新增应用管理入口、自动刷新 |
@@ -128,7 +128,7 @@
 |------|------|
 | `AndroidManifest.xml` | +43/-1（USB host 权限、设备过滤器声明、Activity 启动标志等） |
 | `.gitignore` | +16（添加构建产物忽略规则） |
-| `scrcpy/Scrcpy.kt` | +101/-2（锁屏检测、唤醒逻辑、重连优化） |
+| `scrcpy/Scrcpy.kt` | +101/-2（锁屏检测、唤醒逻辑、重连优化、配置参数 @Volatile var 化） |
 | `StreamActivity.kt` | +20/-1（NEW_TASK + CLEAR_TOP 启动标志） |
 | `MainActivity.kt` | +18/-0（语言切换、USB 监听器启动、adjustResize） |
 
@@ -154,4 +154,7 @@
 | 全局配置名称动态翻译 | 设置页配置名实时翻译 |
 | Android 5/6 兼容性 | ps 命令兼容、printf→echo、ls 目录列表解析、动态初始路径 |
 | 文件管理器设备切换刷新 | 切换设备时自动清除缓存并重新探测初始路径 |
+| 低延迟音频开关全屏修复 | 切换低延迟音频等配置时 Scrcpy 实例不再重建，全屏正常进入 |
+| 文件管理器首次连接跳转 | 未连接设备时在 `/` 路径，连接后自动跳转到内部存储路径 |
+| 应用管理错误页下拉刷新 | 错误页支持下拉刷新，未连接设备时显示"返回设备页"按钮 |
 | 输入框光标修复 | OverlayDialog 中 TextField 光标位置保持 |
