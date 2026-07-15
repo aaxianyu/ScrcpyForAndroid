@@ -98,28 +98,42 @@ object FileManagerService {
     )
     private val sizeFormatter = DecimalFormat("0.00")
 
-    suspend fun listDirectory(path: String): List<RemoteFileEntry> = withContext(Dispatchers.IO) {
-        NativeAdbService.ensureConnectionResponsive()
-        val command = "ls -aFil ${quoteShellArg(pathForListCommand(path))}"
-        val output = NativeAdbService.shell(command)
-        output.lineSequence()
-            .map(String::trimEnd)
-            .filter { it.isNotBlank() }
-            .filterNot { it.startsWith("total ") }
-            .filterNot { it.startsWith("lstat ") }
-            .mapNotNull { parseListEntry(path, it) ?: parseListEntryAndroid5(path, it) }
-            .filterNot { it.name == "." || it.name == ".." }
-            .sortedWith(
-                compareByDescending<RemoteFileEntry> { it.isDirectory }
-                    .thenBy { it.name.lowercase() },
-            )
-            .toList()
-    }
+suspend fun listDirectory(path: String): List<RemoteFileEntry> = withContext(Dispatchers.IO) {
+NativeAdbService.ensureConnectionResponsive()
+val listPath = pathForListCommand(path)
+// Android 7+ (toybox) 支持 "ls -aFil"，Android 5/6 (toolbox) 仅支持 "ls -la"
+var output = NativeAdbService.shell("ls -aFil ${quoteShellArg(listPath)}")
+var entries = output.lineSequence()
+.map(String::trimEnd)
+.filter { it.isNotBlank() }
+.filterNot { it.startsWith("total ") }
+.filterNot { it.startsWith("lstat ") }
+.mapNotNull { parseListEntry(path, it) ?: parseListEntryAndroid5(path, it) }
+.toList()
+if (entries.isEmpty()) {
+// 回退到 Android 5/6 兼容的 ls -la
+output = NativeAdbService.shell("ls -la ${quoteShellArg(listPath)}")
+entries = output.lineSequence()
+.map(String::trimEnd)
+.filter { it.isNotBlank() }
+.filterNot { it.startsWith("total ") }
+.filterNot { it.startsWith("lstat ") }
+.mapNotNull { parseListEntryLegacy(path, it) }
+.toList()
+}
+entries
+.filterNot { it.name == "." || it.name == ".." }
+.sortedWith(
+compareByDescending<RemoteFileEntry> { it.isDirectory }
+.thenBy { it.name.lowercase() },
+)
+.toList()
+}
 
     suspend fun stat(path: String): RemoteFileStat = withContext(Dispatchers.IO) {
         val output = NativeAdbService.shell("stat ${quoteShellArg(path)}")
         // Android 5 的 /system/bin/sh 没有 stat 命令，回退到 ls -ld 解析
-        if (output.contains("stat: not found")) {
+        if (output.contains("stat: not found") || output.contains("stat: not found\n")) {
             val lsOutput = NativeAdbService.shell("ls -ld ${quoteShellArg(path)} 2>&1")
             parseStatFromLs(path, lsOutput)
         } else {
@@ -360,6 +374,39 @@ object FileManagerService {
             owner = match.groupValues[4].ifBlank { null },
             group = match.groupValues[5].ifBlank { null },
             sizeBytes = match.groupValues[6].toLongOrNull(),
+            modifiedAt = dateTime,
+            name = cleanedName,
+            fullPath = fullPath,
+            symlinkTarget = symlinkTarget,
+            kind = guessKind(cleanedName, isDirectory, permissions),
+            isDirectory = isDirectory,
+        )
+    }
+
+    // Android 5/6 toolbox ls -la 输出格式解析（无 inode，无 hardlinks，目录无 size）
+    private fun parseListEntryLegacy(parentPath: String, rawLine: String): RemoteFileEntry? {
+        val match = listLineRegexLegacy.matchEntire(rawLine) ?: return null
+        val permissions = match.groupValues[1]
+        val dateTime = runCatching {
+            LocalDateTime.parse(
+                "${match.groupValues[5]} ${match.groupValues[6]}",
+                listTimeFormatter,
+            )
+        }.getOrNull()
+        val nameField = match.groupValues[7]
+        val rawName = nameField.substringBefore(" -> ")
+        val symlinkTarget = nameField.substringAfter(" -> ", missingDelimiterValue = "")
+            .takeIf { it.isNotBlank() }
+        val cleanedName = stripListSuffix(unescapeLsName(rawName), permissions)
+        val fullPath = joinRemotePath(parentPath, cleanedName)
+        val isDirectory = permissions.startsWith("d") || rawName.endsWith("/")
+        return RemoteFileEntry(
+            inode = null,
+            permissions = permissions,
+            hardLinks = null,
+            owner = match.groupValues[2].ifBlank { null },
+            group = match.groupValues[3].ifBlank { null },
+            sizeBytes = match.groupValues[4].toLongOrNull(),
             modifiedAt = dateTime,
             name = cleanedName,
             fullPath = fullPath,

@@ -236,8 +236,9 @@ class MediaCodecVideoDecoder(
     companion object {
         private const val TAG = "MediaCodecVideoDecoder"
         private const val MIME_AVC = "video/avc"
-        private const val INPUT_TIMEOUT_US = 10_000L
-        private const val CRITICAL_INPUT_TIMEOUT_US = 50_000L
+// 增大解码器输入超时，减少高码率下的丢帧
+private const val INPUT_TIMEOUT_US = 50_000L
+private const val CRITICAL_INPUT_TIMEOUT_US = 100_000L
         private const val OUTPUT_TIMEOUT_US = 0L
         private const val FPS_WINDOW_NS = 1_000_000_000L
     }
