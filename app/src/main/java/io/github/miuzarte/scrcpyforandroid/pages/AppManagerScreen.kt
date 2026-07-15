@@ -178,19 +178,25 @@ internal class AppManagerViewModel : ViewModel() {
     private val _exporting = MutableStateFlow(false)
     val exporting: StateFlow<Boolean> = _exporting.asStateFlow()
 
+    private val _notConnected = MutableStateFlow(false)
+    val notConnected: StateFlow<Boolean> = _notConnected.asStateFlow()
+
     fun loadApps(fetchIcons: Boolean = true) {
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
+            _notConnected.value = false
             try {
                 val result = AppManagerService.loadAllApps(fetchIcons)
                 _userApps.value = result.userApps
                 _systemApps.value = result.systemApps
                 if (result.userApps.isEmpty() && result.systemApps.isEmpty()) {
                     _error.value = AppRuntime.stringResource(R.string.appmgr_error_no_device)
+                    _notConnected.value = true
                 }
             } catch (e: Exception) {
                 _error.value = e.message ?: AppRuntime.stringResource(R.string.appmgr_error_no_device)
+                _notConnected.value = true
             } finally {
                 _loading.value = false
             }
@@ -305,6 +311,7 @@ internal class AppManagerViewModel : ViewModel() {
 fun AppManagerScreen(
     onBack: () -> Unit,
     scrcpy: Scrcpy,
+    onNavigateToDeviceTab: () -> Unit = {},
 ) {
     val viewModel = remember { AppManagerViewModel() }
     val scope = rememberCoroutineScope()
@@ -326,6 +333,7 @@ fun AppManagerScreen(
     val selectedApp by viewModel.selectedApp.collectAsState()
     val uploading by viewModel.uploading.collectAsState()
     val exporting by viewModel.exporting.collectAsState()
+    val notConnected by viewModel.notConnected.collectAsState()
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showSearch by rememberSaveable { mutableStateOf(false) }
@@ -586,28 +594,44 @@ fun AppManagerScreen(
                     }
                 }
                 error != null -> {
-                    Box(
+                    LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Warning,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MiuixTheme.colorScheme.error,
-                            )
-                            Text(
-                                text = error!!,
-                                color = MiuixTheme.colorScheme.error,
-                            )
-TextButton(
-text = stringResource(R.string.appmgr_refresh),
-onClick = { viewModel.loadApps() },
-)
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .fillParentMaxHeight(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Warning,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(48.dp),
+                                        tint = MiuixTheme.colorScheme.error,
+                                    )
+                                    Text(
+                                        text = error!!,
+                                        color = MiuixTheme.colorScheme.error,
+                                    )
+                                    if (notConnected) {
+                                        TextButton(
+                                            text = stringResource(R.string.appmgr_go_to_device),
+                                            onClick = onNavigateToDeviceTab,
+                                        )
+                                    } else {
+                                        TextButton(
+                                            text = stringResource(R.string.appmgr_refresh),
+                                            onClick = { viewModel.loadApps() },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

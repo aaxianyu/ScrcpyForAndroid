@@ -714,12 +714,18 @@ fun MainScreen() {
             )
         }
 
-        entry(RootScreen.AppManager) {
-            AppManagerScreen(
-                onBack = rootNavigator.pop,
-                scrcpy = scrcpy,
-            )
-        }
+entry(RootScreen.AppManager) {
+AppManagerScreen(
+onBack = rootNavigator.pop,
+scrcpy = scrcpy,
+onNavigateToDeviceTab = {
+while (rootBackStack.size > 1) {
+rootNavigator.pop()
+}
+navigateToTab(MainBottomTabDestination.Devices)
+},
+)
+}
 
         entry(RootScreen.UtilityTools) {
             UtilityToolsScreen(

@@ -696,6 +696,7 @@
     <string name="appmgr_loading">Loading apps…</string>
     <string name="appmgr_error_no_device">No device connected or no apps on device</string>
     <string name="appmgr_refresh">Refresh</string>
+    <string name="appmgr_go_to_device">Go to device page</string>
     <string name="appmgr_action_open">Open</string>
     <string name="appmgr_open_success">Opened: %1$s</string>
     <string name="appmgr_open_failed">Open failed: %1$s</string>

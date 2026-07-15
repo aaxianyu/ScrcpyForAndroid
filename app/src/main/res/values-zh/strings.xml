@@ -695,6 +695,7 @@
     <string name="appmgr_loading">加载应用列表…</string>
     <string name="appmgr_error_no_device">未连接设备或设备上无应用</string>
     <string name="appmgr_refresh">刷新</string>
+    <string name="appmgr_go_to_device">返回设备页</string>
     <string name="appmgr_action_open">打开</string>
     <string name="appmgr_open_success">已打开：%1$s</string>
     <string name="appmgr_open_failed">打开失败：%1$s</string>
