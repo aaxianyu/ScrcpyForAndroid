@@ -11,8 +11,4 @@
 - [ ] 激活应用功能似乎不太可用？
 - [ ]低版本安卓兼容（手上没有Android14以下设备，搁置）
 
-## PARAMS
-
-- ~~orientation locking~~
-
 ## FEATURES
