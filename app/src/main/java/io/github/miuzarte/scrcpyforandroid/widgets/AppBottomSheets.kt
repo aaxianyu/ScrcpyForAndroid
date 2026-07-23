@@ -37,9 +37,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
 import android.util.Base64
-import com.github.promeg.pinyinhelper.Pinyin
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
+import io.github.miuzarte.scrcpyforandroid.utils.AppSortUtils
 import top.yukonga.miuix.kmp.basic.DropdownColors
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -65,50 +65,6 @@ data class AppListEntry(
     val onClick: () -> Unit,
     val onToggleFavorite: (() -> Unit)? = null,
 )
-
-private data class AppSortToken(
-    val priority: Int,
-    val value: String,
-)
-
-private fun appListSortKey(entry: AppListEntry): String {
-    val label = entry.title.takeIf { it.isNotBlank() } ?: entry.key
-    val tokens = label.map { char ->
-        when {
-            char.code <= 0x7F -> AppSortToken(
-                priority = 0,
-                value = char.lowercaseChar().toString(),
-            )
-            Pinyin.isChinese(char) -> AppSortToken(
-                priority = 1,
-                value = Pinyin.toPinyin(char).lowercase(Locale.ROOT),
-            )
-            else -> AppSortToken(
-                priority = 2,
-                value = char.lowercaseChar().toString(),
-            )
-        }
-    }
-    val firstToken = tokens.firstOrNull { it.value.any(Char::isLetterOrDigit) }
-        ?: tokens.firstOrNull()
-    val firstLetter = firstToken
-        ?.value
-        ?.firstOrNull(Char::isLetterOrDigit)
-        ?: Char.MAX_VALUE
-
-    return buildString {
-        append(firstLetter)
-        append('\u0000')
-        append(firstToken?.priority ?: 2)
-        append('\u0000')
-        tokens.forEach { token ->
-            append(token.value)
-            append('\u0000')
-        }
-        append('\u0001')
-        append(entry.key.lowercase(Locale.ROOT))
-    }
-}
 
 @Composable
 fun AppListBottomSheet(
@@ -156,7 +112,7 @@ fun AppListBottomSheet(
                 entry.key.lowercase(Locale.ROOT).contains(query)
         }
         val (favorites, others) = filtered.partition { it.favorite }
-        favorites.sortedBy { appListSortKey(it) } + others.sortedBy { appListSortKey(it) }
+        favorites.sortedBy { AppSortUtils.sortKey(it.title, it.key) } + others.sortedBy { AppSortUtils.sortKey(it.title, it.key) }
     }
 
     OverlayBottomSheet(

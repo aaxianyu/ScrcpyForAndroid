@@ -71,6 +71,7 @@ import io.github.miuzarte.scrcpyforandroid.services.AppManagerService
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.RemoteAppInfo
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
+import io.github.miuzarte.scrcpyforandroid.utils.AppSortUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -896,8 +897,8 @@ AppRuntime.snackbar(R.string.appmgr_open_failed, appToOpen.label)
                                     )
                                 } catch (e: Exception) { null }
                             }
-                            .filter { !it.isSystem }
-                            .sortedBy { it.label.lowercase() }
+.filter { !it.isSystem }
+.sortedBy { AppSortUtils.sortKey(it.label, it.packageName) }
                         localApps = apps
                         localAppsLoading = false
                         // 异步加载图标

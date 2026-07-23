@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
+import io.github.miuzarte.scrcpyforandroid.utils.AppSortUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.DecimalFormat
@@ -182,10 +183,10 @@ object AppManagerService {
             if (isSystem) systemApps.add(info) else userApps.add(info)
         }
 
-        AllAppsResult(
-            userApps.sortedBy { it.label.lowercase() },
-            systemApps.sortedBy { it.label.lowercase() }
-        )
+AllAppsResult(
+userApps.sortedBy { AppSortUtils.sortKey(it.label, it.packageName) },
+systemApps.sortedBy { AppSortUtils.sortKey(it.label, it.packageName) }
+)
     }
 
     data class HelperResult(val label: String, val iconBase64: String?, val versionName: String?, val sizeBytes: Long)
