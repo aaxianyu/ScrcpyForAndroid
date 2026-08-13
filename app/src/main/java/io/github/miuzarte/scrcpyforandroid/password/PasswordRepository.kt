@@ -21,6 +21,7 @@ object PasswordRepository {
     private const val NAME_SUFFIX = ".name"
     private const val PASSWORD_SUFFIX = ".password"
     private const val CREATED_WITH_AUTH_SUFFIX = ".created_with_auth"
+    private const val AUTO_ENTER_SUFFIX = ".auto_enter"
 
     class PasswordStorageCorruptedException(cause: Throwable): Exception(cause)
 
@@ -66,6 +67,7 @@ object PasswordRepository {
                     name = name,
                     cipherText = rawPassword?.toCharArray(),
                     createdWithAuth = parseCreatedState(all[createdWithAuthKey(id)]),
+                    autoEnter = all[autoEnterKey(id)] as? Boolean ?: false,
                 )
             }
         }.getOrElse { throwable ->
@@ -77,12 +79,14 @@ object PasswordRepository {
         name: String,
         cipherText: CharArray,
         createdWithAuth: PasswordCreatedState,
+        autoEnter: Boolean = false,
     ): PasswordEntry {
         val entry = PasswordEntry(
             id = UUID.randomUUID().toString(),
             name = name,
             cipherText = cipherText.copyOf(),
             createdWithAuth = createdWithAuth,
+            autoEnter = autoEnter,
         )
         add(entry)
         return entry
@@ -103,6 +107,13 @@ object PasswordRepository {
         refresh()
     }
 
+    fun setAutoEnter(id: String, autoEnter: Boolean) {
+        prefs.edit {
+            putBoolean(autoEnterKey(id), autoEnter)
+        }
+        refresh()
+    }
+
     fun updateOrder(ids: List<String>) {
         prefs.edit {
             putString(KEY_ORDER, ids.joinToString(","))
@@ -115,6 +126,7 @@ object PasswordRepository {
             remove(nameKey(id))
                 .remove(passwordKey(id))
                 .remove(createdWithAuthKey(id))
+                .remove(autoEnterKey(id))
                 .putString(KEY_ORDER, getOrderedIds().filterNot { it == id }.joinToString(","))
         }
         refresh()
@@ -141,6 +153,7 @@ object PasswordRepository {
             prefs.edit {
                 putString(nameKey(entry.id), entry.name)
                 putString(createdWithAuthKey(entry.id), entry.createdWithAuth.name)
+                putBoolean(autoEnterKey(entry.id), entry.autoEnter)
                 if (password == null) {
                     remove(passwordKey(entry.id))
                 } else {
@@ -165,6 +178,7 @@ object PasswordRepository {
     private fun nameKey(id: String) = "$ENTRY_PREFIX$id$NAME_SUFFIX"
     private fun passwordKey(id: String) = "$ENTRY_PREFIX$id$PASSWORD_SUFFIX"
     private fun createdWithAuthKey(id: String) = "$ENTRY_PREFIX$id$CREATED_WITH_AUTH_SUFFIX"
+    private fun autoEnterKey(id: String) = "$ENTRY_PREFIX$id$AUTO_ENTER_SUFFIX"
 
     private fun parseCreatedState(raw: Any?): PasswordCreatedState {
         return when (raw) {

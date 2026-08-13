@@ -65,7 +65,7 @@ fun PasswordPickerPopupContent(onDismissRequest: () -> Unit) {
                 globalRequiresAuth = appSettingsBundle.passwordRequireAuth,
                 authTitle = textAuthFillTitle,
             ).onSuccess { password ->
-                InjectionController.inject(password)
+                InjectionController.inject(password, entry.autoEnter)
                 onDismissRequest()
             }.onFailure { e ->
                 AppRuntime.snackbar(

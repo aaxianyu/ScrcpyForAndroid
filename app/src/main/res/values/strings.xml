@@ -427,6 +427,8 @@
     <string name="password_rename">Rename password</string>
     <string name="password_lockscreen_label">Lockscreen password</string>
     <string name="password_disclaimer">Disclaimer\n0. Cannot guarantee there are no bugs.\n1. The protection boundary of this feature only includes encrypted storage, on-demand authentication, and memory cleanup after use; it does not constitute an absolute security guarantee.\n2. Under root / posed / hook / debugger / malicious input method environments, passwords may still leak.\n3. This feature does not bypass system lock screen authentication; it is only for devices you have legally authorized control over.\n4. Disabling \"Require authentication when filling passwords\" will significantly reduce security; please choose carefully</string>
+    <string name="password_auto_enter">Auto press Enter after filling</string>
+    <string name="password_auto_enter_detail">Automatically send an Enter key after the password is filled</string>
 
     <!-- File Manager -->
     <string name="fm_cd_parent">Parent directory</string>

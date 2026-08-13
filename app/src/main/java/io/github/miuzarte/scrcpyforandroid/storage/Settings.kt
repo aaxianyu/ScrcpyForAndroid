@@ -6,6 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
@@ -39,16 +40,16 @@ abstract class Settings(
         this[pair.key] ?: pair.defaultValue
 
     protected interface BundleField<B> {
-        suspend fun persist(settings: Settings, current: B, new: B)
+        fun applyTo(preferences: MutablePreferences, current: B, new: B)
     }
 
     protected fun <B, T> bundleField(pair: Pair<T>, selector: (B) -> T): BundleField<B> =
         object: BundleField<B> {
-            override suspend fun persist(settings: Settings, current: B, new: B) {
+            override fun applyTo(preferences: MutablePreferences, current: B, new: B) {
                 val currentValue = selector(current)
                 val newValue = selector(new)
                 if (currentValue != newValue) {
-                    settings.setValue(pair, newValue)
+                    preferences[pair.key] = newValue
                 }
             }
         }
@@ -119,8 +120,10 @@ abstract class Settings(
         new: B,
         fields: Array<out BundleField<B>>,
     ) {
-        for (field in fields) {
-            field.persist(this, current, new)
+        dataStore.edit { preferences ->
+            for (field in fields) {
+                field.applyTo(preferences, current, new)
+            }
         }
     }
 

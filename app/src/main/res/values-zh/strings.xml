@@ -426,6 +426,8 @@
     <string name="password_rename">重命名密码</string>
     <string name="password_lockscreen_label">锁屏密码</string>
     <string name="password_disclaimer">免责声明\n0. 无法保证没有 bug\n1. 本功能的防护边界仅包括加密存储、按需认证和使用后内存清理，不构成绝对安全保证\n2. 在 root / posed / hook / 调试器 / 恶意输入法 等环境下，密码仍可能泄露\n3. 本功能不会绕过系统锁屏认证，仅用于你已合法授权控制的设备\n4. 关闭\"填充密码时需要验证\"会显著降低安全性，请谨慎选择</string>
+    <string name="password_auto_enter">填充后自动回车</string>
+    <string name="password_auto_enter_detail">填充密码后自动发送回车键</string>
 
     <!-- File Manager -->
     <string name="fm_cd_parent">上一层</string>

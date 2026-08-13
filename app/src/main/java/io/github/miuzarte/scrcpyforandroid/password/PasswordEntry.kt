@@ -14,4 +14,5 @@ data class PasswordEntry(
     val name: String,
     val cipherText: CharArray?,
     val createdWithAuth: PasswordCreatedState,
+    val autoEnter: Boolean = false,
 )

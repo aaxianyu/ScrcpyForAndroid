@@ -150,6 +150,7 @@ private fun LockscreenPasswordScreen(
     var dialogMode by rememberSaveable { mutableStateOf<PasswordDialogMode?>(null) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var editorInitialName by rememberSaveable { mutableStateOf("") }
+    var editorInitialAutoEnter by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val observer = LifecycleEventObserver { _, event ->
@@ -158,6 +159,7 @@ private fun LockscreenPasswordScreen(
                 event == Lifecycle.Event.ON_STOP
             ) {
                 editorInitialName = ""
+                editorInitialAutoEnter = false
             }
         }
         activity.lifecycle.addObserver(observer)
@@ -260,6 +262,7 @@ private fun LockscreenPasswordScreen(
                 dialogMode = PasswordDialogMode.Rename
                 editingId = entry.id
                 editorInitialName = entry.name
+                editorInitialAutoEnter = entry.autoEnter
             },
             onDelete = { entry ->
                 pendingDeleteId = entry.id
@@ -394,12 +397,14 @@ private fun LockscreenPasswordScreen(
             show = dialogMode != null,
             mode = dialogMode ?: PasswordDialogMode.Create,
             initialName = editorInitialName,
+            initialAutoEnter = editorInitialAutoEnter,
             onDismissRequest = {
                 dialogMode = null
                 editingId = null
                 editorInitialName = ""
+                editorInitialAutoEnter = false
             },
-            onConfirm = { nameInput, passwordInput ->
+            onConfirm = { nameInput, passwordInput, autoEnter ->
                 val sanitizedName = PasswordSanitizer.filterName(nameInput)
                 val resolvedName = sanitizedName.ifBlank { textDefaultName }
                 when (dialogMode) {
@@ -416,12 +421,14 @@ private fun LockscreenPasswordScreen(
                             createdWithAuth =
                                 if (asBundle.passwordRequireAuth) PasswordCreatedState.AuthenticatedCreated
                                 else PasswordCreatedState.UnauthenticatedCreated,
+                            autoEnter = autoEnter,
                         )
                     }
 
                     PasswordDialogMode.Rename -> {
                         val targetId = editingId ?: return@PasswordEditorSheet
                         PasswordRepository.rename(targetId, resolvedName)
+                        PasswordRepository.setAutoEnter(targetId, autoEnter)
                     }
 
                     null -> return@PasswordEditorSheet
@@ -430,6 +437,7 @@ private fun LockscreenPasswordScreen(
                 dialogMode = null
                 editingId = null
                 editorInitialName = ""
+                editorInitialAutoEnter = false
             },
         )
 
@@ -556,14 +564,18 @@ private fun PasswordEditorSheet(
     show: Boolean,
     mode: PasswordDialogMode,
     initialName: String,
+    initialAutoEnter: Boolean,
     onDismissRequest: () -> Unit,
-    onConfirm: (String, String) -> Unit,
+    onConfirm: (String, String, Boolean) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
 
     val focusManager = LocalFocusManager.current
     var nameBuffer by rememberSaveable(mode, show, initialName) { mutableStateOf(initialName) }
     var passwordBuffer by rememberSaveable(mode, show) { mutableStateOf("") }
+    var autoEnterChecked by rememberSaveable(mode, show, initialAutoEnter) {
+        mutableStateOf(initialAutoEnter)
+    }
 
     OverlayBottomSheet(
         show = show,
@@ -589,7 +601,7 @@ private fun PasswordEditorSheet(
             IconButton(
                 onClick = {
                     haptic.contextClick()
-                    onConfirm(nameBuffer, passwordBuffer)
+                    onConfirm(nameBuffer, passwordBuffer, autoEnterChecked)
                 },
             ) {
                 Icon(
@@ -629,6 +641,18 @@ private fun PasswordEditorSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = UiSpacing.Large),
+                )
+            }
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = UiSpacing.Large),
+            ) {
+                SwitchPreference(
+                    title = stringResource(R.string.password_auto_enter),
+                    summary = stringResource(R.string.password_auto_enter_detail),
+                    checked = autoEnterChecked,
+                    onCheckedChange = { autoEnterChecked = it },
                 )
             }
             Spacer(Modifier.height(UiSpacing.SheetBottom))
