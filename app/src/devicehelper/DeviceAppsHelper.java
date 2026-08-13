@@ -125,7 +125,7 @@ public class DeviceAppsHelper {
             } catch (Exception ignored) {}
 
             DisplayMetrics dm = new DisplayMetrics();
-            dm.densityDpi = DisplayMetrics.DENSITY_DEFAULT;
+            dm.densityDpi = 480; // DENSITY_XXHIGH，加载高分辨率图标
 
             StringBuilder sb = new StringBuilder();
             sb.append("{\"apps\":[");
@@ -213,14 +213,15 @@ public class DeviceAppsHelper {
                         try {
                             int iconRes = iconField.getInt(app);
                             if (iconRes != 0) {
-                                Drawable d = res.getDrawableForDensity(iconRes, DisplayMetrics.DENSITY_DEFAULT, null);
+                                Drawable d = res.getDrawableForDensity(iconRes, 480, null);
                                 if (d != null) {
-                                    Bitmap bmp = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888);
+                                    int iconSize = 144; // 3x of 48, 匹配 XXHDPI
+                                    Bitmap bmp = Bitmap.createBitmap(iconSize, iconSize, Bitmap.Config.ARGB_8888);
                                     Canvas canvas = new Canvas(bmp);
-                                    d.setBounds(0, 0, 48, 48);
+                                    d.setBounds(0, 0, iconSize, iconSize);
                                     d.draw(canvas);
                                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                                    bmp.compress(Bitmap.CompressFormat.PNG, 100, baos);
+                                    bmp.compress(Bitmap.CompressFormat.WEBP, 80, baos);
                                     iconBase64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
                                     bmp.recycle();
                                 }
@@ -323,14 +324,15 @@ public class DeviceAppsHelper {
                         try {
                             int iconRes = iconField.getInt(app);
                             if (iconRes != 0) {
-                                Drawable d = res.getDrawableForDensity(iconRes, DisplayMetrics.DENSITY_DEFAULT, null);
+                                Drawable d = res.getDrawableForDensity(iconRes, 480, null);
                                 if (d != null) {
-                                    Bitmap bmp = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888);
+                                    int iconSize = 144; // 3x of 48, 匹配 XXHDPI
+                                    Bitmap bmp = Bitmap.createBitmap(iconSize, iconSize, Bitmap.Config.ARGB_8888);
                                     Canvas canvas = new Canvas(bmp);
-                                    d.setBounds(0, 0, 48, 48);
+                                    d.setBounds(0, 0, iconSize, iconSize);
                                     d.draw(canvas);
                                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                                    bmp.compress(Bitmap.CompressFormat.PNG, 100, baos);
+                                    bmp.compress(Bitmap.CompressFormat.WEBP, 80, baos);
                                     iconBase64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
                                     bmp.recycle();
                                 }
