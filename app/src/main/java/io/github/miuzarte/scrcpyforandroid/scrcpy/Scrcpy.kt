@@ -3,6 +3,7 @@ package io.github.miuzarte.scrcpyforandroid.scrcpy
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import androidx.core.net.toUri
@@ -1076,6 +1077,11 @@ class Scrcpy(
             scid: UInt,
             options: ClientOptions,
         ): SessionInfo = mutex.withLock {
+            // issues#63: OPPO Watch ColorOS creates internal Handler on Dispatchers.IO threads
+            if (Looper.myLooper() == null) {
+                Log.w(TAG, "preparing Looper for session.start() (missing on Dispatchers.IO thread)")
+                Looper.prepare()
+            }
             stopInternal()
             serverLogBuffer.clear()
             val socketName = socketNameFor(scid.toInt())
@@ -1560,7 +1566,12 @@ class Scrcpy(
             serverStream: AdbSocketStream,
             socketName: String,
         ): Thread {
+            // issues#63: OPPO Watch ColorOS - server log thread may need Looper for logEvent
             return thread(start = true, name = "scrcpy-server-log") {
+                if (Looper.myLooper() == null) {
+                    Log.w(TAG, "preparing Looper for server log thread (missing on raw thread)")
+                    Looper.prepare()
+                }
                 try {
                     BufferedReader(
                         InputStreamReader(

@@ -3,6 +3,34 @@
 
 # Change Log
 
+## 0.5.3e
+
+### 上游同步 (v0.5.1 → v0.5.3_pre1)
+
+- 升级: scrcpy v4.1
+- 修复: MTK 解码器在不支持的分辨率/旋转时崩溃（自动降级分辨率）
+- 修复: 特定设备 `Looper.prepare()` 导致无法输入（issues#63）
+- 修复: 空格无法输入
+- 移除: Android R 检查，改用 `Looper.prepare()` 兼容方案
+- 重构: 拆分 `NativeCoreFacade`，新增 `VideoDecoderController`、`DecoderCapabilities`、`DecoderException`、`PersistentVideoRenderer`
+- 修复: 应用打开时状态栏颜色
+- 新增: `--ignore-video-encoder-constraints` 选项
+- 新增: `scanFile()` 控制命令
+- 依赖: Kotlin 2.4.10, AGP 9.3.1, conscrypt 2.6.1, bcpkix 1.85, tinypinyin v3
+
+### 增强功能
+
+- 新增: 密码填充后自动回车（每个密码条目独立开关，填充后自动发送 Enter 键）
+- 修复: DataStore 批量写入竞态条件（逐字段写入改为单次 `dataStore.edit` 批量写入，消除自定义分辨率高度值被中间状态覆盖）
+- 优化: 远程图标模糊（渲染密度提高至 480dpi、尺寸 144px、改用 WebP 压缩）
+- 修复: 文件管理器未连接设备时在 `/` 路径，连接后不自动跳转到内部存储
+- 修复: Android 5/6 的 `ls -la` 回退解析
+- 修复: 应用管理未连接设备时无法下拉刷新、无返回按钮
+- 修复: 应用图标圆形裁剪（改用 `ContentScale.Fit` 保留原始形状）
+- 统一: 应用管理列表与"所有应用"列表拼音排序一致
+- 优化: 增大解码器输入超时，减少高码率下的丢帧
+- 修复: 低延迟音频开关导致 Scrcpy 实例重建、无法进入全屏
+
 ## 0.5.0-enhanced
 
 ### 上游变更 (v0.5.0)

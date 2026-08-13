@@ -82,7 +82,7 @@ jobs:
           ls -la out
 
       - name: Upload CI artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-ci-apks-${{ github.run_number }}
           path: out/*.apk
@@ -171,6 +171,7 @@ jobs:
           proxy_base_url="https://github.miuzarte.top/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
 
           {
+            echo "[CHANGELOG.md](https://github.com/Miuzarte/ScrcpyForAndroid/blob/main/CHANGELOG.md)"
             echo "| 架构 | 文件 | 大小<br>SHA256 |"
             echo "| ---- | ---- | -------------- |"
 
@@ -205,7 +206,7 @@ jobs:
           cat "$notes_file"
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}

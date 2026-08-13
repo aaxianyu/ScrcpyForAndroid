@@ -2,6 +2,7 @@ package io.github.miuzarte.scrcpyforandroid.nativecore
 
 import android.media.MediaCodec
 import android.media.MediaFormat
+import android.os.Looper
 import android.util.Log
 import android.view.Surface
 
@@ -55,6 +56,13 @@ class MediaCodecVideoDecoder(
         private set
 
     init {
+        // https://github.com/Miuzarte/ScrcpyForAndroid/issues/63
+        // should not affect normal device
+        if (Looper.myLooper() == null) {
+            Log.w(TAG, "preparing Looper for MediaCodec (missing on this thread)")
+            Looper.prepare()
+        }
+
         if (!outputSurface.isValid) {
             throw DecoderException(
                 mimeType, width, height,

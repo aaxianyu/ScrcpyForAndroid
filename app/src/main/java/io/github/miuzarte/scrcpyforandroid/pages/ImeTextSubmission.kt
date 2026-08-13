@@ -12,7 +12,7 @@ internal suspend fun submitImeText(
     keyInjectMode: ClientOptions.KeyInjectMode = ClientOptions.KeyInjectMode.MIXED,
     onFailure: suspend (error: Throwable, useClipboardPaste: Boolean) -> Unit,
 ) {
-    if (text.isBlank() || keyInjectMode == ClientOptions.KeyInjectMode.RAW) {
+    if (text.isEmpty() || keyInjectMode == ClientOptions.KeyInjectMode.RAW) {
         return
     }
     val useClipboardPaste = text.any { it.code > 0x7F }
