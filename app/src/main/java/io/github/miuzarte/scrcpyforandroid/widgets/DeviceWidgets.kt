@@ -921,34 +921,38 @@ private fun PairingDialog(
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
-            SuperTextField(
-                value = port,
-                onValueChange = { port = it.filter(Char::isDigit) },
-                label = stringResource(R.string.label_port),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Next,
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Next) },
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            SuperTextField(
-                value = code,
-                onValueChange = { code = it },
-                label = stringResource(R.string.label_wlan_pairing_code),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { focusManager.clearFocus() },
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                SuperTextField(
+                    value = port,
+                    onValueChange = { port = it.filter(Char::isDigit) },
+                    label = stringResource(R.string.label_port),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Next) },
+                    ),
+                    modifier = Modifier.weight(1f),
+                )
+                SuperTextField(
+                    value = code,
+                    onValueChange = { code = it },
+                    label = stringResource(R.string.label_wlan_pairing_code),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { focusManager.clearFocus() },
+                    ),
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
         Spacer(Modifier.height(UiSpacing.ContentVertical * 2))
