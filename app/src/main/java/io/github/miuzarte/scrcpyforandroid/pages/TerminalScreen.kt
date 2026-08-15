@@ -503,7 +503,6 @@ private fun TerminalPage(
                 TerminalView(viewContext, null).apply {
                     isFocusable = true
                     isFocusableInTouchMode = true
-                    requestFocus()
                     setTerminalViewClient(terminalViewClient)
                     setIsTerminalViewKeyLoggingEnabled(false)
                     setTextSize(with(density) { terminalFontSizeSp.sp.roundToPx() })

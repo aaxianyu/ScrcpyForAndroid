@@ -3,6 +3,19 @@
 
 # Change Log
 
+## 0.5.3e1
+
+### 弹窗 + 键盘（IME）修复
+
+- 修复: 弹窗内输入框呼出键盘后弹窗反复关闭、无法输入（LazyColumn item 回收导致弹窗随 IME 弹出被销毁）
+  - 设置页 8 处 ArrowSlider 输入弹窗上提到页面根级
+  - scrcpy 选项页 7 处 ArrowSlider 输入弹窗上提到页面根级
+  - 设备页 ConfigPanel 音频/视频码率弹窗通过回调桥接上提到页面根级
+  - 设备页配对弹窗上提到页面根级
+- 修复: 超高弹窗内容在键盘弹出后超出屏幕、底部不可访问（新增 `dialogContentHeightLimit` + `ScrollableDialogContent`）
+- 修复: 外部弹窗模式关闭后选项行残留"按住/选中"高亮色（`LaunchedEffect` 监听弹窗状态释放 `holdArrow`）
+- 修复: 终端页键盘弹出后光标闪烁（移除 `requestFocus()` 调用）
+
 ## 0.5.3e
 
 ### 上游同步 (v0.5.1 → v0.5.3_pre1)

@@ -52,7 +52,9 @@ import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.models.ConnectionTarget
 import io.github.miuzarte.scrcpyforandroid.models.DeviceShortcut
 import io.github.miuzarte.scrcpyforandroid.scaffolds.ArrowSlider
+import io.github.miuzarte.scrcpyforandroid.scaffolds.ScrollableDialogContent
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
+import io.github.miuzarte.scrcpyforandroid.scaffolds.dialogContentHeightLimit
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Shared.Codec
 import io.github.miuzarte.scrcpyforandroid.scrcpy.TouchEventHandler
@@ -248,13 +250,10 @@ internal fun StatusCard(
 @Composable
 internal fun PairingCard(
     busy: Boolean,
-    autoDiscoverOnDialogOpen: Boolean,
-    onDiscoverTarget: (suspend () -> Pair<String, Int>?)? = null,
-    onPair: (host: String, port: String, code: String) -> Unit,
+    onPairClick: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
 
-    val showPairDialog = remember { mutableStateOf(false) }
     val holdDownState = remember { mutableStateOf(false) }
 
     Card {
@@ -262,24 +261,12 @@ internal fun PairingCard(
             title = stringResource(R.string.device_pairing_title),
             onClick = {
                 haptic.contextClick()
-                showPairDialog.value = true
+                onPairClick()
                 holdDownState.value = true
             },
             holdDownState = holdDownState.value,
             enabled = !busy,
         )
-    }
-
-    PairingDialog(
-        showDialog = showPairDialog.value,
-        enabled = !busy,
-        autoDiscoverOnDialogOpen = autoDiscoverOnDialogOpen,
-        onDiscoverTarget = onDiscoverTarget,
-        onDismissRequest = { showPairDialog.value = false },
-        onDismissFinished = { holdDownState.value = false },
-    ) { host, port, code ->
-        showPairDialog.value = false
-        onPair(host, port, code)
     }
 }
 
@@ -536,6 +523,12 @@ internal fun ConfigPanel(
     showFullscreenAction: Boolean = false,
     onOpenFullscreen: () -> Unit = {},
     reverseSideActions: Boolean = false,
+    onAudioBitRateInputDialogOpenChange: ((Boolean) -> Unit)? = null,
+    onAudioBitRateInputInitialValue: ((String) -> Unit)? = null,
+    onAudioBitRateInputConfirmHandler: (((String) -> Unit) -> Unit)? = null,
+    onVideoBitRateInputDialogOpenChange: ((Boolean) -> Unit)? = null,
+    onVideoBitRateInputInitialValue: ((String) -> Unit)? = null,
+    onVideoBitRateInputConfirmHandler: (((String) -> Unit) -> Unit)? = null,
 ) {
     val haptic = LocalHapticFeedback.current
     val taskScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
@@ -575,6 +568,25 @@ internal fun ConfigPanel(
         textGlobal
     } else {
         connectedScrcpyProfileNameRaw
+    }
+
+    // 外部弹窗打开状态镜像（供 ArrowSlider 释放按住高亮）
+    var audioBitRateDialogOpen by remember { mutableStateOf(false) }
+    var videoBitRateDialogOpen by remember { mutableStateOf(false) }
+
+    onAudioBitRateInputConfirmHandler?.invoke { raw: String ->
+        raw.toIntOrNull()
+            ?.takeIf { it >= 0 }
+            ?.let { soBundle = soBundle.copy(audioBitRate = it * 1000) }
+    }
+    onVideoBitRateInputConfirmHandler?.invoke { raw: String ->
+        raw.toFloatOrNull()?.let { parsed ->
+            if (parsed >= 0f) {
+                soBundle = soBundle.copy(
+                    videoBitRate = (parsed * 1_000_000f).roundToInt(),
+                )
+            }
+        }
     }
 
     val audioBitRateVisibility = rememberSaveable(soBundle) {
@@ -655,6 +667,18 @@ internal fun ConfigPanel(
                             ?.let { soBundle = soBundle.copy(audioBitRate = it * 1000) }
                     },
                     enabled = !sessionStarted,
+                    renderInputDialog = false,
+                    onInputDialogOpenChange = { open ->
+                        audioBitRateDialogOpen = open
+                        onAudioBitRateInputDialogOpenChange?.invoke(open)
+                        if (open) {
+                            onAudioBitRateInputInitialValue?.invoke(
+                                if (soBundle.audioBitRate <= 0) ""
+                                else (soBundle.audioBitRate / 1_000).toString(),
+                            )
+                        }
+                    },
+                    inputDialogOpen = audioBitRateDialogOpen,
                 )
             }
 
@@ -715,6 +739,18 @@ internal fun ConfigPanel(
                     }
                 },
                 enabled = !sessionStarted,
+                renderInputDialog = false,
+                onInputDialogOpenChange = { open ->
+                    videoBitRateDialogOpen = open
+                    onVideoBitRateInputDialogOpenChange?.invoke(open)
+                    if (open) {
+                        onVideoBitRateInputInitialValue?.invoke(
+                            if (soBundle.videoBitRate <= 0) ""
+                            else "%.1f".format(soBundle.videoBitRate / 1_000_000f),
+                        )
+                    }
+                },
+                inputDialogOpen = videoBitRateDialogOpen,
             )
         }
 
@@ -858,7 +894,7 @@ internal fun ConfigPanel(
  *   receives trimmed values.
  */
 @Composable
-private fun PairingDialog(
+internal fun PairingDialog(
     showDialog: Boolean,
     enabled: Boolean,
     autoDiscoverOnDialogOpen: Boolean,
@@ -897,6 +933,7 @@ private fun PairingDialog(
         show = showDialog,
         title = stringResource(R.string.device_pairing_title),
         summary = stringResource(R.string.device_pairing_desc),
+        modifier = Modifier.dialogContentHeightLimit(),
         onDismissRequest = {
             onDismissRequest()
         },
@@ -904,6 +941,7 @@ private fun PairingDialog(
             onDismissFinished()
         },
     ) {
+        ScrollableDialogContent {
         Column(
             verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),
         ) {
@@ -999,6 +1037,7 @@ private fun PairingDialog(
                     colors = ButtonDefaults.textButtonColorsPrimary(),
                 )
             }
+        }
         }
     }
 }

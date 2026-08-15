@@ -51,6 +51,8 @@ import io.github.miuzarte.scrcpyforandroid.widgets.ConfigPanel
 import io.github.miuzarte.scrcpyforandroid.widgets.DeviceTileList
 import io.github.miuzarte.scrcpyforandroid.widgets.LanScanDialog
 import io.github.miuzarte.scrcpyforandroid.widgets.PairingCard
+import io.github.miuzarte.scrcpyforandroid.widgets.PairingDialog
+import io.github.miuzarte.scrcpyforandroid.scaffolds.SliderInputDialog
 import io.github.miuzarte.scrcpyforandroid.widgets.PreviewCard
 import io.github.miuzarte.scrcpyforandroid.widgets.QuickConnectCard
 import io.github.miuzarte.scrcpyforandroid.widgets.StatusCard
@@ -254,6 +256,16 @@ internal fun DeviceTabPage(
     var handledTwoPaneSideToggleRequest by rememberSaveable {
         mutableIntStateOf(twoPaneSideToggleRequest)
     }
+
+    var showPairDialog by remember { mutableStateOf(false) }
+
+    // 码率输入弹窗状态（弹窗渲染在 LazyColumn 外，避免 item 回收导致弹窗随 IME 弹出被销毁）
+    var audioBitRateInputDialogOpen by remember { mutableStateOf(false) }
+    var audioBitRateInputInitialValue by remember { mutableStateOf("") }
+    var audioBitRateInputConfirm by remember { mutableStateOf<(String) -> Unit>({}) }
+    var videoBitRateInputDialogOpen by remember { mutableStateOf(false) }
+    var videoBitRateInputInitialValue by remember { mutableStateOf("") }
+    var videoBitRateInputConfirm by remember { mutableStateOf<(String) -> Unit>({}) }
 
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val isPreviewCardVisible by remember(listState) {
@@ -460,9 +472,7 @@ internal fun DeviceTabPage(
         SectionSmallTitle(stringResource(R.string.device_section_wireless_pairing))
         PairingCard(
             busy = busy,
-            autoDiscoverOnDialogOpen = asBundle.adbPairingAutoDiscoverOnDialogOpen,
-            onDiscoverTarget = { viewModel.onDiscoverPairingTarget() },
-            onPair = viewModel::onPair,
+            onPairClick = { showPairDialog = true },
         )
     }
 
@@ -520,6 +530,12 @@ internal fun DeviceTabPage(
             onDisconnect = { viewModel.onDisconnectCurrent(currentTarget) },
             showFullscreenAction = false,
             onOpenFullscreen = ::openFullscreenControl,
+            onAudioBitRateInputDialogOpenChange = { audioBitRateInputDialogOpen = it },
+            onAudioBitRateInputInitialValue = { audioBitRateInputInitialValue = it },
+            onAudioBitRateInputConfirmHandler = { audioBitRateInputConfirm = it },
+            onVideoBitRateInputDialogOpenChange = { videoBitRateInputDialogOpen = it },
+            onVideoBitRateInputInitialValue = { videoBitRateInputInitialValue = it },
+            onVideoBitRateInputConfirmHandler = { videoBitRateInputConfirm = it },
         )
     }
 
@@ -631,6 +647,12 @@ internal fun DeviceTabPage(
             showFullscreenAction = canShowPreviewControls,
             onOpenFullscreen = ::openFullscreenControl,
             reverseSideActions = asBundle.deviceTwoPaneConfigOnRight,
+            onAudioBitRateInputDialogOpenChange = { audioBitRateInputDialogOpen = it },
+            onAudioBitRateInputInitialValue = { audioBitRateInputInitialValue = it },
+            onAudioBitRateInputConfirmHandler = { audioBitRateInputConfirm = it },
+            onVideoBitRateInputDialogOpenChange = { videoBitRateInputDialogOpen = it },
+            onVideoBitRateInputInitialValue = { videoBitRateInputInitialValue = it },
+            onVideoBitRateInputConfirmHandler = { videoBitRateInputConfirm = it },
         )
     }
 
@@ -948,5 +970,62 @@ internal fun DeviceTabPage(
             result.mapValues { it.value.iconBase64 ?: "" }
                 .filterValues { it.isNotBlank() }
         } else null,
+    )
+
+    PairingDialog(
+        showDialog = showPairDialog,
+        enabled = !busy,
+        autoDiscoverOnDialogOpen = asBundle.adbPairingAutoDiscoverOnDialogOpen,
+        onDiscoverTarget = { viewModel.onDiscoverPairingTarget() },
+        onDismissRequest = { showPairDialog = false },
+        onDismissFinished = { },
+    ) { host, port, code ->
+        showPairDialog = false
+        viewModel.onPair(host, port, code)
+    }
+
+    SliderInputDialog(
+        showDialog = audioBitRateInputDialogOpen,
+        title = stringResource(R.string.device_config_audio_bitrate),
+        summary = "--audio-bit-rate",
+        label = "Kbps",
+        initialValue = audioBitRateInputInitialValue,
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 0f..UShort.MAX_VALUE.toFloat(),
+        onDismissRequest = { audioBitRateInputDialogOpen = false },
+        onDismissFinished = { audioBitRateInputDialogOpen = false },
+        onConfirm = { raw ->
+            audioBitRateInputDialogOpen = false
+            audioBitRateInputConfirm(raw)
+        },
+    )
+
+    SliderInputDialog(
+        showDialog = videoBitRateInputDialogOpen,
+        title = stringResource(R.string.device_config_video_bitrate),
+        summary = "--video-bit-rate",
+        label = "Mbps",
+        initialValue = videoBitRateInputInitialValue,
+        inputFilter = { text ->
+            var dotUsed = false
+            text.filter { ch ->
+                when {
+                    ch.isDigit() -> true
+                    ch == '.' && !dotUsed -> {
+                        dotUsed = true
+                        true
+                    }
+
+                    else -> false
+                }
+            }
+        },
+        inputValueRange = 0f..UInt.MAX_VALUE.toFloat(),
+        onDismissRequest = { videoBitRateInputDialogOpen = false },
+        onDismissFinished = { videoBitRateInputDialogOpen = false },
+        onConfirm = { raw ->
+            videoBitRateInputDialogOpen = false
+            videoBitRateInputConfirm(raw)
+        },
     )
 }

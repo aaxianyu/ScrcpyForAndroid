@@ -43,6 +43,7 @@ import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.nativecore.DirectAdbTransport
 import io.github.miuzarte.scrcpyforandroid.scaffolds.ArrowSlider
 import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
+import io.github.miuzarte.scrcpyforandroid.scaffolds.SliderInputDialog
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SectionSmallTitle
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
@@ -408,6 +409,16 @@ fun SettingsPage(
                 }
             }
 
+    // 输入弹窗状态（弹窗渲染在 LazyColumn 外，避免 item 回收导致弹窗随 IME 弹出被销毁）
+    var previewCardHeightDialogOpen by remember { mutableStateOf(false) }
+    var virtualButtonHeightDialogOpen by remember { mutableStateOf(false) }
+    var tempFloatingButtonSizeDialogOpen by remember { mutableStateOf(false) }
+    var swipeFloatingBallBgOpacityDialogOpen by remember { mutableStateOf(false) }
+    var swipeFloatingBallRingOpacityDialogOpen by remember { mutableStateOf(false) }
+    var adbFlowControlDialogOpen by remember { mutableStateOf(false) }
+    var terminalFontSizeDialogOpen by remember { mutableStateOf(false) }
+    var snackbarDurationDialogOpen by remember { mutableStateOf(false) }
+
     val listState = rememberSaveable(saver = LazyListState.Saver) {
         LazyListState()
     }
@@ -626,6 +637,9 @@ fun SettingsPage(
                             )
                         }
                     },
+                    renderInputDialog = false,
+                    onInputDialogOpenChange = { previewCardHeightDialogOpen = it },
+                    inputDialogOpen = previewCardHeightDialogOpen,
                 )
                 SwitchPreference(
                     title = stringResource(R.string.pref_title_preview_card_tap_fullscreen),
@@ -815,6 +829,9 @@ fun SettingsPage(
                                     )
                                 }
                             },
+                            renderInputDialog = false,
+                            onInputDialogOpenChange = { virtualButtonHeightDialogOpen = it },
+                            inputDialogOpen = virtualButtonHeightDialogOpen,
                         )
                     }
                 }
@@ -844,6 +861,9 @@ fun SettingsPage(
                                     )
                                 }
                             },
+                            renderInputDialog = false,
+                            onInputDialogOpenChange = { tempFloatingButtonSizeDialogOpen = it },
+                            inputDialogOpen = tempFloatingButtonSizeDialogOpen,
                         )
                         ArrowSlider(
                             title = stringResource(R.string.pref_title_swipe_floating_ball_bg_opacity),
@@ -869,6 +889,9 @@ fun SettingsPage(
                                     )
                                 }
                             },
+                            renderInputDialog = false,
+                            onInputDialogOpenChange = { swipeFloatingBallBgOpacityDialogOpen = it },
+                            inputDialogOpen = swipeFloatingBallBgOpacityDialogOpen,
                         )
                         ArrowSlider(
                             title = stringResource(R.string.pref_title_swipe_floating_ball_ring_opacity),
@@ -894,6 +917,9 @@ fun SettingsPage(
                                     )
                                 }
                             },
+                            renderInputDialog = false,
+                            onInputDialogOpenChange = { swipeFloatingBallRingOpacityDialogOpen = it },
+                            inputDialogOpen = swipeFloatingBallRingOpacityDialogOpen,
                         )
 
                     }
@@ -1295,6 +1321,9 @@ fun SettingsPage(
                             )
                         }
                     },
+                    renderInputDialog = false,
+                    onInputDialogOpenChange = { adbFlowControlDialogOpen = it },
+                    inputDialogOpen = adbFlowControlDialogOpen,
                 )
             }
         }
@@ -1325,6 +1354,9 @@ fun SettingsPage(
                             )
                         }
                     },
+                    renderInputDialog = false,
+                    onInputDialogOpenChange = { terminalFontSizeDialogOpen = it },
+                    inputDialogOpen = terminalFontSizeDialogOpen,
                 )
                 Column(
                     modifier = Modifier.padding(vertical = UiSpacing.Large),
@@ -1448,6 +1480,9 @@ fun SettingsPage(
                             )
                         }
                     },
+                    renderInputDialog = false,
+                    onInputDialogOpenChange = { snackbarDurationDialogOpen = it },
+                    inputDialogOpen = snackbarDurationDialogOpen,
                 )
             }
         }
@@ -1466,6 +1501,158 @@ fun SettingsPage(
             }
         }
     }
+
+    // 弹窗渲染在 LazyColumn 外，避免 item 回收导致弹窗随 IME 弹出被销毁
+    SliderInputDialog(
+        showDialog = previewCardHeightDialogOpen,
+        title = stringResource(R.string.pref_title_preview_card_height),
+        summary = stringResource(R.string.pref_summary_preview_card_height),
+        label = "dp",
+        initialValue = asBundle.devicePreviewCardHeightDp.toString(),
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 120f..UShort.MAX_VALUE.toFloat(),
+        onDismissRequest = { previewCardHeightDialogOpen = false },
+        onDismissFinished = { previewCardHeightDialogOpen = false },
+        onConfirm = { input ->
+            previewCardHeightDialogOpen = false
+            input.toIntOrNull()?.let {
+                asBundle = asBundle.copy(
+                    devicePreviewCardHeightDp = it.coerceAtLeast(120),
+                )
+            }
+        },
+    )
+    SliderInputDialog(
+        showDialog = virtualButtonHeightDialogOpen,
+        title = stringResource(R.string.pref_title_virtual_button_height),
+        label = "dp",
+        initialValue = asBundle.fullscreenVirtualButtonHeightDp.toString(),
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 1f..160f,
+        onDismissRequest = { virtualButtonHeightDialogOpen = false },
+        onDismissFinished = { virtualButtonHeightDialogOpen = false },
+        onConfirm = { input ->
+            virtualButtonHeightDialogOpen = false
+            input.toIntOrNull()?.let {
+                asBundle = asBundle.copy(
+                    fullscreenVirtualButtonHeightDp =
+                        it.coerceIn(1, 160),
+                )
+            }
+        },
+    )
+    SliderInputDialog(
+        showDialog = tempFloatingButtonSizeDialogOpen,
+        title = stringResource(R.string.pref_title_temp_floating_button_size),
+        label = "dp",
+        initialValue = asBundle.tempFloatingButtonSizeDp.toString(),
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 1f..160f,
+        onDismissRequest = { tempFloatingButtonSizeDialogOpen = false },
+        onDismissFinished = { tempFloatingButtonSizeDialogOpen = false },
+        onConfirm = { input ->
+            tempFloatingButtonSizeDialogOpen = false
+            input.toIntOrNull()?.let {
+                asBundle = asBundle.copy(
+                    tempFloatingButtonSizeDp =
+                        it.coerceIn(32, 64)
+                )
+            }
+        },
+    )
+    SliderInputDialog(
+        showDialog = swipeFloatingBallBgOpacityDialogOpen,
+        title = stringResource(R.string.pref_title_swipe_floating_ball_bg_opacity),
+        label = "%",
+        initialValue = asBundle.swipeFloatingBallBackgroundAlphaPercent.toString(),
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 10f..100f,
+        onDismissRequest = { swipeFloatingBallBgOpacityDialogOpen = false },
+        onDismissFinished = { swipeFloatingBallBgOpacityDialogOpen = false },
+        onConfirm = { input ->
+            swipeFloatingBallBgOpacityDialogOpen = false
+            input.toIntOrNull()?.let {
+                asBundle = asBundle.copy(
+                    swipeFloatingBallBackgroundAlphaPercent =
+                        it.coerceIn(10, 100)
+                )
+            }
+        },
+    )
+    SliderInputDialog(
+        showDialog = swipeFloatingBallRingOpacityDialogOpen,
+        title = stringResource(R.string.pref_title_swipe_floating_ball_ring_opacity),
+        label = "%",
+        initialValue = asBundle.swipeFloatingBallRingAlphaPercent.toString(),
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 0f..100f,
+        onDismissRequest = { swipeFloatingBallRingOpacityDialogOpen = false },
+        onDismissFinished = { swipeFloatingBallRingOpacityDialogOpen = false },
+        onConfirm = { input ->
+            swipeFloatingBallRingOpacityDialogOpen = false
+            input.toIntOrNull()?.let {
+                asBundle = asBundle.copy(
+                    swipeFloatingBallRingAlphaPercent =
+                        it.coerceIn(0, 100)
+                )
+            }
+        },
+    )
+    SliderInputDialog(
+        showDialog = adbFlowControlDialogOpen,
+        title = stringResource(R.string.pref_title_adb_flow_control),
+        summary = stringResource(R.string.pref_summary_adb_flow_control),
+        initialValue = asBundle.adbFlowControlWindow.toString(),
+        inputFilter = { input -> input.filter(Char::isDigit) },
+        inputValueRange = 0f..4f,
+        onDismissRequest = { adbFlowControlDialogOpen = false },
+        onDismissFinished = { adbFlowControlDialogOpen = false },
+        onConfirm = { input ->
+            adbFlowControlDialogOpen = false
+            input.toIntOrNull()?.let {
+                asBundle = asBundle.copy(
+                    adbFlowControlWindow = it.coerceIn(0, 4),
+                )
+            }
+        },
+    )
+    SliderInputDialog(
+        showDialog = terminalFontSizeDialogOpen,
+        title = stringResource(R.string.pref_title_terminal_font_size),
+        summary = stringResource(R.string.pref_summary_terminal_font_size),
+        label = "sp",
+        initialValue = asBundle.terminalFontSizeSp.roundToInt().toString(),
+        inputFilter = { input -> input.filter(Char::isDigit) },
+        inputValueRange = 1f..32f,
+        onDismissRequest = { terminalFontSizeDialogOpen = false },
+        onDismissFinished = { terminalFontSizeDialogOpen = false },
+        onConfirm = { input ->
+            terminalFontSizeDialogOpen = false
+            input.toIntOrNull()?.let {
+                asBundle = asBundle.copy(
+                    terminalFontSizeSp = it.coerceIn(1, 32).toFloat(),
+                )
+            }
+        },
+    )
+    SliderInputDialog(
+        showDialog = snackbarDurationDialogOpen,
+        title = stringResource(R.string.pref_title_snackbar_duration),
+        label = "ms",
+        initialValue = asBundle.snackbarDurationMs.toString(),
+        inputFilter = { input -> input.filter(Char::isDigit) },
+        inputValueRange = 500f..5000f,
+        onDismissRequest = { snackbarDurationDialogOpen = false },
+        onDismissFinished = { snackbarDurationDialogOpen = false },
+        onConfirm = { input ->
+            snackbarDurationDialogOpen = false
+            input.toIntOrNull()?.let {
+                asBundle = asBundle.copy(
+                    snackbarDurationMs = it.coerceIn(500, 5000)
+                )
+            }
+        },
+    )
 
     ExportAdbKeyDialog(
         show = exportingKey != null,

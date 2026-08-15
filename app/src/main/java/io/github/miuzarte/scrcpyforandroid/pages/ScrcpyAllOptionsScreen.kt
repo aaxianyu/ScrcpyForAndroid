@@ -472,6 +472,15 @@ internal fun ScrcpyAllOptionsPage(
             }
         }
     }
+    // 输入弹窗状态（弹窗渲染在 LazyColumn 外，避免 item 回收导致弹窗随 IME 弹出被销毁）
+    var screenOffTimeoutDialogOpen by remember { mutableStateOf(false) }
+    var audioBitrateDialogOpen by remember { mutableStateOf(false) }
+    var videoBitrateDialogOpen by remember { mutableStateOf(false) }
+    var minSizeAlignmentDialogOpen by remember { mutableStateOf(false) }
+    var maxSizeDialogOpen by remember { mutableStateOf(false) }
+    var maxFpsDialogOpen by remember { mutableStateOf(false) }
+    var cameraFpsDialogOpen by remember { mutableStateOf(false) }
+
     val listState = rememberSaveable(
         saver = LazyListState.Saver,
     ) {
@@ -1029,6 +1038,9 @@ internal fun ScrcpyAllOptionsPage(
                                 ?: -1,
                         )
                     },
+                    renderInputDialog = false,
+                    onInputDialogOpenChange = { screenOffTimeoutDialogOpen = it },
+                    inputDialogOpen = screenOffTimeoutDialogOpen,
                 )
                 SwitchPreference(
                     title = stringResource(R.string.scrcpyopt_no_power_on),
@@ -1183,6 +1195,9 @@ internal fun ScrcpyAllOptionsPage(
                                 )
                             }
                     },
+                    renderInputDialog = false,
+                    onInputDialogOpenChange = { audioBitrateDialogOpen = it },
+                    inputDialogOpen = audioBitrateDialogOpen,
                 )
 
                 OverlayDropdownPreference(
@@ -1237,6 +1252,9 @@ internal fun ScrcpyAllOptionsPage(
                             }
                         }
                     },
+                    renderInputDialog = false,
+                    onInputDialogOpenChange = { videoBitrateDialogOpen = it },
+                    inputDialogOpen = videoBitrateDialogOpen,
                 )
             }
         }
@@ -1322,6 +1340,9 @@ internal fun ScrcpyAllOptionsPage(
                                     minSizeAlignment = parsed,
                                 )
                             },
+                            renderInputDialog = false,
+                            onInputDialogOpenChange = { minSizeAlignmentDialogOpen = it },
+                            inputDialogOpen = minSizeAlignmentDialogOpen,
                         )
                         ArrowSlider(
                             title = stringResource(R.string.scrcpyopt_max_size),
@@ -1353,6 +1374,9 @@ internal fun ScrcpyAllOptionsPage(
                                     maxSize = it.toIntOrNull() ?: run { 0 },
                                 )
                             },
+                            renderInputDialog = false,
+                            onInputDialogOpenChange = { maxSizeDialogOpen = it },
+                            inputDialogOpen = maxSizeDialogOpen,
                         )
                         SwitchPreference(
                             title = stringResource(R.string.pref_title_resolution_custom_enabled),
@@ -1514,6 +1538,9 @@ internal fun ScrcpyAllOptionsPage(
                                     maxFps = it,
                                 )
                             },
+                            renderInputDialog = false,
+                            onInputDialogOpenChange = { maxFpsDialogOpen = it },
+                            inputDialogOpen = maxFpsDialogOpen,
                         )
                     }
                 }
@@ -1705,6 +1732,9 @@ internal fun ScrcpyAllOptionsPage(
                                     cameraFps = it.toIntOrNull() ?: run { 0 },
                                 )
                             },
+                            renderInputDialog = false,
+                            onInputDialogOpenChange = { cameraFpsDialogOpen = it },
+                            inputDialogOpen = cameraFpsDialogOpen,
                         )
                         SwitchPreference(
                             title = stringResource(R.string.scrcpyopt_camera_high_speed),
@@ -2402,6 +2432,170 @@ internal fun ScrcpyAllOptionsPage(
         }
 
     }
+
+    // 弹窗渲染在 LazyColumn 外，避免 item 回收导致弹窗随 IME 弹出被销毁
+    SliderInputDialog(
+        showDialog = screenOffTimeoutDialogOpen,
+        title = stringResource(R.string.scrcpyopt_screen_off_timeout),
+        summary = "--screen-off-timeout",
+        label = "s",
+        initialValue =
+            if (soBundle.screenOffTimeout <= 0) ""
+            else Tick(soBundle.screenOffTimeout).sec.toString(),
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 0f..86400f,
+        onDismissRequest = { screenOffTimeoutDialogOpen = false },
+        onDismissFinished = { screenOffTimeoutDialogOpen = false },
+        onConfirm = {
+            screenOffTimeoutDialogOpen = false
+            soBundle = soBundle.copy(
+                screenOffTimeout = it.toLongOrNull()
+                    ?.takeIf { value -> value > 0 }
+                    ?.let(Tick::fromSec)
+                    ?.value
+                    ?: -1,
+            )
+        },
+    )
+    SliderInputDialog(
+        showDialog = audioBitrateDialogOpen,
+        title = stringResource(R.string.scrcpyopt_audio_bitrate),
+        summary = "--audio-bit-rate",
+        label = "Kbps",
+        initialValue =
+            if (soBundle.audioBitRate <= 0) ""
+            else (soBundle.audioBitRate / 1_000).toString(),
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 0f..UShort.MAX_VALUE.toFloat(),
+        onDismissRequest = { audioBitrateDialogOpen = false },
+        onDismissFinished = { audioBitrateDialogOpen = false },
+        onConfirm = { raw ->
+            audioBitrateDialogOpen = false
+            raw.toIntOrNull()
+                ?.takeIf { it >= 0 }
+                ?.let {
+                    soBundle = soBundle.copy(
+                        audioBitRate = it * 1000,
+                    )
+                }
+        },
+    )
+    SliderInputDialog(
+        showDialog = videoBitrateDialogOpen,
+        title = stringResource(R.string.scrcpyopt_video_bitrate),
+        summary = "--video-bit-rate",
+        label = "Mbps",
+        initialValue =
+            if (soBundle.videoBitRate <= 0) ""
+            else "%.1f".format(soBundle.videoBitRate / 1_000_000f),
+        inputFilter = { text ->
+            var dotUsed = false
+            text.filter { ch ->
+                when {
+                    ch.isDigit() -> true
+                    ch == '.' && !dotUsed -> {
+                        dotUsed = true
+                        true
+                    }
+
+                    else -> false
+                }
+            }
+        },
+        inputValueRange = 0f..UInt.MAX_VALUE.toFloat(),
+        onDismissRequest = { videoBitrateDialogOpen = false },
+        onDismissFinished = { videoBitrateDialogOpen = false },
+        onConfirm = { raw ->
+            videoBitrateDialogOpen = false
+            raw.toFloatOrNull()?.let { parsed ->
+                if (parsed >= 0f) {
+                    soBundle = soBundle.copy(
+                        videoBitRate = (parsed * 1_000_000f).roundToInt(),
+                    )
+                }
+            }
+        },
+    )
+    SliderInputDialog(
+        showDialog = minSizeAlignmentDialogOpen,
+        title = stringResource(R.string.scrcpyopt_min_size_alignment),
+        summary = "--min-size-alignment",
+        initialValue = soBundle.minSizeAlignment
+            .takeIf { it != 1 }
+            ?.toString()
+            ?: "",
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 1f..16f,
+        onDismissRequest = { minSizeAlignmentDialogOpen = false },
+        onDismissFinished = { minSizeAlignmentDialogOpen = false },
+        onConfirm = { raw ->
+            minSizeAlignmentDialogOpen = false
+            val parsed = raw.toIntOrNull() ?: return@SliderInputDialog
+            if (parsed and (parsed - 1) != 0) {
+                AppRuntime.snackbar(R.string.scrcpyopt_min_size_alignment_invalid)
+                return@SliderInputDialog
+            }
+            soBundle = soBundle.copy(
+                minSizeAlignment = parsed,
+            )
+        },
+    )
+    SliderInputDialog(
+        showDialog = maxSizeDialogOpen,
+        title = stringResource(R.string.scrcpyopt_max_size),
+        summary = "--max-size",
+        label = "px",
+        initialValue = soBundle.maxSize
+            .takeIf { it != 0 }
+            ?.toString()
+            ?: "",
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 0f..UInt.MAX_VALUE.toFloat(),
+        onDismissRequest = { maxSizeDialogOpen = false },
+        onDismissFinished = { maxSizeDialogOpen = false },
+        onConfirm = {
+            maxSizeDialogOpen = false
+            soBundle = soBundle.copy(
+                maxSize = it.toIntOrNull() ?: run { 0 },
+            )
+        },
+    )
+    SliderInputDialog(
+        showDialog = maxFpsDialogOpen,
+        title = stringResource(R.string.scrcpyopt_max_fps),
+        summary = "--max-fps",
+        label = "fps",
+        initialValue = soBundle.maxFps,
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 0f..UShort.MAX_VALUE.toFloat(),
+        onDismissRequest = { maxFpsDialogOpen = false },
+        onDismissFinished = { maxFpsDialogOpen = false },
+        onConfirm = {
+            maxFpsDialogOpen = false
+            soBundle = soBundle.copy(
+                maxFps = it,
+            )
+        },
+    )
+    SliderInputDialog(
+        showDialog = cameraFpsDialogOpen,
+        title = stringResource(R.string.scrcpyopt_camera_fps),
+        summary = "--camera-fps",
+        label = "fps",
+        initialValue =
+            if (soBundle.cameraFps <= 0) ""
+            else soBundle.cameraFps.toString(),
+        inputFilter = { it.filter(Char::isDigit) },
+        inputValueRange = 0f..UShort.MAX_VALUE.toFloat(),
+        onDismissRequest = { cameraFpsDialogOpen = false },
+        onDismissFinished = { cameraFpsDialogOpen = false },
+        onConfirm = {
+            cameraFpsDialogOpen = false
+            soBundle = soBundle.copy(
+                cameraFps = it.toIntOrNull() ?: run { 0 },
+            )
+        },
+    )
 }
 
 private enum class ProfileDialogMode {

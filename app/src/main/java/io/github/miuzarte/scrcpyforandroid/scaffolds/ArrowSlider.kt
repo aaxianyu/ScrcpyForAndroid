@@ -11,6 +11,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.scaffolds.dialogContentHeightLimit
 import io.github.miuzarte.scrcpyforandroid.ui.confirm
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -50,18 +51,32 @@ fun ArrowSlider(
     inputFilter: (String) -> String = { text -> text.filter { it.isDigit() || it == '.' } },
     inputValueRange: ClosedFloatingPointRange<Float>? = null,
     onInputConfirm: (String) -> Unit,
+    renderInputDialog: Boolean = true,
+    onInputDialogOpenChange: ((Boolean) -> Unit)? = null,
+    inputDialogOpen: Boolean? = null,
 ) {
     val haptic = LocalHapticFeedback.current
 
     var showInputDialog by remember { mutableStateOf(false) }
     var holdArrow by remember { mutableStateOf(false) }
 
+    // 外部弹窗模式：页面把弹窗打开状态传回，关闭时释放按住高亮
+    LaunchedEffect(inputDialogOpen, renderInputDialog) {
+        if (!renderInputDialog && inputDialogOpen == false) {
+            holdArrow = false
+        }
+    }
+
     ArrowPreference(
         title = title,
         summary = summary,
         onClick = {
             haptic.contextClick()
-            showInputDialog = true
+            if (renderInputDialog) {
+                showInputDialog = true
+            } else {
+                onInputDialogOpenChange?.invoke(true)
+            }
             holdArrow = true
         },
         holdDownState = holdArrow,
@@ -95,7 +110,8 @@ fun ArrowSlider(
         },
     )
 
-    SliderInputDialog(
+    if (renderInputDialog) {
+        SliderInputDialog(
         showDialog = showInputDialog,
         title = inputTitle,
         summary = inputSummary,
@@ -110,11 +126,12 @@ fun ArrowSlider(
             onInputConfirm(input)
             showInputDialog = false
         },
-    )
+        )
+    }
 }
 
 @Composable
-private fun SliderInputDialog(
+internal fun SliderInputDialog(
     showDialog: Boolean,
     title: String,
     summary: String? = null,
@@ -133,48 +150,51 @@ private fun SliderInputDialog(
         show = showDialog,
         title = title,
         summary = summary,
+        modifier = Modifier.dialogContentHeightLimit(),
         onDismissRequest = onDismissRequest,
         onDismissFinished = onDismissFinished,
     ) {
-        var text by rememberSaveable(initialValue) { mutableStateOf(initialValue) }
+        ScrollableDialogContent {
+            var text by rememberSaveable(initialValue) { mutableStateOf(initialValue) }
 
-        SuperTextField(
-            modifier = Modifier.padding(bottom = 16.dp),
-            value = text,
-            label = label,
-            useLabelAsPlaceholder = useLabelAsPlaceholder,
-            maxLines = 1,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number,
-                imeAction = ImeAction.Done,
-            ),
-            onValueChange = { newValue ->
-                text = inputFilter(newValue)
-            },
-        )
+            SuperTextField(
+                modifier = Modifier.padding(bottom = 16.dp),
+                value = text,
+                label = label,
+                useLabelAsPlaceholder = useLabelAsPlaceholder,
+                maxLines = 1,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                ),
+                onValueChange = { newValue ->
+                    text = inputFilter(newValue)
+                },
+            )
 
-        Row(horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(
-                text = stringResource(R.string.button_cancel),
-                onClick = {
-                    haptic.contextClick()
-                    onDismissRequest()
-                },
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(20.dp))
-            TextButton(
-                text = stringResource(R.string.button_confirm),
-                onClick = {
-                    haptic.confirm()
-                    val inputValue = text.toFloatOrNull() ?: 0f
-                    if (inputValue >= inputValueRange.start && inputValue <= inputValueRange.endInclusive) {
-                        onConfirm(text.trim())
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColorsPrimary(),
-            )
+            Row(horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(
+                    text = stringResource(R.string.button_cancel),
+                    onClick = {
+                        haptic.contextClick()
+                        onDismissRequest()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(20.dp))
+                TextButton(
+                    text = stringResource(R.string.button_confirm),
+                    onClick = {
+                        haptic.confirm()
+                        val inputValue = text.toFloatOrNull() ?: 0f
+                        if (inputValue >= inputValueRange.start && inputValue <= inputValueRange.endInclusive) {
+                            onConfirm(text.trim())
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                )
+            }
         }
     }
 }
