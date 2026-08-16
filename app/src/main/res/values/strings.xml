@@ -71,7 +71,7 @@
     <string name="cd_delete_address">Delete address</string>
     <string name="label_device_name">Device name</string>
     <string name="label_name">Name</string>
-    <string name="label_wlan_pairing_code">WLAN pairing code</string>
+    <string name="label_wlan_pairing_code">Wi-Fi pairing code</string>
     <string name="label_resolution">Resolution</string>
     <string name="label_codec">Codec</string>
     <string name="label_status">Status</string>
@@ -659,6 +659,7 @@
     <!-- Terminal - Command Bookmarks -->
     <string name="terminal_menu_command_bookmarks">Shell bookmarks</string>
     <string name="bookmark_title">Shell Bookmarks</string>
+    <string name="bookmark_auto_enter">Auto press Enter after execution</string>
     <string name="bookmark_empty">No shell bookmarks yet</string>
     <string name="bookmark_empty_hint">Tap + to create a shell bookmark</string>
     <string name="bookmark_create">Create bookmark</string>
@@ -717,6 +718,10 @@
     <string name="appmgr_action_export">Export APK</string>
     <string name="appmgr_action_disable">Disable</string>
     <string name="appmgr_action_enable">Enable</string>
+<string name="appmgr_action_batch_uninstall">Batch uninstall</string>
+<string name="appmgr_action_batch_export">Batch export APK</string>
+<string name="appmgr_action_batch_disable">Batch disable</string>
+<string name="appmgr_action_batch_enable">Batch enable</string>
     <string name="appmgr_action_clear_data">Clear data</string>
     <string name="appmgr_action_force_stop">Force stop</string>
     <string name="appmgr_batch_mode">Batch management</string>

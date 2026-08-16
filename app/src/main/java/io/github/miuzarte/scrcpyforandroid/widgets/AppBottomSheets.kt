@@ -39,7 +39,9 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
+import io.github.miuzarte.scrcpyforandroid.services.AppIconCache
 import io.github.miuzarte.scrcpyforandroid.utils.AppSortUtils
+import io.github.miuzarte.scrcpyforandroid.utils.appIconRounded
 import top.yukonga.miuix.kmp.basic.DropdownColors
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -86,10 +88,23 @@ fun AppListBottomSheet(
 
     LaunchedEffect(show, pkgKeys) {
         if (show && onFetchIcons != null && pkgKeys.isNotEmpty()) {
-            runCatching {
-                val result = withContext(Dispatchers.IO) { onFetchIcons(pkgKeys) }
-                iconMap = result
+            val cached = pkgKeys
+                .mapNotNull { pkg ->
+                    runCatching { AppIconCache.getIconBase64(pkg) }.getOrNull()?.let { pkg to it }
+                }
+                .toMap()
+            val missing = pkgKeys - cached.keys
+            val fetched = if (missing.isNotEmpty()) {
+                runCatching {
+                    withContext(Dispatchers.IO) { onFetchIcons(missing) }
+                }.getOrElse { emptyMap() }.filterValues { it.isNotBlank() }
+            } else {
+                emptyMap()
             }
+            fetched.forEach { (pkg, b64) ->
+                runCatching { AppIconCache.putIcon(pkg, b64) }
+            }
+            iconMap = cached + fetched
         }
         if (!show) {
             iconMap = emptyMap()
@@ -248,7 +263,8 @@ private fun AppListBottomSheetItem(
                     bitmap = iconBitmap.asImageBitmap(),
                     contentDescription = entry.title.ifBlank { entry.summary ?: "" },
                     modifier = Modifier
-                        .size(26.dp),
+                        .size(26.dp)
+                        .appIconRounded(26.dp),
                 )
             } else {
                 Icon(

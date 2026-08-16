@@ -16,6 +16,36 @@
 - 修复: 外部弹窗模式关闭后选项行残留"按住/选中"高亮色（`LaunchedEffect` 监听弹窗状态释放 `holdArrow`）
 - 修复: 终端页键盘弹出后光标闪烁（移除 `requestFocus()` 调用）
 
+### 设备切换刷新与搜索框乱序修复
+
+- 修复: start-app 搜索框输入乱序（输入 123 显示 231），改用 `TextFieldValue` 携带 selection 状态（`rememberSaveable(stateSaver = TextFieldValue.Saver)`），与仓库既有输入框修复模式一致
+- 修复: 设备切换后 start-app / 所有应用 / 最近任务列表仍显示旧设备数据（`Listings.invalidate()` 清空缓存 + `DeviceTabViewModel` 监听 `connectionTargetKey` 自动刷新 + start-app 展开时总是 `forceRefresh` 静默拉取）
+- 修复: 连接/切换设备时提示"获取最近任务失败: NetworkOnMainThreadException"（`getRecentTasks` 内 `NativeAdbService.shell` 包 `withContext(Dispatchers.IO)` + 监听器整体切 IO）
+
+## 0.5.3e2
+
+### 双语与文本修复
+
+- 修复: 配对码英文翻译 `WLAN pairing code` → `Wi-Fi pairing code`（用词更准确、更简短）
+- 修复: 命令书签"自动回车执行"硬编码中文无英文翻译（新增 `bookmark_auto_enter` 字符串资源，改用 `stringResource`）
+- 修复: 锁屏密码自动填充界面不跟随 app 语言设置（`LockscreenPasswordActivity` 补充 `attachBaseContext` 语言应用逻辑）
+- 修复: 配对弹窗端口和配对码输入框并排导致长 label 换行（还原为各占一整行 `fillMaxWidth`）
+
+### 缓存与图标功能
+
+- 新增: 应用图标圆角矩形遮罩（全局，圆角 = 图标尺寸 20%，MIUI 风格），应用到应用管理、本地应用、进程管理、抽屉、start-app 下拉
+- 新增: start-app 选择器搜索功能（`OverlaySpinnerPreference` 新增 `searchable`/`searchHint`/`searchFromIndex` 参数，popup 内渲染搜索框，头部项恒保留）
+- 新增: start-app 下拉真实应用图标渲染（缓存优先 + 缺失补拉 + 写回缓存，无图标时回退系统/商店占位）
+- 修复: start-app 搜索框输入第一个字符后失焦（搜索框从循环内提取至 `ListPopupColumn` 顶部独立渲染）
+- 新增: `AppIconCache` 本地持久缓存（图标 128px PNG 落盘 + 512 条 LruCache + `apps_meta.json` 列表元数据，按设备分目录）
+- 新增: 连接后预加载应用列表+图标到缓存（`DeviceTabViewModel.handleAdbConnected` 内，沿用 `adbAutoLoadAppListOnConnect` 开关）
+- 新增: 抽屉打开时缓存优先 + 缺失补拉 + 写回缓存（`AppListBottomSheet`）
+- 修复: 进入应用管理必触发全屏加载（改为缓存优先静默刷新，缓存非空时直接渲染列表）
+- 新增: 批量操作前缀动态文案（多选 ≥2 时显示"批量卸载/批量停用/批量启用/批量导出APK"）
+- 修复: 卸载/停用/启用后列表延迟刷新（改为本地即时更新 `removePackagesFromLists`/`setPackagesEnabled`，不再全量 `refreshApp()`）
+- 修复: 增量编译导致启动崩溃 `NoSuchFieldError: $stable`（`gradlew clean` 后全量重建）
+- 修复: 应用管理切换设备后显示上一台设备列表（`AppIconCache.setDeviceKey` 从 `adbAutoLoadAppListOnConnect` 开关内移出到 `handleAdbConnected` 同步位置，无条件切换缓存设备键）
+
 ## 0.5.3e
 
 ### 上游同步 (v0.5.1 → v0.5.3_pre1)

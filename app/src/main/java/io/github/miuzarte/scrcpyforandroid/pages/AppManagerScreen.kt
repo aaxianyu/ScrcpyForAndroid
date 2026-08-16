@@ -69,9 +69,11 @@ import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
 import io.github.miuzarte.scrcpyforandroid.services.AppManagerService
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
+import io.github.miuzarte.scrcpyforandroid.services.AppIconCache
 import io.github.miuzarte.scrcpyforandroid.services.RemoteAppInfo
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
 import io.github.miuzarte.scrcpyforandroid.utils.AppSortUtils
+import io.github.miuzarte.scrcpyforandroid.utils.appIconRounded
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -184,20 +186,47 @@ internal class AppManagerViewModel : ViewModel() {
 
     fun loadApps(fetchIcons: Boolean = true) {
         viewModelScope.launch {
-            _loading.value = true
             _error.value = null
             _notConnected.value = false
+            val cachedMeta = AppIconCache.getAppsMeta()
+            if (!cachedMeta.isNullOrEmpty()) {
+                val iconMap = cachedMeta
+                    .map { it.packageName }
+                    .mapNotNull { pkg ->
+                        AppIconCache.getIconBase64(pkg)?.let { pkg to it }
+                    }
+                    .toMap()
+                _userApps.value = cachedMeta
+                    .filter { !it.system }
+                    .map { it.toRemoteAppInfo(iconMap) }
+                _systemApps.value = cachedMeta
+                    .filter { it.system }
+                    .map { it.toRemoteAppInfo(iconMap) }
+            } else {
+                _loading.value = true
+            }
             try {
                 val result = AppManagerService.loadAllApps(fetchIcons)
                 _userApps.value = result.userApps
                 _systemApps.value = result.systemApps
-                if (result.userApps.isEmpty() && result.systemApps.isEmpty()) {
+                val all = result.userApps + result.systemApps
+                AppIconCache.putAppsMeta(
+                    all.map { AppIconCache.AppMeta(it.packageName, it.label, it.isSystem) },
+                )
+                if (fetchIcons) {
+                    all.forEach { app ->
+                        app.iconBase64?.let { b64 -> AppIconCache.putIcon(app.packageName, b64) }
+                    }
+                }
+                if (all.isEmpty()) {
                     _error.value = AppRuntime.stringResource(R.string.appmgr_error_no_device)
                     _notConnected.value = true
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: AppRuntime.stringResource(R.string.appmgr_error_no_device)
-                _notConnected.value = true
+                if (_userApps.value.isEmpty() && _systemApps.value.isEmpty()) {
+                    _error.value = e.message ?: AppRuntime.stringResource(R.string.appmgr_error_no_device)
+                    _notConnected.value = true
+                }
             } finally {
                 _loading.value = false
             }
@@ -244,42 +273,59 @@ internal class AppManagerViewModel : ViewModel() {
     fun freezePackages(packages: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             var successCount = 0
-            var failCount = 0
+            val failed = mutableSetOf<String>()
             for (pkg in packages) {
                 AppManagerService.disable(pkg)
                     .onSuccess { successCount++ }
-                    .onFailure { failCount++ }
+                    .onFailure { failed += pkg }
             }
-            AppRuntime.snackbar("停用完成: 成功 $successCount, 失败 $failCount", duration = SnackbarDuration.Custom(3000L))
-            refreshApp()
+            AppRuntime.snackbar("停用完成: 成功 $successCount, 失败 ${failed.size}", duration = SnackbarDuration.Custom(3000L))
+            setPackagesEnabled(packages - failed, enabled = false)
         }
     }
 
     fun unfreezePackages(packages: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             var successCount = 0
-            var failCount = 0
+            val failed = mutableSetOf<String>()
             for (pkg in packages) {
                 AppManagerService.enable(pkg)
                     .onSuccess { successCount++ }
-                    .onFailure { failCount++ }
+                    .onFailure { failed += pkg }
             }
-            AppRuntime.snackbar("启用完成: 成功 $successCount, 失败 $failCount", duration = SnackbarDuration.Custom(3000L))
-            refreshApp()
+            AppRuntime.snackbar("启用完成: 成功 $successCount, 失败 ${failed.size}", duration = SnackbarDuration.Custom(3000L))
+            setPackagesEnabled(packages - failed, enabled = true)
         }
     }
 
     fun uninstallPackages(packages: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             var successCount = 0
-            var failCount = 0
+            val removed = mutableSetOf<String>()
             for (pkg in packages) {
                 AppManagerService.uninstall(pkg)
-                    .onSuccess { successCount++ }
-                    .onFailure { failCount++ }
+                    .onSuccess { successCount++; removed += pkg }
+                    .onFailure { }
             }
-            AppRuntime.snackbar("卸载完成: 成功 $successCount, 失败 $failCount", duration = SnackbarDuration.Custom(3000L))
-            refreshApp()
+            AppRuntime.snackbar("卸载完成: 成功 $successCount, 失败 ${packages.size - removed.size}", duration = SnackbarDuration.Custom(3000L))
+            removePackagesFromLists(removed)
+        }
+    }
+
+    fun removePackagesFromLists(pkgs: Set<String>) {
+        if (pkgs.isEmpty()) return
+        _userApps.value = _userApps.value.filter { it.packageName !in pkgs }
+        _systemApps.value = _systemApps.value.filter { it.packageName !in pkgs }
+        AppIconCache.removeApps(pkgs)
+    }
+
+    fun setPackagesEnabled(pkgs: Set<String>, enabled: Boolean) {
+        if (pkgs.isEmpty()) return
+        _userApps.value = _userApps.value.map {
+            if (it.packageName in pkgs) it.copy(isEnabled = enabled) else it
+        }
+        _systemApps.value = _systemApps.value.map {
+            if (it.packageName in pkgs) it.copy(isEnabled = enabled) else it
         }
     }
 
@@ -435,6 +481,7 @@ fun AppManagerScreen(
                     }
                     if (selectedPackages.isNotEmpty()) {
                         val selectedList = selectedPackages.toList()
+                        val multi = selectedList.size >= 2
                         val enabledList = selectedList.filter { pkg ->
                             val app = userApps.find { it.packageName == pkg }
                                 ?: systemApps.find { it.packageName == pkg }
@@ -449,19 +496,31 @@ fun AppManagerScreen(
                             entry = DropdownEntry(
                                 items = listOfNotNull(
                                     DropdownItem(
-                                        text = stringResource(R.string.appmgr_action_uninstall),
+                                        text = stringResource(
+                                            if (multi) R.string.appmgr_action_batch_uninstall
+                                            else R.string.appmgr_action_uninstall
+                                        ),
                                         onClick = { batchConfirmAction = "uninstall" },
                                     ),
                                     if (enabledList.isNotEmpty()) DropdownItem(
-                                        text = stringResource(R.string.appmgr_action_disable),
+                                        text = stringResource(
+                                            if (multi) R.string.appmgr_action_batch_disable
+                                            else R.string.appmgr_action_disable
+                                        ),
                                         onClick = { batchConfirmAction = "freeze" },
                                     ) else null,
                                     if (disabledList.isNotEmpty()) DropdownItem(
-                                        text = stringResource(R.string.appmgr_action_enable),
+                                        text = stringResource(
+                                            if (multi) R.string.appmgr_action_batch_enable
+                                            else R.string.appmgr_action_enable
+                                        ),
                                         onClick = { batchConfirmAction = "unfreeze" },
                                     ) else null,
                                     DropdownItem(
-                                        text = stringResource(R.string.appmgr_action_export),
+                                        text = stringResource(
+                                            if (multi) R.string.appmgr_action_batch_export
+                                            else R.string.appmgr_action_export
+                                        ),
                                         onClick = { batchConfirmAction = "export" },
                                     ),
                                 )
@@ -734,6 +793,14 @@ app = currentSelectedApp,
 onDismiss = { viewModel.selectApp(null) },
 onActionComplete = {
 viewModel.refreshApp()
+viewModel.selectApp(null)
+},
+onUninstall = { pkg ->
+viewModel.removePackagesFromLists(setOf(pkg))
+viewModel.selectApp(null)
+},
+onStateChanged = { pkg, enabled ->
+viewModel.setPackagesEnabled(setOf(pkg), enabled)
 viewModel.selectApp(null)
 },
 onExport = {
@@ -1029,7 +1096,8 @@ bitmap = bitmap.asImageBitmap(),
 contentDescription = label,
 contentScale = ContentScale.Fit,
 modifier = Modifier
-.size(40.dp),
+.size(40.dp)
+.appIconRounded(40.dp),
 )
     } else {
         val color = remember(packageName) {
@@ -1188,12 +1256,14 @@ private fun ExportingDialog(
 
 @Composable
 private fun AppActionSheet(
-show: Boolean,
-app: RemoteAppInfo,
-onDismiss: () -> Unit,
-onActionComplete: () -> Unit,
-onExport: () -> Unit,
-onOpen: () -> Unit,
+    show: Boolean,
+    app: RemoteAppInfo,
+    onDismiss: () -> Unit,
+    onActionComplete: () -> Unit,
+    onExport: () -> Unit,
+    onOpen: () -> Unit,
+    onUninstall: (String) -> Unit = {},
+    onStateChanged: (String, Boolean) -> Unit = { _, _ -> },
 ) {
 val scope = rememberCoroutineScope()
 var showConfirmDialog by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1244,7 +1314,8 @@ if (!app.isSystem) {
                             AppManagerService.enable(app.packageName)
                                 .onSuccess { AppRuntime.snackbar(R.string.appmgr_enable_success, app.label) }
                                 .onFailure { AppRuntime.snackbar(R.string.appmgr_enable_failed, it.message ?: "") }
-                            onActionComplete()
+                            onStateChanged(app.packageName, true)
+                            onDismiss()
                         }
                     },
                 )
@@ -1284,7 +1355,8 @@ if (!app.isSystem) {
                             AppManagerService.uninstall(app.packageName)
                                 .onSuccess { AppRuntime.snackbar(R.string.appmgr_uninstall_success, app.label) }
                                 .onFailure { AppRuntime.snackbar(R.string.appmgr_uninstall_failed, it.message ?: "") }
-                            onActionComplete()
+                            onUninstall(app.packageName)
+                            onDismiss()
                         }
                     },
                     modifier = Modifier.weight(1f),
@@ -1313,7 +1385,8 @@ if (!app.isSystem) {
                             AppManagerService.disable(app.packageName)
                                 .onSuccess { AppRuntime.snackbar(R.string.appmgr_disable_success, app.label) }
                                 .onFailure { AppRuntime.snackbar(R.string.appmgr_disable_failed, it.message ?: "") }
-                            onActionComplete()
+                            onStateChanged(app.packageName, false)
+                            onDismiss()
                         }
                     },
                     modifier = Modifier.weight(1f),
@@ -1676,7 +1749,8 @@ bitmap = bitmap.asImageBitmap(),
 contentDescription = app.label,
 contentScale = ContentScale.Fit,
 modifier = Modifier
-.size(36.dp),
+.size(36.dp)
+.appIconRounded(36.dp),
 )
             } else {
                 val color = remember(app.packageName) {
@@ -1733,3 +1807,15 @@ modifier = Modifier
         }
     }
 }
+
+private fun AppIconCache.AppMeta.toRemoteAppInfo(iconMap: Map<String, String>): RemoteAppInfo =
+    RemoteAppInfo(
+        packageName = packageName,
+        label = label,
+        versionName = "",
+        apkPath = "",
+        isSystem = system,
+        isEnabled = true,
+        sizeBytes = 0,
+        iconBase64 = iconMap[packageName],
+    )

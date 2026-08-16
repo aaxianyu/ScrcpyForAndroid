@@ -658,6 +658,7 @@
     <!-- Terminal - Command Bookmarks -->
     <string name="terminal_menu_command_bookmarks">命令书签</string>
     <string name="bookmark_title">命令书签</string>
+    <string name="bookmark_auto_enter">自动回车执行</string>
     <string name="bookmark_empty">暂无书签</string>
     <string name="bookmark_empty_hint">点击 + 创建命令书签</string>
     <string name="bookmark_create">创建书签</string>
@@ -716,6 +717,10 @@
     <string name="appmgr_action_export">导出APK</string>
     <string name="appmgr_action_disable">停用</string>
     <string name="appmgr_action_enable">启用</string>
+<string name="appmgr_action_batch_uninstall">批量卸载</string>
+<string name="appmgr_action_batch_export">批量导出APK</string>
+<string name="appmgr_action_batch_disable">批量停用</string>
+<string name="appmgr_action_batch_enable">批量启用</string>
     <string name="appmgr_action_clear_data">清除数据</string>
     <string name="appmgr_action_force_stop">停止运行</string>
     <string name="appmgr_batch_mode">批量管理</string>

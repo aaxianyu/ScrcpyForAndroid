@@ -573,6 +573,18 @@ class Scrcpy(
         val apps: List<AppInfo> get() = cachedApps.orEmpty()
         val recentTasks: List<RecentTaskInfo> get() = cachedRecentTasks.orEmpty()
 
+        /** 清空所有列表缓存（设备切换时调用），下次访问自动重拉最新数据。 */
+        fun invalidate() {
+            cachedVideoEncoders = null
+            cachedAudioEncoders = null
+            cachedDisplays = null
+            cachedCameras = null
+            cachedCameraSizes = null
+            cachedApps = null
+            cachedAppsByPackage = emptyMap()
+            cachedRecentTasks = null
+        }
+
         fun findCachedApp(packageName: String): AppInfo? = cachedAppsByPackage[packageName]
 
         suspend fun getVideoEncoders(forceRefresh: Boolean = false): List<EncoderInfo> {
@@ -699,7 +711,9 @@ class Scrcpy(
             return recentTasksMutex.withLock {
                 cachedRecentTasks?.takeUnless { forceRefresh } ?: run {
                     runTrackedFetch {
-                        val output = NativeAdbService.shell("dumpsys activity recents")
+                        val output = withContext(Dispatchers.IO) {
+                            NativeAdbService.shell("dumpsys activity recents")
+                        }
                         val parsed = parseRecentTasks(output).map { task ->
                             task.copy(appLabel = cachedAppsByPackage[task.packageName]?.label)
                         }

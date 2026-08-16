@@ -78,7 +78,7 @@ fun CommandBookmarkBottomSheet(
                 .padding(horizontal = UiSpacing.PageHorizontal),
         ) {
             SwitchPreference(
-                title = "自动回车执行",
+                title = stringResource(R.string.bookmark_auto_enter),
                 checked = autoEnter,
                 onCheckedChange = {
                     scope.launch {

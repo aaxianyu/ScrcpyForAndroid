@@ -299,6 +299,23 @@ internal class DeviceTabViewModel(
             }
         }
 
+        // 监听连接目标变化：首次连接或切换设备时失效列表缓存并自动刷新
+        viewModelScope.launch {
+            var lastKey: String? = AppRuntime.connectionTargetKey.value
+            AppRuntime.connectionTargetKey.collect { newKey ->
+                if (newKey != null && newKey != lastKey) {
+                    scrcpy.listings.invalidate()
+                    withContext(Dispatchers.IO) {
+                        refreshApps()
+                        refreshRecentTasks()
+                    }
+                }
+                if (newKey != null) {
+                    lastKey = newKey
+                }
+            }
+        }
+
         viewModelScope.launch {
             scrcpy.controlChannelState.collectLatest { state ->
                 if (state == Scrcpy.Session.ControlChannelState.BROKEN) {
@@ -653,17 +670,37 @@ internal class DeviceTabViewModel(
         )
         AppRuntime.snackbar(R.string.vm_adb_connected)
 
+        // 连接成功信息获取后、任何分支之前，无条件同步切换缓存设备键
+        AppIconCache.setDeviceKey(info.serial.ifBlank { "$host:$port" })
+
         if (_asBundle.value.adbAutoLoadAppListOnConnect) {
             viewModelScope.launch(Dispatchers.IO) {
-                runCatching { scrcpy.listings.getApps(forceRefresh = true) }
-                    .onFailure { error ->
-                        logEvent(
-                            R.string.vm_failed_app_list_msg,
-                            error.message ?: error.javaClass.simpleName,
-                            level = Log.WARN,
-                            error = error,
+                runCatching {
+                    val apps = scrcpy.listings.getApps(forceRefresh = true)
+                    val pkgs = apps.map { it.packageName }.toSet()
+                    if (pkgs.isNotEmpty()) {
+                        AppIconCache.putAppsMeta(
+                            apps.map {
+                                AppIconCache.AppMeta(it.packageName, it.label ?: it.packageName, it.system == true)
+                            },
                         )
+                        runCatching {
+                            AppManagerService.appContext = AppRuntime.context
+                            val result = AppManagerService
+                                .fetchLabelsViaHelper(pkgs)
+                                .mapValues { it.value.iconBase64 ?: "" }
+                                .filterValues { it.isNotBlank() }
+                            result.forEach { (pkg, b64) -> AppIconCache.putIcon(pkg, b64) }
+                        }
                     }
+                }.onFailure { error ->
+                    logEvent(
+                        R.string.vm_failed_app_list_msg,
+                        error.message ?: error.javaClass.simpleName,
+                        level = Log.WARN,
+                        error = error,
+                    )
+                }
             }
         }
 

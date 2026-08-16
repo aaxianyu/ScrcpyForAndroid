@@ -32,8 +32,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.miuzarte.scrcpyforandroid.R
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import io.github.miuzarte.scrcpyforandroid.constants.ScrcpyPresets
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
+import io.github.miuzarte.scrcpyforandroid.utils.appIconRounded
 import io.github.miuzarte.scrcpyforandroid.miuix.SpinnerEntry
 import io.github.miuzarte.scrcpyforandroid.models.DeviceShortcuts
 import io.github.miuzarte.scrcpyforandroid.models.ScrcpyOptions.Crop
@@ -43,6 +49,8 @@ import io.github.miuzarte.scrcpyforandroid.scrcpy.ClientOptions
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Shared.*
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
+import io.github.miuzarte.scrcpyforandroid.services.AppIconCache
+import io.github.miuzarte.scrcpyforandroid.services.AppManagerService
 import io.github.miuzarte.scrcpyforandroid.storage.ScrcpyOptions
 import io.github.miuzarte.scrcpyforandroid.storage.ScrcpyProfiles
 import io.github.miuzarte.scrcpyforandroid.storage.Settings
@@ -769,7 +777,8 @@ internal fun ScrcpyAllOptionsPage(
     val apps = remember(scrcpy.listings.apps, listRefreshVersion) {
         scrcpy.listings.apps
     }
-    val appDropdownItems by remember(apps, listRefreshVersion) {
+    var appIconMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val appDropdownItems by remember(apps, listRefreshVersion, appIconMap) {
         derivedStateOf {
             buildList {
                 add(SpinnerEntry(title = textNone))
@@ -777,11 +786,29 @@ internal fun ScrcpyAllOptionsPage(
                 apps.forEach { app ->
                     add(
                         SpinnerEntry(
-                            icon = app.system?.let { system ->
-                                {
+                            icon = {
+                                val b64 = appIconMap[app.packageName]
+                                val bitmap = remember(b64) {
+                                    b64?.let {
+                                        runCatching {
+                                            val bytes = Base64.decode(it, Base64.DEFAULT)
+                                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                        }.getOrNull()
+                                    }
+                                }
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap.asImageBitmap(),
+                                        contentDescription = app.label ?: app.packageName,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .size(26.dp)
+                                            .appIconRounded(26.dp),
+                                    )
+                                } else {
                                     Icon(
                                         imageVector =
-                                            if (system) Icons.Rounded.Android
+                                            if (app.system == true) Icons.Rounded.Android
                                             else MiuixIcons.Store,
                                         contentDescription = app.label ?: app.packageName,
                                         modifier = Modifier.padding(end = UiSpacing.ContentVertical),
@@ -2066,20 +2093,39 @@ internal fun ScrcpyAllOptionsPage(
                     dataLoaded = apps.isNotEmpty(),
                     dataLoading = refreshBusy,
                     overrideEndActionValue = startAppOverrideEndActionValue,
+                    searchable = true,
+                    searchHint = stringResource(R.string.appmgr_search_hint),
                     onExpandedChange = { expanded ->
-                        if (expanded && apps.isEmpty()) {
+                        if (expanded) {
                             scope.launch {
-                                AppRuntime.snackbar(R.string.text_fetching)
-                                try {
+                                runCatching {
                                     withContext(Dispatchers.IO) {
-                                        scrcpy.listings.getApps(forceRefresh = false)
+                                        scrcpy.listings.getApps(forceRefresh = true)
                                     }
-                                    AppRuntime.snackbar(R.string.text_fetch_success)
-                                } catch (e: Exception) {
-                                    AppRuntime.snackbar(
-                                        R.string.text_fetch_failed,
-                                        e.message ?: "",
-                                    )
+                                }
+                                val currentApps = scrcpy.listings.apps
+                                if (currentApps.isNotEmpty() && appIconMap.size < currentApps.size) {
+                                    val pkgs = currentApps.map { it.packageName }.toSet()
+                                    val cached = pkgs
+                                        .mapNotNull { pkg ->
+                                            AppIconCache.getIconBase64(pkg)?.let { pkg to it }
+                                        }
+                                        .toMap()
+                                    val missing = pkgs - cached.keys
+                                    val fetched = if (missing.isNotEmpty()) {
+                                        runCatching {
+                                            AppManagerService.scrcpy = scrcpy
+                                            AppManagerService.appContext = AppRuntime.context
+                                            AppManagerService
+                                                .fetchLabelsViaHelper(missing)
+                                                .mapValues { it.value.iconBase64 ?: "" }
+                                                .filterValues { it.isNotBlank() }
+                                        }.getOrElse { emptyMap() }
+                                    } else {
+                                        emptyMap()
+                                    }
+                                    fetched.forEach { (pkg, b64) -> AppIconCache.putIcon(pkg, b64) }
+                                    appIconMap = cached + fetched
                                 }
                             }
                         }

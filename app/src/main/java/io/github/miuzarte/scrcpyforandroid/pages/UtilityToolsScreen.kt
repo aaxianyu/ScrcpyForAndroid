@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
+import io.github.miuzarte.scrcpyforandroid.utils.appIconRounded
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
@@ -1480,7 +1481,8 @@ bitmap = bitmap.asImageBitmap(),
 contentDescription = process.appName,
 contentScale = ContentScale.Fit,
 modifier = Modifier
-.size(40.dp),
+.size(40.dp)
+.appIconRounded(40.dp),
 )
             } else {
                 val appColor = remember(process.packageName) {

@@ -2,6 +2,7 @@ package io.github.miuzarte.scrcpyforandroid.miuix
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -10,10 +11,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.basic.Search
+import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -39,6 +44,9 @@ fun OverlaySpinnerPreference(
     enabled: Boolean = true,
     showValue: Boolean = true,
     renderInRootScaffold: Boolean = true,
+    searchable: Boolean = false,
+    searchHint: String = "",
+    searchFromIndex: Int = 2,
     onExpandedChange: ((Boolean) -> Unit)? = null,
     onSelectedIndexChange: ((Int) -> Unit)? = null,
 ) {
@@ -55,6 +63,10 @@ fun OverlaySpinnerPreference(
                 currentOnExpandedChange.value?.invoke(expanded)
             }
         }
+    }
+
+    var searchFieldValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
     }
 
     val itemsNotEmpty = items.isNotEmpty()
@@ -112,6 +124,11 @@ fun OverlaySpinnerPreference(
                     hapticFeedback = hapticFeedback,
                     spinnerColors = spinnerColors,
                     renderInRootScaffold = renderInRootScaffold,
+                    searchable = searchable,
+                    searchHint = searchHint,
+                    searchQuery = searchFieldValue,
+                    searchFromIndex = searchFromIndex,
+                    onSearchQueryChange = { searchFieldValue = it },
                     onSelectedIndexChange = onSelectedIndexChange,
                 )
             }
@@ -134,6 +151,11 @@ private fun OverlaySpinnerPopup(
     hapticFeedback: HapticFeedback,
     spinnerColors: DropdownColors,
     renderInRootScaffold: Boolean,
+    searchable: Boolean,
+    searchHint: String,
+    searchQuery: TextFieldValue,
+    searchFromIndex: Int,
+    onSearchQueryChange: (TextFieldValue) -> Unit,
     onSelectedIndexChange: ((Int) -> Unit)?,
 ) {
     val onSelectState = rememberUpdatedState(onSelectedIndexChange)
@@ -146,6 +168,20 @@ private fun OverlaySpinnerPopup(
             currentOnDismiss()
         }
     }
+    val headItems = remember(items, searchFromIndex) {
+        items.take(searchFromIndex)
+    }
+    val appItems = remember(items, searchQuery.text, searchable, searchFromIndex) {
+        val query = searchQuery.text.trim().lowercase()
+        items.drop(searchFromIndex).mapIndexedNotNull { offset, entry ->
+            val originalIndex = offset + searchFromIndex
+            val keep = !searchable ||
+                query.isBlank() ||
+                entry.title?.lowercase()?.contains(query) == true
+            if (keep) originalIndex to entry else null
+        }
+    }
+    val visibleCount = headItems.size + appItems.size
     OverlayListPopup(
         show = isDropdownExpanded,
         alignment = PopupPositionProvider.Align.End,
@@ -155,13 +191,57 @@ private fun OverlaySpinnerPopup(
         renderInRootScaffold = renderInRootScaffold,
     ) {
         ListPopupColumn {
-            items.forEachIndexed { index, spinnerEntry ->
+            if (searchable) {
+                TextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    useLabelAsPlaceholder = true,
+                    label = searchHint,
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    leadingIcon = {
+                        Icon(
+                            imageVector = MiuixIcons.Basic.Search,
+                            contentDescription = searchHint,
+                            tint = MiuixTheme.colorScheme.onSurfaceContainerHigh,
+                        )
+                    },
+                    trailingIcon = if (searchQuery.text.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { onSearchQueryChange(TextFieldValue("")) }) {
+                                Icon(
+                                    imageVector = MiuixIcons.Basic.SearchCleanup,
+                                    contentDescription = "clear",
+                                    tint = MiuixTheme.colorScheme.onSurfaceContainerHighest,
+                                )
+                            }
+                        }
+                    } else null,
+                )
+            }
+            headItems.forEachIndexed { index, spinnerEntry ->
                 key(index) {
                     SpinnerItemImpl(
                         entry = spinnerEntry,
-                        entryCount = items.size,
+                        entryCount = visibleCount,
                         isSelected = selectedIndex == index,
                         index = index,
+                        spinnerColors = spinnerColors,
+                        dialogMode = false,
+                        enabled = spinnerEntry.enabled,
+                        onSelectedIndexChange = onItemSelected,
+                    )
+                }
+            }
+            appItems.forEach { (originalIndex, spinnerEntry) ->
+                key(originalIndex) {
+                    SpinnerItemImpl(
+                        entry = spinnerEntry,
+                        entryCount = visibleCount,
+                        isSelected = selectedIndex == originalIndex,
+                        index = originalIndex,
                         spinnerColors = spinnerColors,
                         dialogMode = false,
                         enabled = spinnerEntry.enabled,

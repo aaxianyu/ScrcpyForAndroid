@@ -41,6 +41,9 @@ fun OverlaySpinnerWithFallback(
     dataLoaded: Boolean = true,
     dataLoading: Boolean = false,
     overrideEndActionValue: String? = null,
+    searchable: Boolean = false,
+    searchHint: String = "",
+    searchFromIndex: Int = 2,
 ) {
     val fallbackActive = !dataLoaded && !overrideEndActionValue.isNullOrBlank()
     val fallbackIdx = items.size
@@ -92,5 +95,8 @@ fun OverlaySpinnerWithFallback(
             if (fallbackActive && idx >= fallbackIdx) return@OverlaySpinnerPreference
             onSelectedIndexChange?.invoke(idx)
         },
+        searchable = searchable,
+        searchHint = searchHint,
+        searchFromIndex = searchFromIndex,
     )
 }
