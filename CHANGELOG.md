@@ -3,24 +3,21 @@
 
 # Change Log
 
-## 0.5.3e1
+## 0.5.4e
 
-### 弹窗 + 键盘（IME）修复
+### 上游同步 (v0.5.3 → v0.5.4)
 
-- 修复: 弹窗内输入框呼出键盘后弹窗反复关闭、无法输入（LazyColumn item 回收导致弹窗随 IME 弹出被销毁）
-  - 设置页 8 处 ArrowSlider 输入弹窗上提到页面根级
-  - scrcpy 选项页 7 处 ArrowSlider 输入弹窗上提到页面根级
-  - 设备页 ConfigPanel 音频/视频码率弹窗通过回调桥接上提到页面根级
-  - 设备页配对弹窗上提到页面根级
-- 修复: 超高弹窗内容在键盘弹出后超出屏幕、底部不可访问（新增 `dialogContentHeightLimit` + `ScrollableDialogContent`）
-- 修复: 外部弹窗模式关闭后选项行残留"按住/选中"高亮色（`LaunchedEffect` 监听弹窗状态释放 `holdArrow`）
-- 修复: 终端页键盘弹出后光标闪烁（移除 `requestFocus()` 调用）
+- 修复: Android 10 创建锁屏密码闪退（`BiometricGate` 按 API 分级选择 authenticators，API < 30 仅用 `BIOMETRIC_STRONG` + 必须设置 negative button）
+- 修复: Android < 13 悬浮底栏闪退（`SettingsScreen` 仅 Android 13+ 显示悬浮底栏开关，低版本强制关闭）
+- 同步: 上游 v0.5.3 正式版提交（miuix 子模块 bump、CI 配置、backdrop 依赖更新、文件管理输入框光标修复）
 
-### 设备切换刷新与搜索框乱序修复
+### 本分支增强改动
 
-- 修复: start-app 搜索框输入乱序（输入 123 显示 231），改用 `TextFieldValue` 携带 selection 状态（`rememberSaveable(stateSaver = TextFieldValue.Saver)`），与仓库既有输入框修复模式一致
-- 修复: 设备切换后 start-app / 所有应用 / 最近任务列表仍显示旧设备数据（`Listings.invalidate()` 清空缓存 + `DeviceTabViewModel` 监听 `connectionTargetKey` 自动刷新 + start-app 展开时总是 `forceRefresh` 静默拉取）
-- 修复: 连接/切换设备时提示"获取最近任务失败: NetworkOnMainThreadException"（`getRecentTasks` 内 `NativeAdbService.shell` 包 `withContext(Dispatchers.IO)` + 监听器整体切 IO）
+- 新增: 点击状态卡片启动/停止镜像开关（设置 → 杂项，默认关闭；开启后点击设备页顶部状态卡片：未投屏时启动，投屏中则停止）
+- 修复: Shizuku 13.6.0+ 激活失败（新增 `libshizuku.so` 动态路径执行方案，多方案依次尝试任一成功即成功）
+- 新增: 激活应用多选（可同时勾选多个应用逐个激活，每个独立提示成功/失败）
+- 修复: 应用导出 APK 与截图保存改用 SAF（无需存储权限，Android 10/15 通用；修复单个导出 0B 文件、批量导出只成功 1 个、计数全 0 等问题）
+- 新增: 应用列表快速滚动条（"所有应用"弹窗、应用管理列表、本地应用选择器接入 miuix `VerticalScrollBar`，可拖动快速跳转）
 
 ## 0.5.3e2
 
@@ -45,6 +42,25 @@
 - 修复: 卸载/停用/启用后列表延迟刷新（改为本地即时更新 `removePackagesFromLists`/`setPackagesEnabled`，不再全量 `refreshApp()`）
 - 修复: 增量编译导致启动崩溃 `NoSuchFieldError: $stable`（`gradlew clean` 后全量重建）
 - 修复: 应用管理切换设备后显示上一台设备列表（`AppIconCache.setDeviceKey` 从 `adbAutoLoadAppListOnConnect` 开关内移出到 `handleAdbConnected` 同步位置，无条件切换缓存设备键）
+
+## 0.5.3e1
+
+### 弹窗 + 键盘（IME）修复
+
+- 修复: 弹窗内输入框呼出键盘后弹窗反复关闭、无法输入（LazyColumn item 回收导致弹窗随 IME 弹出被销毁）
+  - 设置页 8 处 ArrowSlider 输入弹窗上提到页面根级
+  - scrcpy 选项页 7 处 ArrowSlider 输入弹窗上提到页面根级
+  - 设备页 ConfigPanel 音频/视频码率弹窗通过回调桥接上提到页面根级
+  - 设备页配对弹窗上提到页面根级
+- 修复: 超高弹窗内容在键盘弹出后超出屏幕、底部不可访问（新增 `dialogContentHeightLimit` + `ScrollableDialogContent`）
+- 修复: 外部弹窗模式关闭后选项行残留"按住/选中"高亮色（`LaunchedEffect` 监听弹窗状态释放 `holdArrow`）
+- 修复: 终端页键盘弹出后光标闪烁（移除 `requestFocus()` 调用）
+
+### 设备切换刷新与搜索框乱序修复
+
+- 修复: start-app 搜索框输入乱序（输入 123 显示 231），改用 `TextFieldValue` 携带 selection 状态（`rememberSaveable(stateSaver = TextFieldValue.Saver)`），与仓库既有输入框修复模式一致
+- 修复: 设备切换后 start-app / 所有应用 / 最近任务列表仍显示旧设备数据（`Listings.invalidate()` 清空缓存 + `DeviceTabViewModel` 监听 `connectionTargetKey` 自动刷新 + start-app 展开时总是 `forceRefresh` 静默拉取）
+- 修复: 连接/切换设备时提示"获取最近任务失败: NetworkOnMainThreadException"（`getRecentTasks` 内 `NativeAdbService.shell` 包 `withContext(Dispatchers.IO)` + 监听器整体切 IO）
 
 ## 0.5.3e
 

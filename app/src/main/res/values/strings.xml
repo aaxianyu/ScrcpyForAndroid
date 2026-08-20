@@ -301,6 +301,8 @@
     <string name="pref_title_show_app_icons">Show app icons</string>
     <string name="pref_summary_show_app_icons">Display app icons in All Apps, Recent Tasks, and App Manager lists</string>
     <string name="pref_title_snackbar_duration">Snackbar duration</string>
+    <string name="pref_title_click_connected_card_toggles_scrcpy">Tap status card to start/stop mirroring</string>
+    <string name="pref_summary_click_connected_card_toggles_scrcpy">Tap the status card on the device page: start mirroring when idle, stop when mirroring</string>
     <string name="pref_title_language">Language</string>
     <string name="pref_summary_language">App display language</string>
 
@@ -774,7 +776,7 @@
     <string name="tools_screenshot_desc">Capture device screen</string>
     <string name="tools_screenshot_save">Save</string>
     <string name="tools_screenshot_open">Open</string>
-    <string name="tools_screenshot_saved">Screenshot saved to Download</string>
+    <string name="tools_screenshot_saved">Screenshot saved</string>
     <string name="tools_screenshot_failed">Screenshot failed: %1$s</string>
     <string name="tools_advanced_reboot">Advanced Reboot</string>
     <string name="tools_screen_standby">Screen Standby</string>

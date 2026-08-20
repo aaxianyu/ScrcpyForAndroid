@@ -368,6 +368,12 @@ internal fun DeviceTabPage(
             busyLabel = null,
             connectedDeviceLabel = connectedDeviceLabel,
             connectionType = currentTarget?.connectionType ?: io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType.LAN,
+            onBigCardClick = {
+                if (asBundle.clickConnectedCardTogglesScrcpy && adbConnected) {
+                    if (sessionInfo == null) viewModel.startScrcpy()
+                    else viewModel.stopScrcpy()
+                }
+            },
         )
     }
 

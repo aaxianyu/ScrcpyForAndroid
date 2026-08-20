@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalScrollBarApi::class)
+
 package io.github.miuzarte.scrcpyforandroid.pages
 
 import android.content.pm.ApplicationInfo
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -100,8 +104,11 @@ import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.VerticalScrollBar
+import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
+import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Search
 import top.yukonga.miuix.kmp.icon.basic.SearchCleanup
@@ -253,16 +260,16 @@ internal class AppManagerViewModel : ViewModel() {
         _uploading.value = value
     }
 
-    fun exportApk(app: RemoteAppInfo) {
+    fun exportApk(app: RemoteAppInfo, uri: Uri) {
         viewModelScope.launch {
             _exporting.value = true
             val result = withContext(Dispatchers.IO) {
-                AppManagerService.exportApk(app.packageName, app.apkPath)
+                AppManagerService.exportApk(app.packageName, app.apkPath, uri)
             }
             _exporting.value = false
             result
                 .onSuccess {
-                    AppRuntime.snackbar("已导出到Download", duration = SnackbarDuration.Custom(2000L))
+                    AppRuntime.snackbar("已导出", duration = SnackbarDuration.Custom(2000L))
                 }
                 .onFailure {
                     AppRuntime.snackbar("导出失败: ${it.message ?: ""}", duration = SnackbarDuration.Custom(2000L))
@@ -329,28 +336,35 @@ internal class AppManagerViewModel : ViewModel() {
         }
     }
 
-    fun exportPackages(packages: Set<String>) {
+    private var batchExportRemaining = 0
+    private var batchExportSuccess = 0
+    private var batchExportFail = 0
+
+    fun beginBatchExport(count: Int) {
+        batchExportRemaining = count
+        batchExportSuccess = 0
+        batchExportFail = 0
+        _exporting.value = true
+    }
+
+    fun exportBatchItem(app: RemoteAppInfo, uri: Uri) {
         viewModelScope.launch {
-            _exporting.value = true
-            var successCount = 0
-            var failCount = 0
-            for (pkg in packages) {
-                val app = _userApps.value.find { it.packageName == pkg }
-                    ?: _systemApps.value.find { it.packageName == pkg }
-                if (app != null) {
-                    val result = withContext(Dispatchers.IO) {
-                        AppManagerService.exportApk(app.packageName, app.apkPath)
-                    }
-                    result
-                        .onSuccess { successCount++ }
-                        .onFailure { failCount++ }
-                } else {
-                    failCount++
-                }
+            val result = withContext(Dispatchers.IO) {
+                AppManagerService.exportApk(app.packageName, app.apkPath, uri)
             }
-            _exporting.value = false
-            AppRuntime.snackbar("导出完成: 成功 $successCount, 失败 $failCount", duration = SnackbarDuration.Custom(3000L))
+            result
+                .onSuccess { batchExportSuccess++ }
+                .onFailure { batchExportFail++ }
+            batchExportRemaining--
+            if (batchExportRemaining <= 0) {
+                finishBatchExport()
+            }
         }
+    }
+
+    fun finishBatchExport() {
+        _exporting.value = false
+        AppRuntime.snackbar("导出完成: 成功 $batchExportSuccess, 失败 $batchExportFail", duration = SnackbarDuration.Custom(3000L))
     }
 }
 
@@ -394,6 +408,8 @@ fun AppManagerScreen(
 
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var batchConfirmAction by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingExportApp by remember { mutableStateOf<RemoteAppInfo?>(null) }
+    var pendingExportQueue by remember { mutableStateOf<List<RemoteAppInfo>?>(null) }
 
     val asBundle by appSettings.bundleState.collectAsState()
     val showIcons = asBundle.showAppIcons
@@ -441,6 +457,33 @@ fun AppManagerScreen(
             }
             viewModel.refreshApp()
             viewModel.setUploading(false)
+        }
+    }
+
+    lateinit var exportLauncher: androidx.activity.result.ActivityResultLauncher<String>
+    exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
+    ) { uri: Uri? ->
+        val single = pendingExportApp
+        val queue = pendingExportQueue
+        pendingExportApp = null
+        if (single != null && uri != null) {
+            viewModel.exportApk(single, uri)
+        } else if (queue != null) {
+            if (uri == null) {
+                pendingExportQueue = null
+                viewModel.finishBatchExport()
+            } else {
+                val app = queue.first()
+                viewModel.exportBatchItem(app, uri)
+                val rest = queue.drop(1)
+                if (rest.isEmpty()) {
+                    pendingExportQueue = null
+                } else {
+                    pendingExportQueue = rest
+                    exportLauncher.launch("${rest.first().packageName}.apk")
+                }
+            }
         }
     }
 
@@ -720,34 +763,46 @@ fun AppManagerScreen(
                                 )
                             }
                         } else {
-                            LazyColumn(
+                            val appListState = rememberLazyListState()
+                            Box(
                                 modifier = Modifier.fillMaxSize(),
                             ) {
-                                items(filteredApps, key = { it.packageName }) { app ->
-                                    val isSelected = app.packageName in selectedPackages
-                                    AppItemCard(
-                                        app = app,
-                                        onClick = {
-                                            if (selectedPackages.isNotEmpty()) {
+                                LazyColumn(
+                                    state = appListState,
+                                    modifier = Modifier.fillMaxSize(),
+                                ) {
+                                    items(filteredApps, key = { it.packageName }) { app ->
+                                        val isSelected = app.packageName in selectedPackages
+                                        AppItemCard(
+                                            app = app,
+                                            onClick = {
+                                                if (selectedPackages.isNotEmpty()) {
+                                                    selectedPackages = if (isSelected)
+                                                        selectedPackages - app.packageName
+                                                    else
+                                                        selectedPackages + app.packageName
+                                                } else {
+                                                    viewModel.selectApp(app)
+                                                }
+                                            },
+                                            onLongClick = {
                                                 selectedPackages = if (isSelected)
                                                     selectedPackages - app.packageName
                                                 else
                                                     selectedPackages + app.packageName
-                                            } else {
-                                                viewModel.selectApp(app)
-                                            }
-                                        },
-                                        onLongClick = {
-                                            selectedPackages = if (isSelected)
-                                                selectedPackages - app.packageName
-                                            else
-                                                selectedPackages + app.packageName
-                                        },
-                                        showIcons = showIcons,
-                                        showCheckbox = selectedPackages.isNotEmpty(),
-                                        selected = isSelected,
-                                    )
+                                            },
+                                            showIcons = showIcons,
+                                            showCheckbox = selectedPackages.isNotEmpty(),
+                                            selected = isSelected,
+                                        )
+                                    }
                                 }
+                                VerticalScrollBar(
+                                    adapter = rememberScrollBarAdapter(appListState),
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .fillMaxHeight(),
+                                )
                             }
                         }
                     }
@@ -804,8 +859,12 @@ viewModel.setPackagesEnabled(setOf(pkg), enabled)
 viewModel.selectApp(null)
 },
 onExport = {
+val appToExport = currentSelectedApp
 viewModel.selectApp(null)
-viewModel.exportApk(currentSelectedApp)
+if (appToExport != null) {
+pendingExportApp = appToExport
+exportLauncher.launch("${appToExport.packageName}.apk")
+}
 },
 onOpen = {
 val appToOpen = currentSelectedApp
@@ -923,17 +982,27 @@ AppRuntime.snackbar(R.string.appmgr_open_failed, appToOpen.label)
                             onClick = { batchConfirmAction = null },
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(
-                            text = stringResource(R.string.appmgr_action_export),
-                            onClick = {
-                                val pkgs = selectedPackages.toSet()
-                                batchConfirmAction = null
-                                selectedPackages = emptySet()
-                                viewModel.exportPackages(pkgs)
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.textButtonColorsPrimary(),
-                        )
+TextButton(
+text = stringResource(R.string.appmgr_action_export),
+onClick = {
+val pkgs = selectedPackages.toSet()
+batchConfirmAction = null
+selectedPackages = emptySet()
+val apps = pkgs.mapNotNull { pkg ->
+viewModel.userApps.value.find { it.packageName == pkg }
+?: viewModel.systemApps.value.find { it.packageName == pkg }
+}
+if (apps.isEmpty()) {
+viewModel.finishBatchExport()
+} else {
+viewModel.beginBatchExport(apps.size)
+pendingExportQueue = apps
+exportLauncher.launch("${apps.first().packageName}.apk")
+}
+},
+modifier = Modifier.weight(1f),
+colors = ButtonDefaults.textButtonColorsPrimary(),
+)
                     }
                 }
             }
@@ -1237,7 +1306,7 @@ private fun ExportingDialog(
     OverlayDialog(
         show = true,
         title = "导出APK",
-        summary = "正在导出APK到Download目录，请稍候...",
+        summary = "正在导出APK，请稍候...",
         onDismissRequest = { },
     ) {
         Box(
@@ -1627,32 +1696,44 @@ private fun LocalAppPickerSheet(
                         )
                     }
                 } else {
-                    LazyColumn(
+                    val localAppListState = rememberLazyListState()
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(400.dp),
                     ) {
-                        items(filteredApps, key = { it.packageName }) { app ->
-                            val isSelected = app.packageName in selectedPackages
-                            LocalAppItem(
-                                app = app,
-                                showCheckbox = selectedPackages.isNotEmpty(),
-                                selected = isSelected,
-                                onClick = {
-                                    if (selectedPackages.isNotEmpty()) {
+                        LazyColumn(
+                            state = localAppListState,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            items(filteredApps, key = { it.packageName }) { app ->
+                                val isSelected = app.packageName in selectedPackages
+                                LocalAppItem(
+                                    app = app,
+                                    showCheckbox = selectedPackages.isNotEmpty(),
+                                    selected = isSelected,
+                                    onClick = {
+                                        if (selectedPackages.isNotEmpty()) {
+                                            onToggleSelection(app.packageName)
+                                        } else {
+                                            confirmSingleApp = app
+                                        }
+                                    },
+                                    onLongClick = {
                                         onToggleSelection(app.packageName)
-                                    } else {
-                                        confirmSingleApp = app
-                                    }
-                                },
-                                onLongClick = {
-                                    onToggleSelection(app.packageName)
-                                },
-                                onCheckToggle = {
-                                    onToggleSelection(app.packageName)
-                                },
-                            )
+                                    },
+                                    onCheckToggle = {
+                                        onToggleSelection(app.packageName)
+                                    },
+                                )
+                            }
                         }
+                        VerticalScrollBar(
+                            adapter = rememberScrollBarAdapter(localAppListState),
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxHeight(),
+                        )
                     }
                 }
             }

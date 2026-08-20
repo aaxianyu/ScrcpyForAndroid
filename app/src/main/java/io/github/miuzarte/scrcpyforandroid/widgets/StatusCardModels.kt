@@ -52,6 +52,7 @@ internal fun StatusCardLayout(
     spec: StatusCardSpec,
     busyLabel: String?,
     onFirstSmallCardClick: (() -> Unit)? = null,
+    onBigCardClick: (() -> Unit)? = null,
 ) {
     val haptic = LocalHapticFeedback.current
 
@@ -68,7 +69,7 @@ internal fun StatusCardLayout(
                 .fillMaxHeight(),
             colors = defaultColors(color = spec.big.containerColor),
             pressFeedbackType = PressFeedbackType.Tilt,
-            onClick = haptic::contextClick,
+            onClick = onBigCardClick ?: haptic::contextClick,
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Box(

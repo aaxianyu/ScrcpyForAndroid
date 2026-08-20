@@ -141,6 +141,7 @@ internal fun StatusCard(
     connectedDeviceLabel: String,
     connectionType: io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType = io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType.LAN,
     onFirstSmallCardClick: (() -> Unit)? = null,
+    onBigCardClick: (() -> Unit)? = null,
 ) {
     val appSettings = Storage.appSettings
     val appSettingsBundle by appSettings.bundleState.collectAsState()
@@ -244,7 +245,12 @@ internal fun StatusCard(
         )
     }
 
-    StatusCardLayout(spec = spec, busyLabel = busyLabel, onFirstSmallCardClick = onFirstSmallCardClick)
+    StatusCardLayout(
+        spec = spec,
+        busyLabel = busyLabel,
+        onFirstSmallCardClick = onFirstSmallCardClick,
+        onBigCardClick = onBigCardClick,
+    )
 }
 
 @Composable

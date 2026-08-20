@@ -300,6 +300,8 @@
     <string name="pref_title_show_app_icons">显示应用图标</string>
     <string name="pref_summary_show_app_icons">在所有应用、最近任务、应用管理列表中显示应用图标</string>
     <string name="pref_title_snackbar_duration">Snackbar 显示时长</string>
+    <string name="pref_title_click_connected_card_toggles_scrcpy">点击状态卡片启动/停止镜像</string>
+    <string name="pref_summary_click_connected_card_toggles_scrcpy">点击设备页顶部状态卡片：未投屏时启动投屏，投屏中则停止</string>
     <string name="pref_title_language">语言</string>
     <string name="pref_summary_language">应用显示语言</string>
 
@@ -773,7 +775,7 @@
     <string name="tools_screenshot_desc">截取设备屏幕</string>
     <string name="tools_screenshot_save">保存</string>
     <string name="tools_screenshot_open">打开</string>
-    <string name="tools_screenshot_saved">截图已保存到 Download</string>
+    <string name="tools_screenshot_saved">截图已保存</string>
     <string name="tools_screenshot_failed">截图失败：%1$s</string>
     <string name="tools_advanced_reboot">高级重启</string>
     <string name="tools_screen_standby">熄屏待机</string>

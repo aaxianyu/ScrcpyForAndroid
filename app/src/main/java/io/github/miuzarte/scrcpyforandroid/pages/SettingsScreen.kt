@@ -3,6 +3,7 @@ package io.github.miuzarte.scrcpyforandroid.pages
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
@@ -529,29 +530,36 @@ fun SettingsPage(
                         )
                     },
                 )
-                SwitchPreference(
-                    title = stringResource(R.string.pref_title_floating_bottom_bar),
-                    summary = stringResource(R.string.pref_summary_floating_bottom_bar),
-                    checked = asBundle.floatingBottomBar,
-                    onCheckedChange = {
-                        asBundle = asBundle.copy(
-                            floatingBottomBar = it,
-                        )
-                    },
-                )
-                AnimatedVisibility(asBundle.floatingBottomBar && asBundle.blur) {
-                    Column {
-                        SwitchPreference(
-                            title = stringResource(R.string.pref_title_liquid_glass),
-                            summary = stringResource(R.string.pref_summary_liquid_glass),
-                            checked = asBundle.floatingBottomBar && asBundle.blur
-                                    && asBundle.floatingBottomBarBlur,
-                            onCheckedChange = {
-                                asBundle = asBundle.copy(
-                                    floatingBottomBarBlur = it,
-                                )
-                            },
-                        )
+                // 悬浮底栏依赖 InteractiveHighlight，其内部构造 android.graphics.RuntimeShader（API 33+ 引入），
+                // 低版本开启会闪退，故仅 Android 13+ 显示该开关
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && asBundle.floatingBottomBar) {
+                    asBundle = asBundle.copy(floatingBottomBar = false, floatingBottomBarBlur = false)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    SwitchPreference(
+                        title = stringResource(R.string.pref_title_floating_bottom_bar),
+                        summary = stringResource(R.string.pref_summary_floating_bottom_bar),
+                        checked = asBundle.floatingBottomBar,
+                        onCheckedChange = {
+                            asBundle = asBundle.copy(
+                                floatingBottomBar = it,
+                            )
+                        },
+                    )
+                    AnimatedVisibility(asBundle.floatingBottomBar && asBundle.blur) {
+                        Column {
+                            SwitchPreference(
+                                title = stringResource(R.string.pref_title_liquid_glass),
+                                summary = stringResource(R.string.pref_summary_liquid_glass),
+                                checked = asBundle.floatingBottomBar && asBundle.blur
+                                        && asBundle.floatingBottomBarBlur,
+                                onCheckedChange = {
+                                    asBundle = asBundle.copy(
+                                        floatingBottomBarBlur = it,
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -1455,6 +1463,16 @@ fun SettingsPage(
                     onCheckedChange = {
                         asBundle = asBundle.copy(
                             showAppIcons = it
+                        )
+                    },
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.pref_title_click_connected_card_toggles_scrcpy),
+                    summary = stringResource(R.string.pref_summary_click_connected_card_toggles_scrcpy),
+                    checked = asBundle.clickConnectedCardTogglesScrcpy,
+                    onCheckedChange = {
+                        asBundle = asBundle.copy(
+                            clickConnectedCardTogglesScrcpy = it
                         )
                     },
                 )

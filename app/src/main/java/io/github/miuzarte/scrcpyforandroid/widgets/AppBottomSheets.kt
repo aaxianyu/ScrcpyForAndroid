@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalScrollBarApi::class)
+
 package io.github.miuzarte.scrcpyforandroid.widgets
 
 import androidx.compose.foundation.Image
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Refresh
@@ -35,6 +39,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.basic.VerticalScrollBar
+import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
+import top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi
 import android.graphics.BitmapFactory
 import android.util.Base64
 import io.github.miuzarte.scrcpyforandroid.R
@@ -211,17 +218,29 @@ fun AppListBottomSheet(
                         )
                     }
                 } else {
-                    LazyColumn(
+                    val appListState = rememberLazyListState()
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(400.dp),
                     ) {
-                        items(items = filteredAndSorted, key = { it.key }) { entry ->
-                            AppListBottomSheetItem(
-                                entry = entry,
-                                spinnerColors = DropdownDefaults.dropdownColors(),
-                            )
+                        LazyColumn(
+                            state = appListState,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            items(items = filteredAndSorted, key = { it.key }) { entry ->
+                                AppListBottomSheetItem(
+                                    entry = entry,
+                                    spinnerColors = DropdownDefaults.dropdownColors(),
+                                )
+                            }
                         }
+                        VerticalScrollBar(
+                            adapter = rememberScrollBarAdapter(appListState),
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxHeight(),
+                        )
                     }
                 }
             }

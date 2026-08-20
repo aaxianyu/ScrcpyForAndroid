@@ -1,6 +1,7 @@
 package io.github.miuzarte.scrcpyforandroid.services
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
@@ -338,7 +339,7 @@ systemApps.sortedBy { AppSortUtils.sortKey(it.label, it.packageName) }
         }
     }
 
-    suspend fun exportApk(packageName: String, apkPath: String): Result<String> =
+    suspend fun exportApk(packageName: String, apkPath: String, uri: Uri? = null): Result<String> =
         withContext(Dispatchers.IO) {
             runCatching {
                 if (!ensureConnected()) throw Exception("ADB not connected")
@@ -358,14 +359,22 @@ systemApps.sortedBy { AppSortUtils.sortKey(it.label, it.packageName) }
 
                 Log.d(TAG, "exportApk: remote APK path: $remoteBaseApk")
 
-                val downloadDir = android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_DOWNLOADS
-                )
-                val localFile = java.io.File(downloadDir, "${packageName}.apk")
-                localFile.outputStream().use { fos ->
-                    NativeAdbService.pull(remoteBaseApk, fos)
+                if (uri != null) {
+                    val resolver = appContext?.contentResolver ?: throw Exception("context not ready")
+                    resolver.openOutputStream(uri)?.use { fos ->
+                        NativeAdbService.pull(remoteBaseApk, fos)
+                    } ?: throw Exception("无法打开保存位置")
+                    uri.toString()
+                } else {
+                    val downloadDir = android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS
+                    )
+                    val localFile = java.io.File(downloadDir, "${packageName}.apk")
+                    localFile.outputStream().use { fos ->
+                        NativeAdbService.pull(remoteBaseApk, fos)
+                    }
+                    localFile.absolutePath
                 }
-                localFile.absolutePath
             }
         }
 }

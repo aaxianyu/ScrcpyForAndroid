@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Environment
 import android.util.Base64
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -199,6 +201,24 @@ fun UtilityToolsScreen(
 
     var showScreenshotDialog by rememberSaveable { mutableStateOf(false) }
     var screenshotCacheFile by remember { mutableStateOf<File?>(null) }
+val screenshotSaveLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.CreateDocument("image/png")
+) { uri: Uri? ->
+    if (uri != null) {
+        screenshotCacheFile?.let { cache ->
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { os ->
+                    cache.inputStream().use { it.copyTo(os) }
+                } ?: throw Exception("无法打开保存位置")
+                cache.delete()
+            }
+                .onSuccess { AppRuntime.snackbar(R.string.tools_screenshot_saved) }
+                .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
+        }
+    }
+    screenshotCacheFile = null
+    showScreenshotDialog = false
+}
     var showRebootDialog by rememberSaveable { mutableStateOf(false) }
     var showScreenStandby by rememberSaveable { mutableStateOf(false) }
     var showDpiDialog by rememberSaveable { mutableStateOf(false) }
@@ -589,17 +609,11 @@ fun UtilityToolsScreen(
                 screenshotCacheFile = null
                 showScreenshotDialog = false
             },
-            onSave = {
-                screenshotCacheFile?.let { cache ->
-                    val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    val dest = File(downloadDir, cache.name)
-                    cache.copyTo(dest, overwrite = true)
-                    cache.delete()
-                    AppRuntime.snackbar(R.string.tools_screenshot_saved)
-                }
-                screenshotCacheFile = null
-                showScreenshotDialog = false
-            },
+onSave = {
+    screenshotCacheFile?.let { cache ->
+        screenshotSaveLauncher.launch(cache.name)
+    }
+},
             onOpen = {
                 screenshotCacheFile?.let { cache ->
                     val authority = "${context.packageName}.fileprovider"
@@ -663,35 +677,45 @@ fun UtilityToolsScreen(
         ActivateAppDialog(
             show = showActivateDialog,
             onDismiss = { showActivateDialog = false },
-            onActivate = { app ->
-                showActivateDialog = false
-                scope.launch(Dispatchers.IO) {
-                    val connected = try {
-                        NativeAdbService.isConnected()
-                    } catch (_: Exception) { false }
-                    if (!connected) {
-                        AppRuntime.snackbar(R.string.tools_not_connected)
-                        return@launch
-                    }
-                    try {
-                        AppRuntime.snackbar(R.string.tools_activate_executing, app.name)
-                        for (cmd in app.activateCommands) {
-                            val output = NativeAdbService.shell(cmd)
-                            if (output.contains("No such file", ignoreCase = true) ||
-                                output.contains("Permission denied", ignoreCase = true) ||
-                                output.contains("not found", ignoreCase = true) ||
-                                output.contains("error", ignoreCase = true)
-                            ) {
-                                AppRuntime.snackbar(R.string.tools_activate_failed, "${app.name}: $output")
-                                return@launch
-                            }
-                        }
-                        AppRuntime.snackbar(R.string.tools_activate_success, app.name)
-                    } catch (e: Exception) {
-                        AppRuntime.snackbar(R.string.tools_activate_failed, "${app.name}: ${e.message}")
-                    }
-                }
-            },
+onActivate = { apps ->
+showActivateDialog = false
+scope.launch(Dispatchers.IO) {
+val connected = try {
+NativeAdbService.isConnected()
+} catch (_: Exception) { false }
+if (!connected) {
+AppRuntime.snackbar(R.string.tools_not_connected)
+return@launch
+}
+for (app in apps) {
+try {
+AppRuntime.snackbar(R.string.tools_activate_executing, app.name)
+var lastOutput = ""
+var allFailed = true
+for (cmd in app.activateCommands) {
+val output = NativeAdbService.shell(cmd)
+lastOutput = output
+if (output.contains("No such file", ignoreCase = true) ||
+output.contains("Permission denied", ignoreCase = true) ||
+output.contains("not found", ignoreCase = true) ||
+output.contains("error", ignoreCase = true)
+) {
+continue
+}
+allFailed = false
+break
+}
+if (allFailed) {
+AppRuntime.snackbar(R.string.tools_activate_failed, "${app.name}: $lastOutput")
+} else {
+AppRuntime.snackbar(R.string.tools_activate_success, app.name)
+}
+} catch (e: Exception) {
+AppRuntime.snackbar(R.string.tools_activate_failed, "${app.name}: ${e.message}")
+}
+}
+}
+},
         )
 
         ProcessManagerSheet(
@@ -1013,21 +1037,24 @@ private fun ResolutionDialog(
 private fun ActivateAppDialog(
     show: Boolean,
     onDismiss: () -> Unit,
-    onActivate: (ActivatableApp) -> Unit,
+    onActivate: (List<ActivatableApp>) -> Unit,
 ) {
     if (!show) return
 
     val scope = rememberCoroutineScope()
     var detectedApps by remember { mutableStateOf<List<ActivatableApp>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
-    var selectedApp by remember { mutableStateOf<ActivatableApp?>(null) }
+    var selectedApps by remember { mutableStateOf<Set<ActivatableApp>>(emptySet()) }
 
     val knownApps = listOf(
-        ActivatableApp(
-            "Shizuku",
-            "moe.shizuku.privileged.api",
-            listOf("sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh")
-        ),
+ActivatableApp(
+"Shizuku",
+"moe.shizuku.privileged.api",
+listOf(
+"sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh",
+"APK=\$(pm path moe.shizuku.privileged.api | head -1 | cut -d: -f2); \$(dirname \$APK)/lib/arm64/libshizuku.so"
+)
+),
         ActivatableApp(
             "冰箱",
             "com.catchingnow.icebox",
@@ -1048,7 +1075,7 @@ private fun ActivateAppDialog(
     LaunchedEffect(show) {
         if (show) {
             loading = true
-            selectedApp = null
+            selectedApps = emptySet()
             scope.launch(Dispatchers.IO) {
                 try {
                     val result = NativeAdbService.shell("pm list packages")
@@ -1104,13 +1131,13 @@ private fun ActivateAppDialog(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.Small)) {
                     detectedApps.forEach { app ->
-                        val isSelected = app == selectedApp
+                        val isSelected = app in selectedApps
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             pressFeedbackType = PressFeedbackType.Sink,
                             showIndication = true,
                             onClick = {
-                                selectedApp = if (isSelected) null else app
+                                selectedApps = if (isSelected) selectedApps - app else selectedApps + app
                             },
                         ) {
                             Row(
@@ -1154,14 +1181,13 @@ private fun ActivateAppDialog(
                 TextButton(
                     text = stringResource(R.string.button_confirm),
                     onClick = {
-                        val app = selectedApp
-                        if (app != null) {
-                            onActivate(app)
+                        if (selectedApps.isNotEmpty()) {
+                            onActivate(selectedApps.toList())
                         }
                     },
                     modifier = Modifier.weight(1f),
                     colors = top.yukonga.miuix.kmp.basic.ButtonDefaults.textButtonColorsPrimary(),
-                    enabled = selectedApp != null,
+                    enabled = selectedApps.isNotEmpty(),
                 )
             }
         }

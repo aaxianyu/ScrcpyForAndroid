@@ -380,6 +380,10 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             intPreferencesKey("snackbar_duration_ms"),
             3000,
         )
+        val CLICK_CONNECTED_CARD_TOGGLES_SCRCPY = Pair(
+            booleanPreferencesKey("click_connected_card_toggles_scrcpy"),
+            false,
+        )
     }
 
     @Parcelize
@@ -458,9 +462,10 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         val clearLogsOnExit: Boolean,
         val hideDeviceLogs: Boolean,
         val favoriteApps: String,
-        val showAppIcons: Boolean,
-        val snackbarDurationMs: Int,
-    ) : Parcelable {
+val showAppIcons: Boolean,
+val snackbarDurationMs: Int,
+val clickConnectedCardTogglesScrcpy: Boolean,
+) : Parcelable {
     }
 
     private val bundleFields = arrayOf<BundleField<Bundle>>(
@@ -540,6 +545,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         bundleField(FAVORITE_APPS) { it.favoriteApps },
         bundleField(SHOW_APP_ICONS) { it.showAppIcons },
         bundleField(SNACKBAR_DURATION_MS) { it.snackbarDurationMs },
+        bundleField(CLICK_CONNECTED_CARD_TOGGLES_SCRCPY) { it.clickConnectedCardTogglesScrcpy },
     )
 
     val bundleState: StateFlow<Bundle> = createBundleState(::bundleFromPreferences)
@@ -626,6 +632,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         favoriteApps = preferences.read(FAVORITE_APPS),
         showAppIcons = preferences.read(SHOW_APP_ICONS),
         snackbarDurationMs = preferences.read(SNACKBAR_DURATION_MS),
+        clickConnectedCardTogglesScrcpy = preferences.read(CLICK_CONNECTED_CARD_TOGGLES_SCRCPY),
     )
 
     suspend fun loadBundle() = loadBundle(::bundleFromPreferences)
