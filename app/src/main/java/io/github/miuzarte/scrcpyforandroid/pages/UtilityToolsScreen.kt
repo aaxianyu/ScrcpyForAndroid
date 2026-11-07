@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -76,11 +77,20 @@ private const val REMOTE_SHOT_DIR = "/data/local/tmp"
 private const val SCREENSHOT_DIR = "screenshots"
 private const val DENSITY_MIN = 80
 private const val DENSITY_MAX = 640
+private const val RES_MIN = 320
+private const val RES_MAX = 4320
 // 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
 private const val REBOOT_RESULT_WAIT_MS = 3_000L
 
 private fun extractDensity(shellOutput: String, kind: String): String {
     val target = "$kind density:"
+    return shellOutput.lineSequence()
+        .firstOrNull { it.startsWith(target) }
+        ?.removePrefix(target)?.trim().orEmpty()
+}
+
+private fun extractDisplaySize(shellOutput: String, kind: String): String {
+    val target = "$kind size:"
     return shellOutput.lineSequence()
         .firstOrNull { it.startsWith(target) }
         ?.removePrefix(target)?.trim().orEmpty()
@@ -115,6 +125,9 @@ internal fun UtilityToolsScreen(
     var densitySheetOpen by remember { mutableStateOf(false) }
     var stockDensity by remember { mutableStateOf("") }
     var activeDensity by remember { mutableStateOf("") }
+    var resolutionSheetOpen by remember { mutableStateOf(false) }
+    var stockResolution by remember { mutableStateOf("") }
+    var activeResolution by remember { mutableStateOf("") }
 
     val saveShotLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png"),
@@ -199,6 +212,46 @@ internal fun UtilityToolsScreen(
         }
     }
 
+    fun applyResolution(width: String, height: String) {
+        scope.launch {
+            resolutionSheetOpen = false
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    NativeAdbService.shell("wm size ${width}x$height")
+                    parseWmSetting(NativeAdbService.shell("wm size"), "size")?.override == "${width}x$height"
+                }
+            }.onSuccess { effective ->
+                if (effective) {
+                    activeResolution = "${width}x$height"
+                    AppRuntime.snackbar(R.string.tools_resolution_applied, width, height)
+                } else {
+                    AppRuntime.snackbar(R.string.tools_resolution_failed, AppRuntime.stringResource(R.string.tools_apply_not_effective))
+                }
+            }.onFailure { AppRuntime.snackbar(R.string.tools_resolution_failed, it.message ?: "") }
+        }
+    }
+
+    fun restoreResolution() {
+        scope.launch {
+            resolutionSheetOpen = false
+            // reset 生效的判据：回读有效（Physical 在场且格式合法）且 Override 行消失
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    NativeAdbService.shell("wm size reset")
+                    isWmRestored(NativeAdbService.shell("wm size"), "size")
+                        ?: throw IOException(AppRuntime.stringResource(R.string.tools_readback_unconfirmed))
+                }
+            }.onSuccess { effective ->
+                if (effective) {
+                    activeResolution = stockResolution
+                    AppRuntime.snackbar(R.string.tools_resolution_restored, stockResolution)
+                } else {
+                    AppRuntime.snackbar(R.string.tools_resolution_failed, AppRuntime.stringResource(R.string.tools_apply_not_effective))
+                }
+            }.onFailure { AppRuntime.snackbar(R.string.tools_resolution_failed, it.message ?: "") }
+        }
+    }
+
     val tools = listOf(
         ToolItem(
             icon = Icons.Rounded.CameraAlt,
@@ -278,6 +331,29 @@ internal fun UtilityToolsScreen(
                         }
                     }.onFailure { AppRuntime.snackbar(R.string.tools_density_read_failed, it.message ?: "") }
                     if (loaded.isSuccess) densitySheetOpen = true
+                }
+            },
+        ),
+        ToolItem(
+            icon = Icons.Rounded.AspectRatio,
+            titleResId = R.string.tools_screen_resolution,
+            descResId = R.string.tools_screen_resolution_desc,
+            onClick = {
+                scope.launch {
+                    if (!NativeAdbService.isConnected()) {
+                        AppRuntime.snackbar(R.string.tools_not_connected)
+                        return@launch
+                    }
+                    val loaded = runCatching {
+                        withContext(Dispatchers.IO) {
+                            val output = NativeAdbService.shell("wm size")
+                            val stock = extractDisplaySize(output, "Physical")
+                            val override = extractDisplaySize(output, "Override")
+                            stockResolution = stock
+                            activeResolution = override.ifBlank { stock }
+                        }
+                    }.onFailure { AppRuntime.snackbar(R.string.tools_resolution_read_failed, it.message ?: "") }
+                    if (loaded.isSuccess) resolutionSheetOpen = true
                 }
             },
         ),
@@ -408,6 +484,16 @@ internal fun UtilityToolsScreen(
                     onRestore = ::restoreDensity,
                 )
             }
+
+            if (resolutionSheetOpen) {
+                ResolutionSheet(
+                    stockResolution = stockResolution,
+                    activeResolution = activeResolution,
+                    onDismiss = { resolutionSheetOpen = false },
+                    onApply = ::applyResolution,
+                    onRestore = ::restoreResolution,
+                )
+            }
         }
     }
 }
@@ -474,6 +560,102 @@ private fun DensitySheet(
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.textButtonColorsPrimary(),
                     enabled = inSafeRange,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResolutionSheet(
+    stockResolution: String,
+    activeResolution: String,
+    onDismiss: () -> Unit,
+    onApply: (String, String) -> Unit,
+    onRestore: () -> Unit,
+) {
+    var widthInput by remember { mutableStateOf("") }
+    var heightInput by remember { mutableStateOf("") }
+
+    fun withinBounds(value: String) =
+        value.toIntOrNull()?.let { it in RES_MIN..RES_MAX } ?: false
+
+    val submittable = withinBounds(widthInput) && withinBounds(heightInput)
+
+    OverlayDialog(
+        show = true,
+        title = stringResource(R.string.tools_screen_resolution),
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
+            if (stockResolution.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.tools_resolution_factory, stockResolution),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            if (activeResolution.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.tools_resolution_now, activeResolution),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                SuperTextField(
+                    value = widthInput,
+                    onValueChange = { widthInput = it.filter(Char::isDigit) },
+                    label = stringResource(
+                        R.string.tools_resolution_width,
+                        stockResolution.substringBefore('x')
+                            .ifBlank { stringResource(R.string.tools_value_unknown) },
+                    ),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+                SuperTextField(
+                    value = heightInput,
+                    onValueChange = { heightInput = it.filter(Char::isDigit) },
+                    label = stringResource(
+                        R.string.tools_resolution_height,
+                        stockResolution.substringAfter('x')
+                            .ifBlank { stringResource(R.string.tools_value_unknown) },
+                    ),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.button_cancel),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.tools_resolution_restore),
+                    onClick = onRestore,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.button_confirm),
+                    // 统一走规范化值，避免前导零输入与回读不一致
+                    onClick = {
+                        val w = normalizeToolValue(widthInput, RES_MIN..RES_MAX) ?: return@TextButton
+                        val h = normalizeToolValue(heightInput, RES_MIN..RES_MAX) ?: return@TextButton
+                        onApply(w, h)
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    enabled = submittable,
                 )
             }
         }

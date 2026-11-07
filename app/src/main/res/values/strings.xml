@@ -697,6 +697,18 @@
     <string name="tools_density_failed">Failed to change density: %1$s</string>
     <string name="tools_density_read_failed">Failed to read density: %1$s</string>
     <string name="tools_apply_not_effective">Command finished but the setting did not take effect</string>
+    <string name="tools_value_unknown">Unknown</string>
+    <string name="tools_screen_resolution">Screen resolution</string>
+    <string name="tools_screen_resolution_desc">Adjust display resolution</string>
+    <string name="tools_resolution_factory">Factory: %1$s</string>
+    <string name="tools_resolution_now">Active: %1$s</string>
+    <string name="tools_resolution_width">Width %1$s</string>
+    <string name="tools_resolution_height">Height %1$s</string>
+    <string name="tools_resolution_restore">Restore</string>
+    <string name="tools_resolution_applied">Resolution set to %1$sx%2$s</string>
+    <string name="tools_resolution_restored">Resolution restored to factory: %1$s</string>
+    <string name="tools_resolution_failed">Failed to change resolution: %1$s</string>
+    <string name="tools_resolution_read_failed">Failed to read resolution: %1$s</string>
     <string name="tools_readback_unconfirmed">Unable to confirm the setting: invalid or empty readback</string>
 
 </resources>

@@ -696,6 +696,18 @@
     <string name="tools_density_failed">修改密度失败：%1$s</string>
     <string name="tools_density_read_failed">读取密度失败：%1$s</string>
     <string name="tools_apply_not_effective">命令已执行但未生效</string>
+    <string name="tools_value_unknown">未知</string>
+    <string name="tools_screen_resolution">屏幕分辨率</string>
+    <string name="tools_screen_resolution_desc">调整屏幕显示分辨率</string>
+    <string name="tools_resolution_factory">出厂值：%1$s</string>
+    <string name="tools_resolution_now">当前值：%1$s</string>
+    <string name="tools_resolution_width">宽 %1$s</string>
+    <string name="tools_resolution_height">高 %1$s</string>
+    <string name="tools_resolution_restore">恢复</string>
+    <string name="tools_resolution_applied">分辨率已设为 %1$sx%2$s</string>
+    <string name="tools_resolution_restored">分辨率已恢复出厂值：%1$s</string>
+    <string name="tools_resolution_failed">修改分辨率失败：%1$s</string>
+    <string name="tools_resolution_read_failed">读取分辨率失败：%1$s</string>
     <string name="tools_readback_unconfirmed">无法确认设置状态：回读为空或格式无效</string>
 
 </resources>
