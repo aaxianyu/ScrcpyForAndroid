@@ -32,6 +32,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.github.miuzarte.scrcpyforandroid.NativeCoreFacade
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppIconSource
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.PackagePresence
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.password.rememberPasswordPickerEntries
 import io.github.miuzarte.scrcpyforandroid.scrcpy.*
@@ -41,7 +43,9 @@ import io.github.miuzarte.scrcpyforandroid.services.LocalSnackbarController
 import io.github.miuzarte.scrcpyforandroid.storage.AppSettings
 import io.github.miuzarte.scrcpyforandroid.storage.Settings
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
+import io.github.miuzarte.scrcpyforandroid.storage.parseFavoriteApps
 import io.github.miuzarte.scrcpyforandroid.util.Debouncer
+import io.github.miuzarte.scrcpyforandroid.util.expandSettingsPanel
 import io.github.miuzarte.scrcpyforandroid.widgets.*
 import kotlinx.coroutines.*
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -89,7 +93,16 @@ fun FullscreenControlScreen(
     DisposableEffect(Unit) {
         onDispose {
             taskScope.launch {
-                appSettings.saveBundle(asBundleLatest)
+                // 位置字段由 TempFloatingBall 的 onDispose 同步落盘（子 dispose 先于父执行），
+                // 本地整包快照可能还带着拖动前的旧位置：回填当前已落盘值，
+                // 避免两路异步保存交错时把新位置覆盖回旧值
+                val latest = appSettings.bundleState.value
+                appSettings.saveBundle(
+                    asBundleLatest.copy(
+                        swipeFloatingBallOffsetX = latest.swipeFloatingBallOffsetX,
+                        swipeFloatingBallOffsetY = latest.swipeFloatingBallOffsetY,
+                    ),
+                )
             }
         }
     }
@@ -98,19 +111,22 @@ fun FullscreenControlScreen(
         VirtualButtonActions.parseStoredLayout(asBundle.virtualButtonsLayout)
     }
     // 停靠栏: 按用户排序切分成"栏上按钮 / 更多菜单"
-    val virtualButtonLayout = remember(buttonItems) {
+    val (outsideActions, moreActions) = remember(buttonItems) {
         VirtualButtonActions.splitLayout(buttonItems)
     }
-    // 悬浮球: 与停靠栏同一份用户排序, 但动作合并回一条列表并去掉"更多"这个开关本身
-    val floatingActions = remember(buttonItems) {
-        VirtualButtonActions.mergedOrder(
-            items = buttonItems,
-            excluded = setOf(VirtualButtonAction.MORE),
-        )
-    }
     val fullscreenDebugInfo = asBundle.fullscreenDebugInfo
-    val showFullscreenVirtualButtons = asBundle.showFullscreenVirtualButtons
     val fullscreenVirtualButtonHeight = asBundle.fullscreenVirtualButtonHeightDp.dp
+    // 控制模式用独立 state 驱动 UI。直接读 asBundle 不行：模式切换是立即生效的操作，
+    // 而 asBundle 会被 asBundleShared 覆盖（防抖保存窗口内外部若有 updateBundle 写入，
+    // 本地尚未落盘的模式就被回滚），表现为「点了切换没反应，重进全屏再点又好了」。
+    // 这里让 controlModeState 作为权威，asBundle 单向跟随它。
+    var controlModeState by remember { mutableStateOf(asBundle.fullscreenControlMode) }
+    LaunchedEffect(asBundle, controlModeState) {
+        if (asBundle.fullscreenControlMode != controlModeState) {
+            asBundle = asBundle.copy(fullscreenControlMode = controlModeState)
+        }
+    }
+    val fullscreenControlMode = AppSettings.FullscreenControlMode.fromStoredValue(controlModeState)
     val fullscreenVirtualButtonDockSetting = remember(asBundle.fullscreenVirtualButtonDock) {
         AppSettings.FullscreenVirtualButtonDock.fromStoredValue(
             asBundle.fullscreenVirtualButtonDock,
@@ -200,21 +216,28 @@ fun FullscreenControlScreen(
             ?: false
     }
 
-    val bar = remember(virtualButtonLayout) {
+    val bar = remember(outsideActions, moreActions, fullscreenControlMode) {
         VirtualButtonBar(
-            outside = virtualButtonLayout.first,
-            more = virtualButtonLayout.second,
-        )
-    }
-    // 悬浮球与停靠栏是同一个组件的两种画法: 球把全部动作收进菜单, 所以没有"栏上按钮"
-    val ballBar = remember(floatingActions) {
-        VirtualButtonBar(
-            outside = emptyList(),
-            more = floatingActions,
+            outside = outsideActions,
+            more = moreActions,
+            showSwipeFloatingBall =
+                fullscreenControlMode == AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL,
         )
     }
     val recentTasks = remember(listingsRefreshVersion) { scrcpy.listings.recentTasks }
     val apps = remember(listingsRefreshVersion) { scrcpy.listings.apps }
+
+    // 收藏对账：列表就绪后按当前包名集合剔除已不存在的包（卸载后不残留、重装不复活）。
+    // 仅列表非空时做——列表拉取失败 / 未就绪时不能拿空集合当依据；清单里没有的包名
+    // 还要逐个确认未安装才删（清单可能不完整，见 AppSettings.pruneFavoriteApps）
+    LaunchedEffect(apps) {
+        if (apps.isNotEmpty()) {
+            appSettings.pruneFavoriteApps(
+                apps.map { it.packageName },
+                PackagePresence::confirmedMissing,
+            )
+        }
+    }
 
     var currentFps by remember { mutableFloatStateOf(0f) }
     var showRecentTasksSheet by rememberSaveable { mutableStateOf(false) }
@@ -318,32 +341,30 @@ fun FullscreenControlScreen(
             override fun handleExitFullscreen() = onBack()
 
             override fun handleShowRecentTasks() {
+                // 面板自身在「显示且列表为空」时自动拉取（AppListBottomSheet）
                 showRecentTasksSheet = true
-                if (
-                    scrcpy.listings.recentTasks.isEmpty() &&
-                    !scrcpy.listings.refreshBusyState.value
-                ) {
-                    taskScope.launch {
-                        refreshApps()
-                        refreshRecentTasks()
-                    }
-                }
             }
 
             override fun handleShowAllApps() {
+                // 面板自身在「显示且列表为空」时自动拉取（AppListBottomSheet）
                 showAllAppsSheet = true
-                if (
-                    scrcpy.listings.apps.isEmpty() &&
-                    !scrcpy.listings.refreshBusyState.value
-                ) {
-                    taskScope.launch {
-                        refreshApps()
-                    }
-                }
             }
 
             override fun handleToggleIme() {
                 imeRequestToken++
+            }
+
+            // 展开状态栏: 与预览卡一致, 统一走 ADB shell 单通道 (实现见 util/PanelUtils.kt)
+            override fun handleExpandStatusBar() {
+                taskScope.launch { expandSettingsPanel() }
+            }
+
+            override fun handleShowSwipeFloatingBall() {
+                controlModeState = AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL.rawValue
+            }
+
+            override fun handleHideSwipeFloatingBall() {
+                controlModeState = AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS.rawValue
             }
 
             override fun handlePasteLocalClipboard() {
@@ -453,7 +474,10 @@ fun FullscreenControlScreen(
                 },
             )
 
-            if (showFullscreenVirtualButtons && !isInPip) {
+            // 显隐统一由控制模式决定（「关闭」即全收起）；旧的开关键已并入该模式，不再参与判断
+            if (fullscreenControlMode == AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS &&
+                !isInPip
+            ) {
                 bar.Fullscreen(
                     modifier = Modifier.align(
                         when (fullscreenVirtualButtonDock) {
@@ -471,8 +495,10 @@ fun FullscreenControlScreen(
                 )
             }
 
-            if (asBundle.showFullscreenFloatingButton && !isInPip) {
-                ballBar.FloatingBall(
+            if (fullscreenControlMode == AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL &&
+                !isInPip
+            ) {
+                bar.TempFloatingBall(
                     modifier = Modifier.fillMaxSize(),
                     onAction = ::handleButtonAction,
                     passwordChildren = passwordPickerEntries,
@@ -484,20 +510,31 @@ fun FullscreenControlScreen(
                 title = stringResource(R.string.bottomsheet_recent_tasks),
                 loadingText = stringResource(R.string.bottomsheet_loading_tasks),
                 emptyText = stringResource(R.string.bottomsheet_no_tasks),
-                entries = recentTasks.map { task ->
-                    val app = scrcpy.listings.findCachedApp(task.packageName)
-                    AppListEntry(
-                        key = task.packageName,
-                        title = app?.label?.takeIf { it.isNotBlank() } ?: task.packageName,
-                        summary = if (app?.label != null) task.packageName else null,
-                        system = app?.system,
-                        onClick = {
-                            showRecentTasksSheet = false
-                            taskScope.launch { startApp(task.packageName) }
-                        },
-                    )
+                // 最近任务条数少，不提供搜索（searchHint = null）
+                searchHint = null,
+                // remember：条目列表只在数据变化时重建（本页 fps 等状态每次都重组）
+                entries = remember(recentTasks, apps) {
+                    recentTasks.mapIndexed { index, task ->
+                        val app = scrcpy.listings.findCachedApp(task.packageName)
+                        AppListEntry(
+                            key = task.packageName,
+                            // 同包多任务各自成行：LazyColumn key 用「包名#序号」去重；key 仍是包名，供图标取用
+                            itemKey = "${task.packageName}#$index",
+                            // 无应用名时回退包名最后一段（与 DeviceApp.displayLabel、列表排序同一把尺子）
+                            title = app?.label?.takeIf { it.isNotBlank() } ?: task.packageName.substringAfterLast('.'),
+                            summary = task.packageName,
+                            system = app?.system,
+                            onClick = {
+                                showRecentTasksSheet = false
+                                taskScope.launch { startApp(task.packageName) }
+                            },
+                        )
+                    }
                 },
                 refreshBusy = listingsRefreshBusy,
+                iconProvider = AppIconSource::memoryIcon,
+                iconLoader = AppIconSource::loadIcon,
+                refreshToken = listingsRefreshVersion,
                 onDismissRequest = { showRecentTasksSheet = false },
                 onRefresh = {
                     taskScope.launch(Dispatchers.Main) {
@@ -505,32 +542,52 @@ fun FullscreenControlScreen(
                         refreshRecentTasks()
                     }
                 },
+                onFetchIcons = { packages, onProgress -> AppIconSource.ensure(packages, onProgress) },
             )
+
+            // 收藏集合：字符串偏好解析成集合（面板按它把收藏的应用置顶）
+            val favoriteApps = remember(asBundle.favoriteApps) {
+                parseFavoriteApps(asBundle.favoriteApps)
+            }
 
             AppListBottomSheet(
                 show = showAllAppsSheet,
                 title = stringResource(R.string.bottomsheet_all_apps),
                 loadingText = stringResource(R.string.bottomsheet_loading_apps),
                 emptyText = stringResource(R.string.bottomsheet_no_apps),
-                entries = apps.map { app ->
-                    AppListEntry(
-                        key = app.packageName,
-                        title = app.label?.takeIf { it.isNotBlank() } ?: app.packageName,
-                        summary = if (app.label != null) app.packageName else null,
-                        system = app.system,
-                        onClick = {
-                            showAllAppsSheet = false
-                            taskScope.launch { startApp(app.packageName) }
-                        },
-                    )
+                searchHint = stringResource(R.string.bottomsheet_search_apps),
+                // remember：条目列表只在数据变化时重建（本页 fps 等状态每次都重组）
+                entries = remember(apps, favoriteApps) {
+                    apps.map { app ->
+                        AppListEntry(
+                            key = app.packageName,
+                            // 无应用名时回退包名最后一段（与 DeviceApp.displayLabel、列表排序同一把尺子）
+                            title = app.label?.takeIf { it.isNotBlank() } ?: app.packageName.substringAfterLast('.'),
+                            summary = app.packageName,
+                            system = app.system,
+                            favorite = app.packageName in favoriteApps,
+                            onClick = {
+                                showAllAppsSheet = false
+                                taskScope.launch { startApp(app.packageName) }
+                            },
+                            // 单点写：本页的本地副本 + 防抖落盘会把它回滚，收藏不走那条路
+                            onToggleFavorite = {
+                                taskScope.launch { appSettings.toggleFavoriteApp(app.packageName) }
+                            },
+                        )
+                    }
                 },
                 refreshBusy = listingsRefreshBusy,
+                iconProvider = AppIconSource::memoryIcon,
+                iconLoader = AppIconSource::loadIcon,
+                refreshToken = listingsRefreshVersion,
                 onDismissRequest = { showAllAppsSheet = false },
                 onRefresh = {
                     taskScope.launch(Dispatchers.Main) {
                         refreshApps()
                     }
                 },
+                onFetchIcons = { packages, onProgress -> AppIconSource.ensure(packages, onProgress) },
             )
         }
     }

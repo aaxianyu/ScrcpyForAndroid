@@ -45,7 +45,13 @@ import top.yukonga.miuix.kmp.blur.sensor.rememberDeviceTilt
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import kotlin.math.*
 
-val LocalFloatingBottomBarTabScale = staticCompositionLocalOf { { 1f } }
+/**
+ * 主页悬浮底栏的按压胀放量。
+ *
+ * 胶囊不随按压胀放，液态玻璃 / 高斯模糊 / 无模糊三态的按压表现因此一致；
+ * 触摸反馈交给选中椭圆的材质变化与分组项自身的按压着色。
+ */
+private val PressScaleAmount = 0.dp
 
 // --- iOS specular highlight (ported from the miuix example's IosLiquidGlassNavigationBar) ---
 
@@ -127,7 +133,6 @@ fun RowScope.FloatingBottomBarItem(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val scale = LocalFloatingBottomBarTabScale.current
     Column(
         modifier
             .clip(CircleShape)
@@ -138,12 +143,7 @@ fun RowScope.FloatingBottomBarItem(
                 onClick = onClick,
             )
             .fillMaxHeight()
-            .weight(1f)
-            .graphicsLayer {
-                val currentScale = scale()
-                scaleX = currentScale
-                scaleY = currentScale
-            },
+            .weight(1f),
         verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
         content = content,
@@ -153,7 +153,7 @@ fun RowScope.FloatingBottomBarItem(
 @Composable
 fun FloatingBottomBar(
     modifier: Modifier = Modifier,
-    selectedIndex: () -> Int,
+    selectedIndex: Int,
     onSelected: (index: Int) -> Unit,
     backdrop: LayerBackdrop?,
     tabsCount: Int,
@@ -163,15 +163,9 @@ fun FloatingBottomBar(
     content: @Composable RowScope.() -> Unit,
 ) {
     val isInLightTheme = colorScheme.background.luminance() >= 0.5f
-    val isDark = colorScheme.background.luminance() < 0.5f
     val accentColor = colorScheme.primary
-    // 液态玻璃关闭但开了模糊时, 底色交给模糊的混合色, 自身保持透明
-    val gaussianBlurBackdrop = if (!isBlurEnabled && isGaussianBlurEnabled) backdrop else null
-    val containerColor = when {
-        isBlurEnabled -> colorScheme.surfaceContainer.copy(0.4f)
-        gaussianBlurBackdrop != null -> Color.Transparent
-        else -> colorScheme.surfaceContainer
-    }
+    // 染色采样层的容器色（与 FloatingGlassBar 的玻璃态同值）
+    val tintContainerColor = colorScheme.surfaceContainer.copy(0.4f)
 
     val tabsBackdrop = rememberLayerBackdrop()
     val density = LocalDensity.current
@@ -196,7 +190,7 @@ fun FloatingBottomBar(
         }
     }
 
-    var currentIndex by remember(selectedIndex) { mutableIntStateOf(selectedIndex()) }
+    var currentIndex by remember { mutableIntStateOf(selectedIndex) }
 
     class DampedDragAnimationHolder {
         var instance: DampedDragAnimation? = null
@@ -207,7 +201,7 @@ fun FloatingBottomBar(
     val dampedDragAnimation = remember(animationScope, tabsCount, density, isLtr) {
         DampedDragAnimation(
             animationScope = animationScope,
-            initialValue = selectedIndex().toFloat(),
+            initialValue = selectedIndex.toFloat(),
             valueRange = 0f..(tabsCount - 1).toFloat(),
             visibilityThreshold = 0.001f,
             initialScale = 1f,
@@ -251,13 +245,20 @@ fun FloatingBottomBar(
         ).also { holder.instance = it }
     }
 
+    // 选中态由外部直接传入（Int 是稳定值）：用 lambda 捕获页面索引时，调用方每次重组都会
+    // 产生新实例，remember(selectedIndex) 随之重置 currentIndex 的状态对象， pill 位移动画
+    // 的 snapshotFlow 观测到的是旧对象 → 左右滑动页面时底部标签不跟着切换
     LaunchedEffect(selectedIndex) {
-        snapshotFlow { selectedIndex() }.collectLatest { currentIndex = it }
+        if (selectedIndex != currentIndex) currentIndex = selectedIndex
     }
+    // onSelected 必须走 rememberUpdatedState：这个 LaunchedEffect 的 key 是
+    // dampedDragAnimation（组合期间不变），block 会冻结在首次组合，调用方闭包里捕获的
+    // 页面索引会停留在旧值 → 第二次拖回原页面时 onSelected 被守卫吞掉，只能滑一次
+    val currentOnSelected by rememberUpdatedState(onSelected)
     LaunchedEffect(dampedDragAnimation) {
         snapshotFlow { currentIndex }.drop(1).collectLatest { index ->
             dampedDragAnimation.animateToValue(index.toFloat())
-            onSelected(index)
+            currentOnSelected(index)
         }
     }
 
@@ -286,8 +287,16 @@ fun FloatingBottomBar(
         modifier = modifier.width(IntrinsicSize.Min),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Row(
-            Modifier
+        // 可见层：材质容器抽成 FloatingGlassBar，按压胀放/光泽与原实现一致
+        FloatingGlassBar(
+            backdrop = backdrop,
+            isBlurEnabled = isBlurEnabled,
+            isGaussianBlurEnabled = isGaussianBlurEnabled,
+            pressScaleAmount = PressScaleAmount,
+            pressProgress = { dampedDragAnimation.pressProgress },
+            pressModifier = if (isBlurEnabled) interactiveHighlight.modifier else Modifier,
+            highlight = baseHighlight,
+            modifier = Modifier
                 .onGloballyPositioned { coords ->
                     totalWidthPx = coords.size.width.toFloat()
                     val contentWidthPx = totalWidthPx - with(density) { 8.dp.toPx() }
@@ -299,20 +308,25 @@ fun FloatingBottomBar(
                     indication = null,
                     onClick = {},
                 )
-                .dropShadow(
-                    shape = pillShape,
-                    shadow = Shadow(
-                        radius = 10.dp,
-                        color = Color.Black,
-                        alpha = if (isDark) 0.2f else 0.1f,
-                    ),
-                )
+                .height(64.dp)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.Start,
+            content = content,
+        )
+
+        Row(
+            Modifier
+                .clearAndSetSemantics {}
+                .alpha(0f)
+                .layerBackdrop(tabsBackdrop)
+                .graphicsLayer { translationX = panelOffset }
                 .then(
-                    if (isBlurEnabled && backdrop != null) {
+                        if (isBlurEnabled && backdrop != null) {
                         Modifier.drawBackdrop(
                             backdrop = backdrop,
                             shape = { pillShape },
                             effects = {
+                                val progress = dampedDragAnimation.pressProgress
                                 padding = maxOf(padding, 40.dp.toPx())
                                 vibrancy()
                                 blur(4.dp.toPx(), 4.dp.toPx())
@@ -321,83 +335,20 @@ fun FloatingBottomBar(
                                     refractionAmount = 24.dp.toPx(),
                                 )
                             },
-                            highlight = { baseHighlight.value.copy(alpha = 0.75f) },
-                            layerBlock = {
-                                if (isBlurEnabled) {
-                                    val progress = dampedDragAnimation.pressProgress
-                                    val scale = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
-                                    scaleX = scale
-                                    scaleY = scale
-                                }
-                            },
-                            onDrawSurface = { drawRect(containerColor) },
+                            highlight = { baseHighlight.value.copy(alpha = dampedDragAnimation.pressProgress) },
+                            onDrawSurface = { drawRect(tintContainerColor) },
                         )
-                    } else if (gaussianBlurBackdrop != null) {
-                        Modifier
-                            .textureBlur(
-                                backdrop = gaussianBlurBackdrop,
-                                shape = pillShape,
-                                blurRadius = 25f,
-                                colors = BlurDefaults.blurColors(
-                                    blendColors = listOf(
-                                        BlendColorEntry(color = colorScheme.surfaceContainer.copy(0.6f)),
-                                    ),
-                                ),
-                            )
-                            .background(containerColor, pillShape)
                     } else {
-                        Modifier.background(containerColor, pillShape)
+                        Modifier
                     },
                 )
                 .then(if (isBlurEnabled) interactiveHighlight.modifier else Modifier)
-                .height(64.dp)
-                .padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .height(56.dp)
+                .padding(horizontal = 4.dp)
+                .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
+                verticalAlignment = Alignment.CenterVertically,
             content = content,
         )
-
-        CompositionLocalProvider(
-            LocalFloatingBottomBarTabScale provides {
-                if (isBlurEnabled) lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
-                else 1f
-            },
-        ) {
-            Row(
-                Modifier
-                    .clearAndSetSemantics {}
-                    .alpha(0f)
-                    .layerBackdrop(tabsBackdrop)
-                    .graphicsLayer { translationX = panelOffset }
-                    .then(
-                        if (isBlurEnabled && backdrop != null) {
-                            Modifier.drawBackdrop(
-                                backdrop = backdrop,
-                                shape = { pillShape },
-                                effects = {
-                                    val progress = dampedDragAnimation.pressProgress
-                                    padding = maxOf(padding, 40.dp.toPx())
-                                    vibrancy()
-                                    blur(4.dp.toPx(), 4.dp.toPx())
-                                    lens(
-                                        refractionHeight = 24.dp.toPx(),
-                                        refractionAmount = 24.dp.toPx(),
-                                    )
-                                },
-                                highlight = { baseHighlight.value.copy(alpha = dampedDragAnimation.pressProgress) },
-                                onDrawSurface = { drawRect(containerColor) },
-                            )
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .then(if (isBlurEnabled) interactiveHighlight.modifier else Modifier)
-                    .height(56.dp)
-                    .padding(horizontal = 4.dp)
-                    .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
-                verticalAlignment = Alignment.CenterVertically,
-                content = content,
-            )
-        }
 
         if (tabWidthPx > 0f) {
             Box(

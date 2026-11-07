@@ -33,6 +33,8 @@ internal class DeviceAdbAutoReconnectManager(
         keepAliveTimeoutMs: Long,
         onReconnectSuccess: suspend (host: String, port: Int) -> Unit,
         onReconnectFailure: suspend (Throwable) -> Unit,
+        shouldRetryAfterFailure: () -> Boolean = { false },
+        retryIntervalMs: Long = 2_000L,
     ) {
         // 启动前记录连接类型, 后续不再依赖 stateStore
         val initialTarget = stateStore.state.value.adbSession.currentTarget
@@ -57,6 +59,8 @@ internal class DeviceAdbAutoReconnectManager(
                 onReconnectSuccess(host, port)
             },
             onReconnectFailure = onReconnectFailure,
+            shouldRetryAfterFailure = shouldRetryAfterFailure,
+            retryIntervalMs = retryIntervalMs,
             shouldAutoReconnect = {
                 shouldAutoReconnect(connectionType) &&
                         stateStore.state.value.disconnectCause != DisconnectCause.User &&

@@ -49,6 +49,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
+import androidx.compose.material.icons.rounded.Bookmarks
+import io.github.miuzarte.scrcpyforandroid.widgets.CommandBookmarkSheet
 
 private const val FONT_SCALE_STEP_THRESHOLD = 1.08f
 private const val LOG_TAG = "TerminalScreen"
@@ -73,6 +75,7 @@ fun TerminalScreen(
     val blurBackdrop = rememberBlurBackdrop(LocalEnableBlur.current)
     val blurActive = blurBackdrop != null
     var showOutputSheet by rememberSaveable { mutableStateOf(false) }
+    var showBookmarkSheet by rememberSaveable { mutableStateOf(false) }
     var output by rememberSaveable { mutableStateOf("") }
 
     Scaffold(
@@ -84,6 +87,14 @@ fun TerminalScreen(
                         if (blurActive) Color.Transparent
                         else colorScheme.surface,
                     actions = {
+                        IconButton(
+                            onClick = { showBookmarkSheet = true },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Bookmarks,
+                                contentDescription = stringResource(R.string.terminal_menu_command_bookmarks),
+                            )
+                        }
                         OverlayIconDropdownMenu(
                             entry = DropdownEntry(
                                 items = listOf(
@@ -136,6 +147,12 @@ fun TerminalScreen(
                     AppRuntime.snackbar(R.string.terminal_copied_all)
                 },
             )
+
+        CommandBookmarkSheet(
+            show = showBookmarkSheet,
+            onDismissRequest = { showBookmarkSheet = false },
+            onInputCommand = { viewModel.writeCommandToShell(it) },
+        )
         }
     }
 }

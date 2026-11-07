@@ -126,7 +126,7 @@ object GamepadHid {
         KeyEvent.KEYCODE_BUTTON_R1 -> 0x0080 // right shoulder
         KeyEvent.KEYCODE_BUTTON_SELECT -> 0x0400 // back
         // Generic.kl 系手柄 (没有厂商 kl 的手柄 / 遥控器) 的返回键在 Android 层就是 BACK,
-        // 之前它落在未映射分支里被静默丢弃, 这里并入虚拟手柄的同一个 select / back 位
+        // 与虚拟手柄的 select / back 共用同一位
         KeyEvent.KEYCODE_BACK -> 0x0400
         KeyEvent.KEYCODE_BUTTON_START -> 0x0800 // start
         KeyEvent.KEYCODE_BUTTON_MODE -> 0x1000 // guide

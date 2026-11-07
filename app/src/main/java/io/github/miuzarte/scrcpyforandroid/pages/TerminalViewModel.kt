@@ -100,6 +100,13 @@ internal class TerminalViewModel: ViewModel() {
         shellWriteChannel.trySend(payload)
     }
 
+    /** 将命令书签等整条文本原样送入 shell（不携带 Ctrl/Alt 锁定状态）。 */
+    fun writeCommandToShell(command: String) {
+        if (command.isEmpty()) return
+        val bytes = command.toByteArray(StandardCharsets.UTF_8)
+        writeBytesToShell(bytes, 0, bytes.size)
+    }
+
     fun writeClipboardToShell(context: Context) {
         val text = LocalInputService.getClipboardText(context)
         if (!text.isNullOrBlank()) {

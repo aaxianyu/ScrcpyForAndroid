@@ -111,7 +111,17 @@ internal fun VirtualButtonOrderPage(
     }
 
     var buttonItems by remember(asBundle.virtualButtonsLayout) {
-        mutableStateOf(VirtualButtonActions.parseStoredLayout(asBundle.virtualButtonsLayout))
+        // 「切换到虚拟按钮」只在悬浮球语境下成立，本页不展示。
+        // 统一把它挪到列表末尾，于是展示顺序与原列表前 n 项一一对应，
+        // onSettle 拿到的索引可以直接用，省掉一轮容易出错的索引映射
+        val parsed = VirtualButtonActions.parseStoredLayout(asBundle.virtualButtonsLayout)
+        val shown = parsed.filterNot {
+            it.action == VirtualButtonAction.HIDE_SWIPE_FLOATING_BALL
+        }
+        val hidden = parsed.filter {
+            it.action == VirtualButtonAction.HIDE_SWIPE_FLOATING_BALL
+        }
+        mutableStateOf(shown + hidden)
     }
 
     LazyColumn(
@@ -139,7 +149,11 @@ internal fun VirtualButtonOrderPage(
             val textMoreMenu = stringResource(R.string.vb_order_display_more_menu)
             ReorderableList(
                 itemsProvider = {
-                    buttonItems.map { item ->
+                    // 隐藏项已在列表末尾，这里只取前 n 项即可
+                    val shownItems = buttonItems.filter {
+                        it.action != VirtualButtonAction.HIDE_SWIPE_FLOATING_BALL
+                    }
+                    shownItems.map { item ->
                         val action = item.action
                         val actionTitle = context.getString(action.titleResId)
                         ReorderableList.Item(
@@ -174,6 +188,7 @@ internal fun VirtualButtonOrderPage(
                 },
                 orientation = ReorderableList.Orientation.Column,
                 onSettle = { fromIndex, toIndex ->
+                    // 隐藏项排在末尾，展示索引与原列表索引一致，可直接使用
                     buttonItems = buttonItems.toMutableList()
                         .apply { add(toIndex, removeAt(fromIndex)) }
                     asBundle = asBundle.copy(

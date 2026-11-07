@@ -23,4 +23,13 @@ object UiSpacing {
     val CardTitle = 16.dp
     val PageBottom = 64.dp
     val SheetBottom = 16.dp
+
+    /**
+     * 底部弹窗标题栏左侧图标钮的光学下沉量。
+     *
+     * `IconButton` 与标题都按几何中心居中，但标题是 18sp 汉字、墨迹上下留白不对称，
+     * 墨迹中心比几何中心低约 1dp；图标是纯几何图形。实测两处 bottom sheet 的墨迹
+     * 中心差 2.5~3.0px（@440dpi），肉眼可见箭头偏高。
+     */
+    val SheetHeaderIconOpticalOffset = 1.dp
 }

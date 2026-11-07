@@ -16,6 +16,7 @@ import io.github.miuzarte.scrcpyforandroid.pages.MainScreen
 import io.github.miuzarte.scrcpyforandroid.password.BiometricGate
 import io.github.miuzarte.scrcpyforandroid.password.PasswordRepository
 import io.github.miuzarte.scrcpyforandroid.password.hasAuthenticatedOrigin
+import io.github.miuzarte.scrcpyforandroid.services.AdbKeepAliveService
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.AppScreenOn
 import kotlinx.coroutines.runBlocking
@@ -55,6 +56,16 @@ class MainActivity: LocalizedActivity() {
         super.onResume()
         applyMainOrientationPolicy()
         StreamActivity.dismissActivePictureInPicture()
+        // 连接仍在且保活开启时, 服务被回收后回到前台补起
+        if (AppRuntime.currentConnectionTarget != null &&
+            AdbKeepAliveService.isEnabled() &&
+            !AdbKeepAliveService.isActive.value
+        ) {
+            AdbKeepAliveService.start(
+                this,
+                AppRuntime.currentConnectedDevice?.model.orEmpty(),
+            )
+        }
     }
 
     override fun onDestroy() {

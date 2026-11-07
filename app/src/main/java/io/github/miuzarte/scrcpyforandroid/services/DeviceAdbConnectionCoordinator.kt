@@ -142,7 +142,7 @@ internal class DeviceAdbConnectionCoordinator(
     suspend fun probeConnection(timeoutMs: Long): Boolean {
         return withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs.milliseconds) {
-                runCatching { adbService.shell(":") }.isSuccess
+                runCatching { adbService.shell(":", timeoutMs) }.isSuccess
             } ?: false
         }
     }

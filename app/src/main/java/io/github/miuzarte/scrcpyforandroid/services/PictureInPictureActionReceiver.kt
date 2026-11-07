@@ -5,7 +5,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
 import io.github.miuzarte.scrcpyforandroid.BuildConfig
+import io.github.miuzarte.scrcpyforandroid.R
 import kotlinx.coroutines.runBlocking
 
 // not working in MIUI
@@ -18,7 +20,16 @@ class PictureInPictureActionReceiver: BroadcastReceiver() {
                 val appContext = context.applicationContext
                 AppRuntime.init(appContext)
                 runBlocking {
+                    // PiP 的停止按钮也是手动停止, 设备显示要在连接还在时一并还原
                     AppRuntime.scrcpy?.stop()
+                    runCatching { DisplayOverride.restore() }.onFailure { error ->
+                        EventLogger.logEvent(
+                            R.string.vm_display_restore_failed,
+                            error.message ?: error.javaClass.simpleName,
+                            level = Log.WARN,
+                            error = error,
+                        )
+                    }
                 }
             } finally {
                 pendingResult.finish()

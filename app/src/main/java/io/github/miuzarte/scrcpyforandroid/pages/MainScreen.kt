@@ -13,6 +13,7 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -129,8 +130,14 @@ sealed interface RootScreen: NavKey {
     data object VirtualButtonOrder: RootScreen
 
     @Serializable
+    data object SwipeFloatingBallOrder: RootScreen
+    @Serializable
     data object FullscreenControl: RootScreen // compatibility mode
 
+    @Serializable
+    data object UtilityTools: RootScreen
+    @Serializable
+    data object AppManager: RootScreen
     @Serializable
     data class ScrcpyOptionRecord(val profileId: String): RootScreen
 }
@@ -182,6 +189,8 @@ fun MainScreen() {
     var fileTabNavigateUp by remember { mutableStateOf<(() -> Boolean)?>(null) }
     var terminalGestureLock by remember { mutableStateOf(false) }
     var devicePreviewGestureLock by remember { mutableStateOf(false) }
+    // F7「返回设备页」：本次切换临时关掉页面转场动画（0ms 瞬时收敛）
+    var instantNavTransition by remember { mutableStateOf(false) }
 
     // Scroll behaviors
     val devicesPageScrollBehavior = MiuixScrollBehavior(
@@ -193,17 +202,6 @@ fun MainScreen() {
     val settingsPageScrollBehavior = MiuixScrollBehavior(
         canScroll = { currentTab == MainBottomTabDestination.Settings },
     )
-    val advancedPageScrollBehavior = MiuixScrollBehavior(
-        canScroll = {
-            when (currentRootScreen) {
-                is RootScreen.Advanced -> true
-                is RootScreen.VirtualButtonOrder -> true
-                is RootScreen.ScrcpyOptionRecord -> true
-                else -> false
-            }
-        },
-    )
-
     // Navigation helpers
     val rootNavigator = remember {
         RootNavigator(
@@ -211,6 +209,27 @@ fun MainScreen() {
             pop = {
                 if (rootBackStack.size > 1)
                     rootBackStack.removeAt(rootBackStack.lastIndex)
+            },
+            backToDevicesTab = {
+                // F7：清掉导航栈中间层直到只剩根，瞬时切到设备 Tab，路径上无残留页面
+                instantNavTransition = true
+                while (rootBackStack.size > 1) {
+                    rootBackStack.removeAt(rootBackStack.lastIndex)
+                }
+                pagerNavigationJob?.cancel()
+                pagerNavigationJob = null
+                isPagerNavigating = false
+                selectedTabIndex = MainBottomTabDestination.Devices.ordinal
+                scope.launch {
+                    // 直接切页，不做平滑滚动
+                    pagerState.scrollToPage(MainBottomTabDestination.Devices.ordinal)
+                }
+                // 两帧后恢复转场，避免「无动画」模式下的中间层停帧卡顿
+                scope.launch {
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    instantNavTransition = false
+                }
             },
         )
     }
@@ -290,6 +309,8 @@ fun MainScreen() {
     val deviceTabViewModelFactory = remember(scrcpy, deviceConnectionServices) {
         DeviceTabViewModel.Factory(scrcpy, deviceConnectionServices)
     }
+
+    val deviceTabViewModel: DeviceTabViewModel = viewModel(factory = deviceTabViewModelFactory)
 
     // Side-effect launchers and composition locals
     val picker = rememberLauncherForActivityResult(
@@ -427,6 +448,7 @@ fun MainScreen() {
                 lastExitBackPressAtMs = 0L
                 scope.launch {
                     withContext(Dispatchers.IO) {
+                        runCatching { deviceTabViewModel.restoreDeviceDisplay() }
                         runCatching { scrcpy.stop() }
                         runCatching { NativeAdbService.disconnect() }
                         // 释放 USB 隧道, 避免进程存活期间 USB 设备被持续占用
@@ -490,7 +512,13 @@ fun MainScreen() {
         else -> NavSwipeDirection.LeftToRight
     }
     val navTransition: NavTransition =
-        if (isCrossActivityStyle) CrossActivityTransition else NavTransitions.MiuixDefault
+        if (instantNavTransition) {
+            NavTransitions.None
+        } else if (isCrossActivityStyle) {
+            CrossActivityTransition
+        } else {
+            NavTransitions.MiuixDefault
+        }
     val navCornerRadius = rememberNavSystemCornerRadius()
     val navBackdropColor = colorScheme.surface
     val navEffects = remember(
@@ -591,7 +619,7 @@ fun MainScreen() {
                             saveableStateHolder.SaveableStateProvider(tab.name) {
                                 when (tab) {
                                     MainBottomTabDestination.Devices -> DeviceTabScreen(
-                                        viewModelFactory = deviceTabViewModelFactory,
+                                        viewModel = deviceTabViewModel,
                                         scrollBehavior = devicesPageScrollBehavior,
                                         bottomInnerPadding = bottomInnerPadding,
                                         onOpenReorderDevices = { showReorderDevices = true },
@@ -642,7 +670,7 @@ fun MainScreen() {
                                     indication = null,
                                     onClick = {},
                                 ),
-                            selectedIndex = { selectedTabIndex },
+                            selectedIndex = selectedTabIndex,
                             onSelected = { index ->
                                 navigateToTab(tabs[index])
                             },
@@ -685,7 +713,7 @@ fun MainScreen() {
 
         entry<RootScreen.Advanced>(swipeDismiss = swipeBackDirection) {
             ScrcpyAllOptionsScreen(
-                scrollBehavior = advancedPageScrollBehavior,
+                scrollBehavior = rememberPageScrollBehavior(),
                 scrcpy = scrcpy,
             )
         }
@@ -700,7 +728,13 @@ fun MainScreen() {
 
         entry<RootScreen.VirtualButtonOrder>(swipeDismiss = swipeBackDirection) {
             VirtualButtonOrderScreen(
-                scrollBehavior = advancedPageScrollBehavior,
+                scrollBehavior = rememberPageScrollBehavior(),
+            )
+        }
+
+        entry<RootScreen.SwipeFloatingBallOrder>(swipeDismiss = swipeBackDirection) {
+            SwipeFloatingBallOrderScreen(
+                scrollBehavior = rememberPageScrollBehavior(),
             )
         }
 
@@ -715,9 +749,22 @@ fun MainScreen() {
 
         entry<RootScreen.ScrcpyOptionRecord>(swipeDismiss = swipeBackDirection) { route ->
             RecordPreferencesScreen(
-                scrollBehavior = advancedPageScrollBehavior,
+                scrollBehavior = rememberPageScrollBehavior(),
                 profileId = route.profileId,
                 scrcpy = scrcpy,
+            )
+        }
+
+        entry<RootScreen.UtilityTools>(swipeDismiss = swipeBackDirection) {
+            UtilityToolsScreen(
+                scrollBehavior = rememberPageScrollBehavior(),
+                switchAdbPort = deviceTabViewModel::switchAdbPort,
+            )
+        }
+
+        entry<RootScreen.AppManager>(swipeDismiss = swipeBackDirection) {
+            AppManagerScreen(
+                onBackToDevices = rootNavigator.backToDevicesTab,
             )
         }
     }

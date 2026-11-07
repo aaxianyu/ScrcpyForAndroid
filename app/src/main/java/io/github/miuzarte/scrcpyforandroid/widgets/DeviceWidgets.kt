@@ -70,6 +70,7 @@ import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.AddCircle
 import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.SearchDevice
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -226,6 +227,7 @@ internal fun PreviewCard(
     sessionInfo: Scrcpy.Session.SessionInfo?,
     previewHeightDp: Int,
     onOpenFullscreen: () -> Unit,
+    tapOpensFullscreen: Boolean = false,
     directControlEnabled: Boolean = false,
     onInjectTouch: (suspend (
         action: Int,
@@ -341,10 +343,15 @@ internal fun PreviewCard(
                             touchEventHandler.handleMotionEvent(event)
                         }
                     } else {
-                        Modifier.pointerInput(sessionInfo) {
+                        Modifier.pointerInput(sessionInfo, tapOpensFullscreen) {
                             detectTapGestures(
                                 onTap = {
-                                    previewControlsVisible = !previewControlsVisible
+                                    if (tapOpensFullscreen) {
+                                        haptic.contextClick()
+                                        onOpenFullscreen()
+                                    } else {
+                                        previewControlsVisible = !previewControlsVisible
+                                    }
                                 },
                             )
                         }
@@ -1473,6 +1480,7 @@ internal fun QuickConnectCard(
     onCancelConnect: () -> Unit,
     onAddDevice: () -> Unit,
     onShowQrPairing: (() -> Unit)? = null,
+    onScanDevices: () -> Unit,
     connecting: Boolean = false,
     enabled: Boolean = true,
 ) {
@@ -1514,9 +1522,9 @@ internal fun QuickConnectCard(
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 onFocusLost = onFocusLost,
-                trailingIcon = onShowQrPairing?.let { onShowQr ->
-                    {
-                        Row(modifier = Modifier.padding(end = UiSpacing.Medium)) {
+                trailingIcon = {
+                    Row(modifier = Modifier.padding(end = UiSpacing.Medium)) {
+                        onShowQrPairing?.let { onShowQr ->
                             IconButton(
                                 onClick = {
                                     haptic.contextClick()
@@ -1530,6 +1538,15 @@ internal fun QuickConnectCard(
                                     contentDescription = stringResource(R.string.cd_show_qr_pairing),
                                 )
                             }
+                        }
+                        IconButton(
+                            onClick = onScanDevices,
+                            enabled = enabled,
+                        ) {
+                            Icon(
+                                imageVector = MiuixIcons.Regular.SearchDevice,
+                                contentDescription = stringResource(R.string.button_scan_devices),
+                            )
                         }
                     }
                 },

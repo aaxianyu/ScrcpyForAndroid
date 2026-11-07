@@ -1,15 +1,21 @@
 package io.github.miuzarte.scrcpyforandroid.services
 
+import android.app.Activity
+import android.app.Application
 import android.content.Context
+import android.os.Bundle
 import androidx.annotation.StringRes
 import io.github.miuzarte.scrcpyforandroid.i18n.AppLocale
 import io.github.miuzarte.scrcpyforandroid.models.ConnectionTarget
 import io.github.miuzarte.scrcpyforandroid.nativecore.AdbMdnsDiscoverer
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
+import io.github.miuzarte.scrcpyforandroid.storage.Storage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarDuration
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -19,9 +25,47 @@ import top.yukonga.miuix.kmp.basic.SnackbarResult
 object AppRuntime {
     private lateinit var appContext: Context
 
+    private var initialized = false
+
+    @Synchronized
     fun init(context: Context) {
+        if (initialized) return
         appContext = context.applicationContext
+        registerForegroundCallbacks()
         AdbMdnsDiscoverer.init(appContext)
+        initialized = true
+    }
+
+    private var startedActivityCount = 0
+    private val _isAppForeground = MutableStateFlow(false)
+
+    /** 进程是否处于前台 (任一 Activity 处于 started 状态) */
+    val isAppForeground: StateFlow<Boolean> = _isAppForeground.asStateFlow()
+
+    private fun registerForegroundCallbacks() {
+        (appContext as? Application)?.registerActivityLifecycleCallbacks(
+            object: Application.ActivityLifecycleCallbacks {
+                override fun onActivityStarted(activity: Activity) {
+                    startedActivityCount++
+                    _isAppForeground.value = true
+                }
+
+                override fun onActivityStopped(activity: Activity) {
+                    startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
+                    _isAppForeground.value = startedActivityCount > 0
+                }
+
+                override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+
+                override fun onActivityResumed(activity: Activity) = Unit
+
+                override fun onActivityPaused(activity: Activity) = Unit
+
+                override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+
+                override fun onActivityDestroyed(activity: Activity) = Unit
+            },
+        )
     }
 
     val context: Context
@@ -88,8 +132,11 @@ object AppRuntime {
         synchronized(sessionLock) {
             sessionServices?.autoReconnectManager?.close()
             AppScreenOn.release()
+            runCatching { AdbKeepAliveService.stop(appContext) }
             sessionServices = null
             scrcpy = null
+            currentConnectionTarget = null
+            currentConnectedDevice = null
         }
     }
 
@@ -127,11 +174,17 @@ object AppRuntime {
 
     suspend fun snackbarDismissNewest() = snackbarHostState?.newestSnackbarData()?.dismiss()
 
+    /** 调用方未显式指定时长时，跟随「设置 → 杂项」的 Snackbar 显示时长。 */
+    val snackbarDuration: SnackbarDuration
+        get() = SnackbarDuration.Custom(
+            Storage.appSettings.bundleState.value.snackbarDurationMs.coerceAtLeast(1).toLong(),
+        )
+
     fun snackbar(
         message: String,
         actionLabel: String? = null,
         withDismissAction: Boolean = true,
-        duration: SnackbarDuration = SnackbarDuration.Short,
+        duration: SnackbarDuration? = null,
         onResult: ((SnackbarResult) -> Unit)? = null,
         dismissNewest: Boolean = false,
     ) = snackbarHostState?.let {
@@ -141,7 +194,7 @@ object AppRuntime {
                 message = message,
                 actionLabel = actionLabel,
                 withDismissAction = withDismissAction,
-                duration = duration,
+                duration = duration ?: snackbarDuration,
             ).let { result -> onResult?.invoke(result) }
         }
     }
@@ -150,7 +203,7 @@ object AppRuntime {
         @StringRes messageResId: Int,
         @StringRes actionLabelResId: Int? = null,
         withDismissAction: Boolean = true,
-        duration: SnackbarDuration = SnackbarDuration.Short,
+        duration: SnackbarDuration? = null,
         onResult: ((SnackbarResult) -> Unit)? = null,
         dismissNewest: Boolean = false,
     ) = snackbar(
@@ -167,7 +220,7 @@ object AppRuntime {
         vararg args: Any,
         @StringRes actionLabelResId: Int? = null,
         withDismissAction: Boolean = true,
-        duration: SnackbarDuration = SnackbarDuration.Short,
+        duration: SnackbarDuration? = null,
         onResult: ((SnackbarResult) -> Unit)? = null,
         dismissNewest: Boolean = false,
     ) = snackbar(

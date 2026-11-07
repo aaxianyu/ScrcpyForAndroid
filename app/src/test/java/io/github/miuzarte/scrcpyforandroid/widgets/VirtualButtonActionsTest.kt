@@ -33,6 +33,20 @@ private class RecordingHost: VirtualButtonHost {
     override fun handlePasteLocalClipboard() {
         calls += "pasteClipboard"
     }
+
+    // 上游本版没有这三个宿主动作, everyHostActionIsEitherDispatchedOrMenuOwned
+    // 会分发每个 HOST_ACTION 并断言 host.calls.size == 1, 不重写就记录不到调用
+    override fun handleExpandStatusBar() {
+        calls += "expandStatusBar"
+    }
+
+    override fun handleShowSwipeFloatingBall() {
+        calls += "showSwipeFloatingBall"
+    }
+
+    override fun handleHideSwipeFloatingBall() {
+        calls += "hideSwipeFloatingBall"
+    }
 }
 
 /**

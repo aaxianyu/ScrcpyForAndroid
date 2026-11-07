@@ -133,11 +133,14 @@ private fun SliderInputDialog(
         show = showDialog,
         title = title,
         summary = summary,
-        defaultWindowInsetsPadding = false,
         onDismissRequest = onDismissRequest,
         onDismissFinished = onDismissFinished,
     ) {
         var text by rememberSaveable(initialValue) { mutableStateOf(initialValue) }
+        val inputValue = text.toFloatOrNull()
+        val inRange = inputValue != null &&
+            inputValue >= inputValueRange.start &&
+            inputValue <= inputValueRange.endInclusive
 
         SuperTextField(
             modifier = Modifier.padding(bottom = 16.dp),
@@ -168,11 +171,9 @@ private fun SliderInputDialog(
                 text = stringResource(R.string.button_confirm),
                 onClick = {
                     haptic.confirm()
-                    val inputValue = text.toFloatOrNull() ?: 0f
-                    if (inputValue >= inputValueRange.start && inputValue <= inputValueRange.endInclusive) {
-                        onConfirm(text.trim())
-                    }
+                    onConfirm(text.trim())
                 },
+                enabled = inRange,
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.textButtonColorsPrimary(),
             )

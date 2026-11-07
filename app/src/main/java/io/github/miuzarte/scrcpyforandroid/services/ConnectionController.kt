@@ -2,6 +2,7 @@ package io.github.miuzarte.scrcpyforandroid.services
 
 import io.github.miuzarte.scrcpyforandroid.models.ConnectionTarget
 import io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType
+import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.nativecore.UsbAdbSession
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
 import io.github.miuzarte.scrcpyforandroid.storage.ScrcpyOptions
@@ -43,6 +44,7 @@ internal class ConnectionController(
         // 兜底释放 USB 隧道 (无隧道时为 no-op, 幂等)
         runCatching { UsbAdbSession.disconnect() }
         AppScreenOn.release()
+        runCatching { AdbKeepAliveService.stop(AppRuntime.context) }
         return ConnectionDisconnectResult(clearedTarget = clearQuickOnlineForTarget)
     }
 
@@ -135,6 +137,13 @@ internal class ConnectionController(
         connectionType: DeviceConnectionType = DeviceConnectionType.LAN,
     ): ConnectedAdbResult {
         val target = ConnectionTarget(host, port, deviceId, connectionType)
+        // 先作废按设备缓存的清单（应用 / 最近任务 / 编码器…）再广播连接状态：观察者
+        // （自动刷新等）看到新状态时缓存已经清完，不会先拉一遍新数据又被清掉；
+        // 同一地址重连保留缓存
+        scrcpy.listings.bindDevice(
+            NativeAdbService.connectedAddress()
+                ?: if (connectionType == DeviceConnectionType.USB) "usb:$deviceId" else "$host:$port",
+        )
         stateStore.markConnected(target = target, scrcpyProfileId = scrcpyProfileId)
         AppRuntime.currentConnectionTarget = target
         AppRuntime.currentConnectionProfileId.value = scrcpyProfileId
@@ -145,6 +154,9 @@ internal class ConnectionController(
         }
         AppRuntime.currentConnectedDevice = info
         applyConnectedDeviceCapabilities(info.sdkInt)
+        if (AdbKeepAliveService.isEnabled()) {
+            runCatching { AdbKeepAliveService.start(AppRuntime.context, info.model) }
+        }
         return ConnectedAdbResult(
             target = target,
             info = info,
@@ -184,6 +196,15 @@ internal class ConnectionController(
                 disconnectCause = null,
                 lastError = null,
             )
+        }
+        // 保活服务若被系统停掉, 重连成功后补起
+        if (AdbKeepAliveService.isEnabled()) {
+            runCatching {
+                AdbKeepAliveService.start(
+                    AppRuntime.context,
+                    AppRuntime.currentConnectedDevice?.model.orEmpty(),
+                )
+            }
         }
     }
 

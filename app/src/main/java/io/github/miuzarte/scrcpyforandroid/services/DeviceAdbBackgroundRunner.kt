@@ -7,6 +7,9 @@ import kotlinx.coroutines.*
 import java.io.Closeable
 import java.util.concurrent.Executors
 
+/** 链路抖动时第二次探测前的等待, 两次都失败才判定断开 */
+private const val KEEPALIVE_RETRY_DELAY_MS = 600L
+
 internal class DeviceAdbBackgroundRunner: Closeable {
     private val executor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "device-adb-monitor").apply { isDaemon = true }
@@ -22,6 +25,8 @@ internal class DeviceAdbBackgroundRunner: Closeable {
         onReconnectSuccess: suspend (host: String, port: Int) -> Unit,
         onReconnectFailure: suspend (Throwable) -> Unit,
         shouldAutoReconnect: () -> Boolean = { true },
+        shouldRetryAfterFailure: () -> Boolean = { false },
+        retryIntervalMs: Long = 2_000L,
     ) = withContext(dispatcher) {
         val target = sessionState().currentTarget ?: return@withContext
         val host = target.host
@@ -34,10 +39,26 @@ internal class DeviceAdbBackgroundRunner: Closeable {
             }
 
             delay(intervalMs)
-            val alive = runCatching {
+            val alive = try {
                 keepAliveCheck(host, port)
-            }.getOrElse { false }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                false
+            }
+            currentCoroutineContext().ensureActive()
             if (alive) continue
+            // 单次超时可能只是链路抖动, 再探一次仍失败才判定断开
+            delay(KEEPALIVE_RETRY_DELAY_MS)
+            val aliveAfterRetry = try {
+                keepAliveCheck(host, port)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                false
+            }
+            currentCoroutineContext().ensureActive()
+            if (aliveAfterRetry) continue
             if (!shouldAutoReconnect()) break
 
             try {
@@ -45,11 +66,15 @@ internal class DeviceAdbBackgroundRunner: Closeable {
                 withContext(Dispatchers.Main) {
                     onReconnectSuccess(host, port)
                 }
+            } catch (cancel: CancellationException) {
+                throw cancel
             } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
                 withContext(Dispatchers.Main) {
                     onReconnectFailure(error)
                 }
-                break
+                if (!shouldRetryAfterFailure()) break
+                delay(retryIntervalMs)
             }
         }
     }
@@ -86,6 +111,7 @@ internal class DeviceAdbBackgroundRunner: Closeable {
                 for (device in quickCandidates) {
                     if (isConnected() || isAdbConnecting()) break
                     for (addr in device.addresses) {
+                        currentCoroutineContext().ensureActive()
                         if (isConnected() || isAdbConnecting()) break
                         val target = ConnectionTarget.unmarshalFrom(addr) ?: continue
                         // 跳过 USB 地址 (自动重连不支持 USB 设备的 TCP 连接)
@@ -94,6 +120,7 @@ internal class DeviceAdbBackgroundRunner: Closeable {
                         val targetKey = "${target.host}:${target.port}"
                         if (quickConnectTriedOnce.contains(targetKey)) continue
                         if (!probeTcpReachable(target.host, target.port)) continue
+                        currentCoroutineContext().ensureActive()
                         quickConnectTriedOnce += targetKey
                         if (connectKnownShortcut(device, target)) break
                     }
@@ -101,7 +128,9 @@ internal class DeviceAdbBackgroundRunner: Closeable {
                 if (isConnected()) break
             }
 
+            currentCoroutineContext().ensureActive()
             val discovered = discoverConnectService()
+            currentCoroutineContext().ensureActive()
             if (discovered == null) {
                 delay(retryIntervalMs)
                 continue
