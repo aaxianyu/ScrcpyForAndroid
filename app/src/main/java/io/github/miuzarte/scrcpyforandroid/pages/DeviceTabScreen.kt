@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
@@ -25,12 +26,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppIconSource
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.models.ConnectionTarget
 import io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType
@@ -45,10 +42,12 @@ import io.github.miuzarte.scrcpyforandroid.scrcpy.ClientOptions
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.EventLogger
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.scrcpyProfiles
+import io.github.miuzarte.scrcpyforandroid.storage.parseFavoriteApps
 import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
+import io.github.miuzarte.scrcpyforandroid.util.expandSettingsPanel
 import io.github.miuzarte.scrcpyforandroid.widgets.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,15 +66,13 @@ private val DEVICE_TWO_PANE_CONFIG_MAX_WIDTH = 640.dp
 
 @Composable
 internal fun DeviceTabScreen(
-    viewModelFactory: ViewModelProvider.Factory,
+    viewModel: DeviceTabViewModel,
     scrollBehavior: ScrollBehavior,
     bottomInnerPadding: Dp,
     onOpenReorderDevices: () -> Unit,
     onPreviewGestureLockChanged: (Boolean) -> Unit = {},
     onOpenFullscreenCompat: () -> Unit = {},
 ) {
-    val viewModel: DeviceTabViewModel = viewModel(factory = viewModelFactory)
-
     val navigator = LocalRootNavigator.current
     val haptic = LocalHapticFeedback.current
     var useCompactTopAppBar by remember { mutableStateOf(false) }
@@ -92,6 +89,14 @@ internal fun DeviceTabScreen(
                     if (blurActive) Color.Transparent
                     else colorScheme.surface
                 val topAppBarActions: @Composable RowScope.() -> Unit = {
+                    IconButton(
+                        onClick = { navigator.push(RootScreen.UtilityTools) },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Build,
+                            contentDescription = stringResource(R.string.tools_title),
+                        )
+                    }
                     if (showTwoPaneSideAction) {
                         IconButton(
                             onClick = {
@@ -121,6 +126,12 @@ internal fun DeviceTabScreen(
                                     text = stringResource(R.string.device_menu_virtual_button_sort),
                                     onClick = {
                                         navigator.push(RootScreen.VirtualButtonOrder)
+                                    },
+                                ),
+                                DropdownItem(
+                                    text = stringResource(R.string.device_menu_swipe_ball_sort),
+                                    onClick = {
+                                        navigator.push(RootScreen.SwipeFloatingBallOrder)
                                     },
                                 ),
                                 DropdownItem(
@@ -223,7 +234,6 @@ internal fun DeviceTabPage(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val navigator = LocalRootNavigator.current
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     // USB 设备监听: 页面级常驻. 若放在 LazyColumn item 内, 滚动出屏会 dispose 并
     // 反复注册/注销系统广播, 导致插拔事件丢失与状态不一致
@@ -285,21 +295,6 @@ internal fun DeviceTabPage(
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
-        viewModel.setAppInForeground(
-            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
-        )
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> viewModel.setAppInForeground(true)
-                Lifecycle.Event.ON_STOP -> viewModel.setAppInForeground(false)
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
     LaunchedEffect(Unit) {
         viewModel.fullscreenRequests.collect { openFullscreenControl() }
     }
@@ -315,38 +310,26 @@ internal fun DeviceTabPage(
     val virtualButtonHost = remember(scope, context, viewModel) {
         object: VirtualButtonHost {
             override fun handleShowRecentTasks() {
+                // 面板自身在「显示且列表为空」时自动拉取（AppListBottomSheet）
                 viewModel.showRecentTasks()
-                if (
-                    viewModel.scrcpyListings.recentTasks.isEmpty() &&
-                    !viewModel.listingsRefreshBusy.value
-                ) {
-                    scope.launch(Dispatchers.IO) {
-                        viewModel.refreshApps()
-                    }
-                    scope.launch(Dispatchers.IO) {
-                        viewModel.refreshRecentTasks()
-                    }
-                }
             }
 
             override fun handleShowAllApps() {
+                // 面板自身在「显示且列表为空」时自动拉取（AppListBottomSheet）
                 viewModel.showAllApps()
-                if (
-                    viewModel.scrcpyListings.apps.isEmpty() &&
-                    !viewModel.listingsRefreshBusy.value
-                ) {
-                    scope.launch(Dispatchers.IO) {
-                        viewModel.refreshApps()
-                    }
-                }
             }
 
             override fun handleToggleIme() {
                 viewModel.toggleIme()
             }
 
+            // 预览卡上没有 scrcpy 会话，只能走 adb shell
+            override fun handleExpandStatusBar() {
+                scope.launch { expandSettingsPanel() }
+            }
+
             override fun handlePasteLocalClipboard() {
-                // 与原先一致: 在主线程取剪贴板, 内部自行切到 IO
+                // 在主线程取剪贴板，内部自行切到 IO
                 scope.launch {
                     viewModel.pasteLocalClipboard(context)
                 }
@@ -572,6 +555,8 @@ internal fun DeviceTabPage(
 
     @Composable
     fun QuickConnectSection() {
+        var showLanScanDialog by remember { mutableStateOf(false) }
+
         QuickConnectCard(
             input = quickConnectInputTemp,
             onValueChange = { viewModel.setQuickConnectInput(it) },
@@ -594,6 +579,23 @@ internal fun DeviceTabPage(
             },
             onShowQrPairing = {
                 viewModel.startQrPairing()
+            },
+            onScanDevices = { showLanScanDialog = true },
+        )
+
+        LanScanDialog(
+            showDialog = showLanScanDialog,
+            onDismissRequest = { showLanScanDialog = false },
+            onDeviceConnect = { ip, port ->
+                showLanScanDialog = false
+                viewModel.setQuickConnectInput("$ip:$port")
+                viewModel.saveQuickConnectInput()
+                ConnectionTarget.unmarshalFrom("$ip:$port")?.let(viewModel::onQuickConnect)
+            },
+            onDeviceFill = { ip, port ->
+                showLanScanDialog = false
+                viewModel.setQuickConnectInput("$ip:$port")
+                viewModel.saveQuickConnectInput()
             },
         )
     }
@@ -628,11 +630,8 @@ internal fun DeviceTabPage(
                 else -> stringResource(R.string.text_none)
             },
             onOpenAllApps = {
+                // 面板自身在「显示且列表为空」时自动拉取（AppListBottomSheet）
                 viewModel.showAllApps()
-                if (apps.isEmpty() && !listingsRefreshBusy)
-                    scope.launch(Dispatchers.IO) {
-                        viewModel.refreshApps()
-                    }
             },
             recentTasksEndActionText = when {
                 listingsRefreshBusy -> "..."
@@ -640,11 +639,8 @@ internal fun DeviceTabPage(
                 else -> stringResource(R.string.text_none)
             },
             onOpenRecentTasks = {
+                // 面板自身在「显示且列表为空」时自动拉取（AppListBottomSheet）
                 viewModel.showRecentTasks()
-                if (recentTasks.isEmpty() && !listingsRefreshBusy)
-                    scope.launch(Dispatchers.IO) {
-                        viewModel.refreshRecentTasks()
-                    }
             },
             onOpenAdvanced = { navigator.push(RootScreen.Advanced) },
             onStart = viewModel::startScrcpy,
@@ -671,6 +667,7 @@ internal fun DeviceTabPage(
             previewHeightDp = asBundle.devicePreviewCardHeightDp.coerceAtLeast(120),
             onOpenFullscreen = ::openFullscreenControl,
             directControlEnabled = directControlEnabled,
+            tapOpensFullscreen = asBundle.devicePreviewCardTapFullscreen,
             onInjectTouch = { action, pointerId, x, y, pressure, actionButton, buttons ->
                 val session = sessionInfo
                 if (session != null) {
@@ -742,11 +739,8 @@ internal fun DeviceTabPage(
                 else -> stringResource(R.string.text_none)
             },
             onOpenAllApps = {
+                // 面板自身在「显示且列表为空」时自动拉取（AppListBottomSheet）
                 viewModel.showAllApps()
-                if (apps.isEmpty() && !listingsRefreshBusy)
-                    scope.launch(Dispatchers.IO) {
-                        viewModel.refreshApps()
-                    }
             },
             recentTasksEndActionText = when {
                 listingsRefreshBusy -> "..."
@@ -754,11 +748,8 @@ internal fun DeviceTabPage(
                 else -> stringResource(R.string.text_none)
             },
             onOpenRecentTasks = {
+                // 面板自身在「显示且列表为空」时自动拉取（AppListBottomSheet）
                 viewModel.showRecentTasks()
-                if (recentTasks.isEmpty() && !listingsRefreshBusy)
-                    scope.launch(Dispatchers.IO) {
-                        viewModel.refreshRecentTasks()
-                    }
             },
             onOpenAdvanced = { navigator.push(RootScreen.Advanced) },
             onStart = viewModel::startScrcpy,
@@ -1013,51 +1004,88 @@ internal fun DeviceTabPage(
         title = stringResource(R.string.bottomsheet_recent_tasks),
         loadingText = stringResource(R.string.bottomsheet_loading_tasks),
         emptyText = stringResource(R.string.bottomsheet_no_tasks),
-        entries = recentTasks.map { task ->
-            val app = viewModel.findCachedApp(task.packageName)
-            AppListEntry(
-                key = task.packageName,
-                title = app?.label?.takeIf { it.isNotBlank() } ?: task.packageName,
-                summary = if (app?.label != null) task.packageName else null,
-                system = app?.system,
-                onClick = {
-                    haptic.contextClick()
-                    viewModel.hideRecentTasks()
-                    if (sessionInfo == null) viewModel.startScrcpy(task.packageName)
-                    else viewModel.launchAppWithFallback(task.packageName)
-                },
-            )
+        // 最近任务条数少，不提供搜索（searchHint = null）
+        searchHint = null,
+        // remember：条目列表只在数据变化时重建，避免每次重组重算全部条目（含排序键）
+        entries = remember(recentTasks, apps, sessionInfo) {
+            recentTasks.mapIndexed { index, task ->
+                val app = viewModel.findCachedApp(task.packageName)
+                AppListEntry(
+                    key = task.packageName,
+                    // 同包多任务各自成行：LazyColumn key 用「包名#序号」去重；key 仍是包名，供图标取用
+                    itemKey = "${task.packageName}#$index",
+                    // 无应用名时回退包名最后一段（与 DeviceApp.displayLabel、列表排序同一把尺子）
+                    title = app?.label?.takeIf { it.isNotBlank() } ?: task.packageName.substringAfterLast('.'),
+                    summary = task.packageName,
+                    system = app?.system,
+                    onClick = {
+                        haptic.contextClick()
+                        viewModel.hideRecentTasks()
+                        if (sessionInfo == null) viewModel.startScrcpy(task.packageName)
+                        else viewModel.launchAppWithFallback(task.packageName)
+                    },
+                )
+            }
         },
         refreshBusy = listingsRefreshBusy,
+        iconProvider = AppIconSource::memoryIcon,
+        iconLoader = AppIconSource::loadIcon,
+        refreshToken = listingsRefreshVersion,
         onDismissRequest = { viewModel.hideRecentTasks() },
         onRefresh = {
             scope.launch(Dispatchers.IO) {
+                // 任务行标题取应用名：应用清单还没到手时顺带拉一次，避免整列回退成包名
+                if (viewModel.scrcpyListings.apps.isEmpty()) viewModel.refreshApps()
                 viewModel.refreshRecentTasks()
             }
         },
+        onFetchIcons = { packages, onProgress -> AppIconSource.ensure(packages, onProgress) },
     )
+
+    // 收藏集合：字符串偏好解析成集合（面板按它把收藏的应用置顶）
+    val favoriteApps = remember(asBundle.favoriteApps) {
+        parseFavoriteApps(asBundle.favoriteApps)
+    }
+
+    // 收藏对账：列表就绪后按当前包名集合剔除已不存在的包（卸载后不残留、重装不复活）。
+    // 仅列表非空时做——列表拉取失败 / 未就绪时不能拿空集合当依据
+    LaunchedEffect(apps) {
+        if (apps.isNotEmpty()) viewModel.pruneFavoriteApps(apps.map { it.packageName })
+    }
 
     AppListBottomSheet(
         show = showAllAppsSheet,
         title = stringResource(R.string.bottomsheet_all_apps),
         loadingText = stringResource(R.string.bottomsheet_loading_apps),
         emptyText = stringResource(R.string.bottomsheet_no_apps),
-        entries = apps.map { app ->
-            AppListEntry(
-                key = app.packageName,
-                title = app.label?.takeIf { it.isNotBlank() } ?: app.packageName,
-                summary = if (app.label != null) app.packageName else null,
-                system = app.system,
-                onClick = {
-                    viewModel.hideAllApps()
-                    if (sessionInfo == null) viewModel.startScrcpy(app.packageName)
-                    else viewModel.launchAppWithFallback(app.packageName)
-                },
-            )
+        searchHint = stringResource(R.string.bottomsheet_search_apps),
+        // remember：条目列表只在数据变化时重建，避免每次重组重算全部条目（含排序键）
+        entries = remember(apps, favoriteApps, sessionInfo) {
+            apps.map { app ->
+                AppListEntry(
+                    key = app.packageName,
+                    // 无应用名时回退包名最后一段（与 DeviceApp.displayLabel、列表排序同一把尺子）
+                    title = app.label?.takeIf { it.isNotBlank() } ?: app.packageName.substringAfterLast('.'),
+                    summary = app.packageName,
+                    system = app.system,
+                    favorite = app.packageName in favoriteApps,
+                    onClick = {
+                        viewModel.hideAllApps()
+                        if (sessionInfo == null) viewModel.startScrcpy(app.packageName)
+                        else viewModel.launchAppWithFallback(app.packageName)
+                    },
+                    // 单点写：不经整包副本，防抖保存不会把收藏回滚
+                    onToggleFavorite = { viewModel.toggleFavoriteApp(app.packageName) },
+                )
+            }
         },
         refreshBusy = listingsRefreshBusy,
+        iconProvider = AppIconSource::memoryIcon,
+        iconLoader = AppIconSource::loadIcon,
+        refreshToken = listingsRefreshVersion,
         onDismissRequest = { viewModel.hideAllApps() },
         onRefresh = { scope.launch(Dispatchers.IO) { viewModel.refreshApps() } },
+        onFetchIcons = { packages, onProgress -> AppIconSource.ensure(packages, onProgress) },
     )
 
     QrPairingDialog(

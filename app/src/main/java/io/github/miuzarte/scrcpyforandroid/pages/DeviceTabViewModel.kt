@@ -9,10 +9,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.StreamActivity
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.PackagePresence
 import io.github.miuzarte.scrcpyforandroid.models.ConnectionTarget
 import io.github.miuzarte.scrcpyforandroid.models.DeviceConnectionType
 import io.github.miuzarte.scrcpyforandroid.models.DeviceShortcut
 import io.github.miuzarte.scrcpyforandroid.models.DeviceShortcuts
+import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.nativecore.QrPairingCredentials
 import io.github.miuzarte.scrcpyforandroid.nativecore.UsbAdbSession
 import io.github.miuzarte.scrcpyforandroid.nativecore.UsbDeviceInfo
@@ -119,9 +121,6 @@ internal class DeviceTabViewModel(
         DeviceShortcuts.unmarshalFrom(_qdBundle.value.quickDevicesList),
     )
     val savedShortcuts: StateFlow<DeviceShortcuts> = _savedShortcuts.asStateFlow()
-
-    private val _isAppInForeground = MutableStateFlow(true)
-    val isAppInForeground: StateFlow<Boolean> = _isAppInForeground.asStateFlow()
 
     private val sessionReconnectBlacklistHosts = mutableSetOf<String>()
 
@@ -325,6 +324,7 @@ internal class DeviceTabViewModel(
         // 不可在主线程 runBlocking 等共用锁, 可能恰逢隧道操作持锁导致 ANR;
         // viewModelScope 已随 onCleared 取消, 使用独立作用域
         CoroutineScope(Dispatchers.IO).launch {
+            restoreDeviceDisplay()
             runCatching { UsbAdbSession.disconnect() }
         }
     }
@@ -347,10 +347,6 @@ internal class DeviceTabViewModel(
 
     fun setEditingDeviceId(id: String?) {
         _editingDeviceId.value = id
-    }
-
-    fun setAppInForeground(foreground: Boolean) {
-        _isAppInForeground.value = foreground
     }
 
     fun showRecentTasks() {
@@ -377,6 +373,16 @@ internal class DeviceTabViewModel(
         _asBundle.update(transform)
     }
 
+    /** 收藏单点写：不进整包副本，避免防抖落盘把别处的新收藏回滚。 */
+    fun toggleFavoriteApp(packageName: String) {
+        viewModelScope.launch { appSettings.toggleFavoriteApp(packageName) }
+    }
+
+    /** 收藏对账：清单缺失的包名先逐个复核未安装，确认后才剔除（由页面在列表就绪后调用）。 */
+    suspend fun pruneFavoriteApps(packages: Collection<String>) {
+        appSettings.pruneFavoriteApps(packages, PackagePresence::confirmedMissing)
+    }
+
     fun updateShortcut(
         id: String? = null,
         host: String? = null,
@@ -391,16 +397,16 @@ internal class DeviceTabViewModel(
     ) {
         _savedShortcuts.update {
             it.update(
-                id = id,
-                host = host,
-                port = port,
-                name = name,
-                startScrcpyOnConnect = startScrcpyOnConnect,
-                openFullscreenOnStart = openFullscreenOnStart,
-                scrcpyProfileId = scrcpyProfileId,
-                newPort = newPort,
-                updateNameOnlyWhenEmpty = updateNameOnlyWhenEmpty,
-                addresses = addresses,
+                id,
+                host,
+                port,
+                name,
+                startScrcpyOnConnect,
+                openFullscreenOnStart,
+                scrcpyProfileId,
+                newPort,
+                updateNameOnlyWhenEmpty,
+                addresses,
             )
         }
     }
@@ -547,6 +553,7 @@ internal class DeviceTabViewModel(
         cause: DisconnectCause = DisconnectCause.User,
         statusLine: String = "Disconnected",
     ) {
+        restoreDeviceDisplay()
         connectionController.disconnectAdbConnection(
             clearQuickOnlineForTarget,
             cause,
@@ -556,10 +563,55 @@ internal class DeviceTabViewModel(
     }
 
     suspend fun disconnectCurrentTargetBeforeConnecting(newHost: String, newPort: Int) {
+        // 切换设备前先还原: 换到别的设备后这条连接就断了, 旧设备会一直停在我们写下的分辨率上
+        restoreDeviceDisplay()
         val disconnected = connectionController.disconnectCurrentTargetBeforeConnecting(newHost, newPort)
             ?: return
         sessionReconnectBlacklistHosts += disconnected.host
     }
+
+    private var switchingAdbPort = false
+
+    suspend fun switchAdbPort(port: Int): Boolean = viewModelScope.async {
+        check(!_adbConnecting.value && _activeDeviceActionId.value == null) { "Connection action in progress" }
+        val session = connectionState.value.adbSession
+        val target = checkNotNull(session.currentTarget) { "No connected device" }
+        switchingAdbPort = true
+        _adbConnecting.value = true
+        try {
+            // 等待旧端口的探测及回调结束，避免它们关闭新连接或回写旧状态。
+            val monitors = listOfNotNull(keepAliveJob, autoReconnectJob, healthCheckJob, scrcpyReconnectJob)
+            monitors.forEach { it.cancel() }
+            monitors.joinAll()
+            val accepted = withContext(Dispatchers.IO) {
+                isTcpipSuccess(NativeAdbService.switchToTcpTransport(port), port)
+            }
+            if (!accepted) return@async false
+            if (target.connectionType == DeviceConnectionType.LAN) {
+                _savedShortcuts.update { it.withAdbPort(target, port) }
+            }
+            disconnectAdbConnection(cause = DisconnectCause.SwitchTarget)
+            if (target.connectionType == DeviceConnectionType.USB) return@async true
+            try {
+                reconnectAdbPort(target.host, port) { host, newPort ->
+                    connectionController.connectWithTimeout(host, newPort, ADB_CONNECT_TIMEOUT_MS)
+                }
+                connectionController.handleAdbConnected(target.host, port, session.connectedScrcpyProfileId)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                disconnectAdbConnection(cause = DisconnectCause.ConnectFailed)
+                throw AdbPortReconnectFailure(error)
+            }
+            true
+        } finally {
+            switchingAdbPort = false
+            _adbConnecting.value = false
+            startKeepAliveLoop()
+            startAutoReconnectLoop()
+            startConnectionHealthCheckLoop()
+        }
+    }.await()
 
     suspend fun connectWithTimeout(host: String, port: Int) {
         connectionController.connectWithTimeout(host, port, ADB_CONNECT_TIMEOUT_MS)
@@ -636,6 +688,8 @@ internal class DeviceTabViewModel(
                 throw e
             } catch (e: Exception) {
                 runCatching {
+                    // 还原设备显示要在隧道还活着时做: shell 走的就是这条连接
+                    restoreDeviceDisplay()
                     withContext(Dispatchers.IO) {
                         UsbAdbSession.disconnect()
                     }
@@ -688,6 +742,8 @@ internal class DeviceTabViewModel(
     fun disconnectUsbDevice() {
         viewModelScope.launch {
             runCatching { scrcpy.stop() }
+            // 还原设备显示要在隧道还活着时做: shell 走的就是这条连接
+            restoreDeviceDisplay()
             // close() 是阻塞调用且可能等待共用锁, 切 IO 线程
             runCatching {
                 withContext(Dispatchers.IO) {
@@ -706,6 +762,7 @@ internal class DeviceTabViewModel(
     }
 
     suspend fun disconnectCurrentTargetBeforeConnectingAny(addresses: List<String>) {
+        restoreDeviceDisplay()
         val disconnected = connectionController.disconnectCurrentTargetBeforeConnectingAny(addresses)
             ?: return
         sessionReconnectBlacklistHosts += disconnected.host
@@ -779,6 +836,7 @@ internal class DeviceTabViewModel(
             ?.takeIf { it.isNotBlank() }
             ?.let { options.copy(startApp = it) }
             ?: options
+        runDisplayLogged(R.string.vm_display_override_failed) { applyCustomDisplay(activeBundle) }
         val session = scrcpy.start(resolvedOptions)
         _pendingScrollToPreview.value = resolvedOptions.video && resolvedOptions.videoPlayback
 
@@ -838,6 +896,8 @@ internal class DeviceTabViewModel(
         val activeBundle = resolveScrcpyBundle(connectedScrcpyProfileId.value)
         val options = scrcpyOptions.toClientOptions(activeBundle).fix()
 
+        restoreDeviceDisplay()
+
         if (options.killAdbOnClose) {
             currentTarget.value?.host?.let { sessionReconnectBlacklistHosts += it }
             connectionController.stopScrcpySession(killAdbOnClose = true)
@@ -849,6 +909,25 @@ internal class DeviceTabViewModel(
             AppRuntime.snackbar(R.string.vm_scrcpy_stopped)
         }
     }
+
+    private suspend fun applyCustomDisplay(bundle: ScrcpyOptions.Bundle) =
+        DisplayOverride.apply(bundle.customDisplay)
+
+    private suspend fun restoreCustomDisplay() = DisplayOverride.restore()
+
+    private suspend fun runDisplayLogged(@StringRes failureMessageResId: Int, block: suspend () -> Unit) {
+        runCatching { block() }.onFailure { error ->
+            logEvent(
+                failureMessageResId,
+                error.message ?: error.javaClass.simpleName,
+                level = Log.WARN,
+                error = error,
+            )
+        }
+    }
+
+    suspend fun restoreDeviceDisplay() =
+        runDisplayLogged(R.string.vm_display_restore_failed) { restoreCustomDisplay() }
 
     fun shouldOpenFullscreenCompat(): Boolean = _asBundle.value.fullscreenCompatibilityMode
 
@@ -1201,29 +1280,47 @@ internal class DeviceTabViewModel(
     }
 
     fun startKeepAliveLoop() {
-        if (_keepAliveLoopStarted) return
+        if (switchingAdbPort || _keepAliveLoopStarted) return
         _keepAliveLoopStarted = true
-        viewModelScope.launch {
+        keepAliveFailureLogged = false
+        keepAliveJob = viewModelScope.launch {
             try {
                 autoReconnectManager.runKeepAliveLoop(
-                    isForeground = { _isAppInForeground.value },
+                    isForeground = { AppRuntime.isAppForeground.value || AdbKeepAliveService.isActive.value },
                     intervalMs = ADB_KEEPALIVE_INTERVAL_MS,
                     connectTimeoutMs = ADB_CONNECT_TIMEOUT_MS,
                     keepAliveTimeoutMs = ADB_KEEPALIVE_TIMEOUT_MS,
                     onReconnectSuccess = { host, port ->
+                        keepAliveFailureLogged = false
                         logEvent(R.string.vm_quick_probe_success, host, port)
                         AppRuntime.snackbar(R.string.vm_auto_reconnect_succeeded)
                     },
                     onReconnectFailure = { error ->
-                        viewModelScope.launch {
+                        if (AdbKeepAliveService.isActive.value) {
+                            // 保活服务仍在时保留会话继续重试, 只记录首次失败
+                            if (!keepAliveFailureLogged) {
+                                keepAliveFailureLogged = true
+                                logEvent(
+                                    R.string.vm_auto_reconnect_failed,
+                                    level = Log.WARN,
+                                    error = error,
+                                )
+                            }
+                        } else {
                             disconnectAdbConnection(
                                 cause = DisconnectCause.KeepAliveFailed,
                                 statusLine = "ADB disconnected",
                             )
+                            logEvent(
+                                R.string.vm_auto_reconnect_failed,
+                                level = Log.ERROR,
+                                error = error,
+                            )
+                            AppRuntime.snackbar(R.string.vm_auto_reconnect_failed)
                         }
-                        logEvent(R.string.vm_auto_reconnect_failed, level = Log.ERROR, error = error)
-                        AppRuntime.snackbar(R.string.vm_auto_reconnect_failed)
                     },
+                    shouldRetryAfterFailure = { AdbKeepAliveService.isActive.value },
+                    retryIntervalMs = ADB_AUTO_RECONNECT_RETRY_INTERVAL_MS,
                 )
             } finally {
                 _keepAliveLoopStarted = false
@@ -1231,43 +1328,53 @@ internal class DeviceTabViewModel(
         }
     }
 
+    private var keepAliveJob: Job? = null
+    private var autoReconnectJob: Job? = null
+    private var healthCheckJob: Job? = null
+    private var scrcpyReconnectJob: Job? = null
     private var _keepAliveLoopStarted = false
+    private var keepAliveFailureLogged = false
 
     fun startAutoReconnectLoop() {
-        if (_autoReconnectLoopStarted) return
+        if (switchingAdbPort || _autoReconnectLoopStarted) return
         _autoReconnectLoopStarted = true
-        viewModelScope.launch {
-            autoReconnectManager.runAutoReconnectLoop(
-                isForeground = { _isAppInForeground.value },
-                isAutoReconnectEnabled = { _asBundle.value.adbAutoReconnectPairedDevice },
-                isBusy = { _busy.value },
-                isAdbConnecting = { _adbConnecting.value },
-                hasActiveSession = { sessionInfo.value != null },
-                savedShortcuts = { _savedShortcuts.value.toList() },
-                isBlacklisted = { host -> sessionReconnectBlacklistHosts.contains(host) },
-                connectTimeoutMs = ADB_CONNECT_TIMEOUT_MS,
-                probeTimeoutMs = ADB_TCP_PROBE_TIMEOUT_MS,
-                discoverConnectService = {
-                    adbCoordinator.discoverConnectService(
-                        ADB_AUTO_RECONNECT_DISCOVER_TIMEOUT_MS,
-                        _asBundle.value.adbMdnsLanDiscovery,
-                    )
-                },
-                onMdnsPortChanged = { host, oldPort, newPort ->
-                    _savedShortcuts.update { it.upsertByHost(host, newPort) }
-                    logEvent(R.string.vm_mdns_updated, host, oldPort, newPort)
-                },
-                onKnownDeviceReconnected = { target ->
-                    _savedShortcuts.update { it.update(host = target.host, port = target.port) }
-                    logEvent(R.string.vm_quick_probe_success, target.host, target.port)
-                },
-                onDiscoveredDeviceReconnected = { host, port, _ ->
-                    // 列表里存的是旧端口, 按 host 覆盖端口
-                    _savedShortcuts.update { it.upsertByHost(host, port) }
-                    logEvent(R.string.vm_quick_probe_success, host, port)
-                },
-                retryIntervalMs = ADB_AUTO_RECONNECT_RETRY_INTERVAL_MS,
-            )
+        autoReconnectJob = viewModelScope.launch {
+            try {
+                autoReconnectManager.runAutoReconnectLoop(
+                    isForeground = { AppRuntime.isAppForeground.value },
+                    isAutoReconnectEnabled = { _asBundle.value.adbAutoReconnectPairedDevice },
+                    isBusy = { _busy.value },
+                    isAdbConnecting = { _adbConnecting.value },
+                    hasActiveSession = { sessionInfo.value != null },
+                    savedShortcuts = { _savedShortcuts.value.toList() },
+                    isBlacklisted = { host -> sessionReconnectBlacklistHosts.contains(host) },
+                    connectTimeoutMs = ADB_CONNECT_TIMEOUT_MS,
+                    probeTimeoutMs = ADB_TCP_PROBE_TIMEOUT_MS,
+                    discoverConnectService = {
+                        adbCoordinator.discoverConnectService(
+                            ADB_AUTO_RECONNECT_DISCOVER_TIMEOUT_MS,
+                            _asBundle.value.adbMdnsLanDiscovery,
+                        )
+                    },
+                    onMdnsPortChanged = { host, oldPort, newPort ->
+                        _savedShortcuts.update { it.upsertByHost(host, newPort) }
+                        logEvent(R.string.vm_mdns_updated, host, oldPort, newPort)
+                    },
+                    onKnownDeviceReconnected = { target ->
+                        // 已知设备重连时列表里存的是旧端口, 按 host 覆盖
+                        _savedShortcuts.update { it.upsertByHost(target.host, target.port) }
+                        logEvent(R.string.vm_quick_probe_success, target.host, target.port)
+                    },
+                    onDiscoveredDeviceReconnected = { host, port, _ ->
+                        // 列表里存的是旧端口, 按 host 覆盖端口
+                        _savedShortcuts.update { it.upsertByHost(host, port) }
+                        logEvent(R.string.vm_quick_probe_success, host, port)
+                    },
+                    retryIntervalMs = ADB_AUTO_RECONNECT_RETRY_INTERVAL_MS,
+                )
+            } finally {
+                _autoReconnectLoopStarted = false
+            }
         }
     }
 
@@ -1297,7 +1404,7 @@ internal class DeviceTabViewModel(
         if (_recentTasksAutoRefreshStarted) return
         _recentTasksAutoRefreshStarted = true
         viewModelScope.launch {
-            combine(adbConnected, currentTarget, _isAppInForeground) { connected, _, foreground ->
+            combine(adbConnected, currentTarget, AppRuntime.isAppForeground) { connected, _, foreground ->
                 connected && foreground
             }.collect { shouldRefresh ->
                 if (!shouldRefresh) return@collect
@@ -1371,9 +1478,13 @@ internal class DeviceTabViewModel(
 
         // 真实链路探测 (shell 往返): 标志位查询无法发现 TCP 半开/USB 假死,
         // 与 health check 保持一致, 避免操作直接打在假死连接上
-        val isActuallyConnected = runCatching {
+        val isActuallyConnected = try {
             connectionController.keepAliveCheck(ADB_KEEPALIVE_TIMEOUT_MS)
-        }.getOrDefault(false)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            false
+        }
 
         if (isActuallyConnected) return
 
@@ -1423,80 +1534,103 @@ internal class DeviceTabViewModel(
      * 启动定时连接状态检测循环, 每 3 秒检测一次实际连接状态
      */
     fun startConnectionHealthCheckLoop() {
-        if (_connectionHealthCheckStarted) return
+        if (switchingAdbPort || _connectionHealthCheckStarted) return
         _connectionHealthCheckStarted = true
-        viewModelScope.launch {
-            while (_connectionHealthCheckStarted) {
-                // 有连接动作在途 (USB/LAN 连接, 断开等) 时跳过本轮探测:
-                // 这些动作持有 ADB 全局连接锁, 探测等锁超时会误判"已断开",
-                // 进而触发断开清理, 破坏正在进行的握手 (如 USB 切换时的慢握手/授权弹窗)
-                val connectionActionInFlight =
-                    _adbConnecting.value || _activeDeviceActionId.value != null
-                if (!connectionActionInFlight) {
-                    try {
-                        val state = connectionState.value.adbSession
-                        if (state.isConnected) {
-                            // 真实链路探测 (shell 往返): 标志位查询无法发现 TCP 半开/USB 假死
-                            val isActuallyConnected = runCatching {
-                                connectionController.keepAliveCheck(ADB_KEEPALIVE_TIMEOUT_MS)
-                            }.getOrDefault(false)
+        healthCheckJob = viewModelScope.launch {
+            try {
+                while (isActive && _connectionHealthCheckStarted) {
+                    // 有连接动作在途 (USB/LAN 连接, 断开等) 时跳过本轮探测:
+                    // 这些动作持有 ADB 全局连接锁, 探测等锁超时会误判"已断开",
+                    // 进而触发断开清理, 破坏正在进行的握手 (如 USB 切换时的慢握手/授权弹窗)
+                    val connectionActionInFlight =
+                        _adbConnecting.value || _activeDeviceActionId.value != null
+                    // 后台探测由保活服务承担, 服务未运行时不在后台探测
+                    val backgroundProbingDisabled =
+                        !AppRuntime.isAppForeground.value && !AdbKeepAliveService.isActive.value
+                    if (!connectionActionInFlight && !backgroundProbingDisabled) {
+                        try {
+                            val state = connectionState.value.adbSession
+                            if (state.isConnected) {
+                                // 真实链路探测 (shell 往返): 标志位查询无法发现 TCP 半开/USB 假死
+                                val isActuallyConnected = try {
+                                    connectionController.keepAliveCheck(ADB_KEEPALIVE_TIMEOUT_MS)
+                                } catch (cancel: CancellationException) {
+                                    throw cancel
+                                } catch (_: Exception) {
+                                    false
+                                }
+                                ensureActive()
 
-                            if (!isActuallyConnected) {
-                                // 检测到连接已断开
-                                val target = state.currentTarget
-                                if (target != null) {
-                                    // USB 连接不做 TCP 重连, 直接标记断开
-                                    if (target.connectionType == DeviceConnectionType.USB) {
-                                        connectionController.disconnectAdbConnection(
-                                            clearQuickOnlineForTarget = target,
-                                            cause = DisconnectCause.KeepAliveFailed,
-                                            statusLine = "ADB connection lost",
-                                        )
-                                        // 释放 USB 隧道资源 (幂等), 阻塞操作切 IO 线程
-                                        runCatching {
-                                            withContext(Dispatchers.IO) {
-                                                UsbAdbSession.disconnect()
-                                            }
-                                        }
-                                        Log.w(TAG, "定时检测：USB连接已断开")
-                                    } else {
-                                        // LAN 连接尝试自动重连
-                                        try {
-                                            connectionController.connectWithTimeout(
-                                                target.host,
-                                                target.port,
-                                                ADB_CONNECT_TIMEOUT_MS,
-                                            )
-                                            connectionController.handleAdbConnected(
-                                                target.host,
-                                                target.port,
-                                                state.connectedScrcpyProfileId,
-                                            )
-                                            Log.i(TAG, "定时检测：ADB自动重连成功")
-                                            // ADB 重连成功后, 智能处理 scrcpy session
-                                            restartScrcpySessionIfNeeded()
-                                        } catch (e: Exception) {
+                                if (!isActuallyConnected) {
+                                    // 检测到连接已断开
+                                    val target = state.currentTarget
+                                    if (target != null) {
+                                        // USB 连接不做 TCP 重连, 直接标记断开
+                                        if (target.connectionType == DeviceConnectionType.USB) {
                                             connectionController.disconnectAdbConnection(
                                                 clearQuickOnlineForTarget = target,
                                                 cause = DisconnectCause.KeepAliveFailed,
                                                 statusLine = "ADB connection lost",
                                             )
-                                            Log.e(TAG, "定时检测：ADB自动重连失败", e)
+                                            ensureActive()
+                                            // 释放 USB 隧道资源 (幂等), 阻塞操作切 IO 线程
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    UsbAdbSession.disconnect()
+                                                }
+                                            } catch (cancel: CancellationException) {
+                                                throw cancel
+                                            } catch (_: Exception) {
+                                            }
+                                            Log.w(TAG, "定时检测：USB连接已断开")
+                                        } else {
+                                            // LAN 连接尝试自动重连
+                                            try {
+                                                connectionController.connectWithTimeout(
+                                                    target.host,
+                                                    target.port,
+                                                    ADB_CONNECT_TIMEOUT_MS,
+                                                )
+                                                ensureActive()
+                                                connectionController.handleAdbConnected(
+                                                    target.host,
+                                                    target.port,
+                                                    state.connectedScrcpyProfileId,
+                                                )
+                                                ensureActive()
+                                                Log.i(TAG, "定时检测：ADB自动重连成功")
+                                                // ADB 重连成功后, 智能处理 scrcpy session
+                                                restartScrcpySessionIfNeeded()
+                                            } catch (cancel: CancellationException) {
+                                                throw cancel
+                                            } catch (e: Exception) {
+                                                ensureActive()
+                                                connectionController.disconnectAdbConnection(
+                                                    clearQuickOnlineForTarget = target,
+                                                    cause = DisconnectCause.KeepAliveFailed,
+                                                    statusLine = "ADB connection lost",
+                                                )
+                                                Log.e(TAG, "定时检测：ADB自动重连失败", e)
+                                            }
                                         }
+                                    } else {
+                                        connectionController.disconnectAdbConnection(
+                                            cause = DisconnectCause.KeepAliveFailed,
+                                            statusLine = "ADB connection lost",
+                                        )
                                     }
-                                } else {
-                                    connectionController.disconnectAdbConnection(
-                                        cause = DisconnectCause.KeepAliveFailed,
-                                        statusLine = "ADB connection lost",
-                                    )
                                 }
                             }
+                        } catch (cancel: CancellationException) {
+                            throw cancel
+                        } catch (_: Exception) {
+                            // 忽略检测过程中的异常
                         }
-                    } catch (_: Exception) {
-                        // 忽略检测过程中的异常
                     }
+                    delay(ADB_HEALTH_CHECK_INTERVAL_MS)
                 }
-                delay(ADB_HEALTH_CHECK_INTERVAL_MS)
+            } finally {
+                _connectionHealthCheckStarted = false
             }
         }
     }
@@ -1513,18 +1647,25 @@ internal class DeviceTabViewModel(
      * - 如果 session 已停止, 仅提示用户手动重新投屏
      */
     private fun restartScrcpySessionIfNeeded() {
-        viewModelScope.launch {
+        if (switchingAdbPort || scrcpyReconnectJob?.isActive == true) return
+        scrcpyReconnectJob = viewModelScope.launch {
             if (scrcpy.isStarted()) {
                 Log.i(TAG, "ADB重连后重启scrcpy session")
                 try {
                     scrcpy.stop()
+                } catch (cancel: CancellationException) {
+                    throw cancel
                 } catch (_: Exception) {
                 }
                 delay(300)
                 try {
                     startScrcpySession()
+                    ensureActive()
                     AppRuntime.snackbar(R.string.vm_auto_reconnect_restart_scrcpy)
+                } catch (cancel: CancellationException) {
+                    throw cancel
                 } catch (e: Exception) {
+                    ensureActive()
                     Log.e(TAG, "ADB重连后重启scrcpy失败", e)
                     AppRuntime.snackbar(R.string.vm_auto_reconnect_restart_scrcpy_failed)
                 }
