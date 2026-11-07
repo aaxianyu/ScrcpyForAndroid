@@ -729,5 +729,22 @@
     <string name="tools_activate_script_run">%1$s startup script attempted; execution status unknown. Confirm the service status in the app</string>
     <string name="tools_readback_unconfirmed">Unable to confirm the setting: invalid or empty readback</string>
     <string name="tools_activate_failed">Failed to activate %1$s: %2$s</string>
+    <string name="tools_device_info">Device info</string>
+    <string name="tools_device_info_desc">Model, system, battery, storage and more</string>
+    <string name="tools_info_loading">Loading device info…</string>
+    <string name="tools_info_failed">Failed to load device info: %1$s</string>
+    <string name="tools_info_model">Model</string>
+    <string name="tools_info_android_version">Android version</string>
+    <string name="tools_info_cpu_model">CPU</string>
+    <string name="tools_info_cpu_abi">ABI</string>
+    <string name="tools_info_ram">Memory</string>
+    <string name="tools_info_screen">Screen</string>
+    <string name="tools_info_density">Density</string>
+    <string name="tools_info_serial">Serial number</string>
+    <string name="tools_info_battery">Battery</string>
+    <string name="tools_info_battery_charging">charging</string>
+    <string name="tools_info_battery_full">full</string>
+    <string name="tools_info_battery_discharging">discharging</string>
+    <string name="tools_info_storage">Storage</string>
 
 </resources>

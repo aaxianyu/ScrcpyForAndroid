@@ -728,5 +728,22 @@
     <string name="tools_activate_script_run">%1$s 启动脚本已尝试，执行状态未知，请到应用内确认服务状态</string>
     <string name="tools_readback_unconfirmed">无法确认设置状态：回读为空或格式无效</string>
     <string name="tools_activate_failed">激活 %1$s 失败：%2$s</string>
+    <string name="tools_device_info">设备信息</string>
+    <string name="tools_device_info_desc">型号、系统、电池、存储等</string>
+    <string name="tools_info_loading">正在获取设备信息…</string>
+    <string name="tools_info_failed">获取设备信息失败：%1$s</string>
+    <string name="tools_info_model">型号</string>
+    <string name="tools_info_android_version">安卓版本</string>
+    <string name="tools_info_cpu_model">处理器</string>
+    <string name="tools_info_cpu_abi">ABI</string>
+    <string name="tools_info_ram">内存</string>
+    <string name="tools_info_screen">屏幕</string>
+    <string name="tools_info_density">密度</string>
+    <string name="tools_info_serial">序列号</string>
+    <string name="tools_info_battery">电池</string>
+    <string name="tools_info_battery_charging">充电中</string>
+    <string name="tools_info_battery_full">已充满</string>
+    <string name="tools_info_battery_discharging">放电中</string>
+    <string name="tools_info_storage">存储</string>
 
 </resources>

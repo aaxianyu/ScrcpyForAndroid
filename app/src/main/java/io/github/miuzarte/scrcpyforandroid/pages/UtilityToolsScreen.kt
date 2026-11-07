@@ -10,15 +10,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +61,9 @@ import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
 import io.github.miuzarte.scrcpyforandroid.ui.SheetActionRow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +80,9 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Close
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -94,6 +102,7 @@ private const val ADB_TCP_PORT_MIN = 1024
 private const val ADB_TCP_PORT_MAX = 65535
 // 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
 private const val REBOOT_RESULT_WAIT_MS = 3_000L
+
 
 private data class ActivatableApp(
     val name: String,
@@ -135,6 +144,104 @@ private fun extractDisplaySize(shellOutput: String, kind: String): String {
         .firstOrNull { it.startsWith(target) }
         ?.removePrefix(target)?.trim().orEmpty()
 }
+
+// 从 shell 输出中取以「key:」开头的那一行的值
+private fun lineValue(shellOutput: String, key: String): String {
+    val target = "$key:"
+    return shellOutput.lineSequence()
+        .firstOrNull { it.trim().startsWith(target) }
+        ?.trim()?.removePrefix(target)?.trim().orEmpty()
+}
+
+private sealed interface SpecsState {
+    data object Loading : SpecsState
+    data class Failed(val reason: String) : SpecsState
+    data class Ready(val specs: List<DeviceSpec>) : SpecsState
+}
+
+private class DeviceSpec(
+    val labelRes: Int,
+    val value: String,
+)
+
+// 合并为一条 shell 命令取全部属性，避免多次往返
+private const val PROP_BUNDLE_COMMAND =
+    "getprop ro.product.model; getprop ro.product.manufacturer; getprop ro.build.version.release; " +
+        "getprop ro.build.version.sdk; getprop ro.product.cpu.abi; getprop ro.hardware; getprop ro.serialno"
+
+private suspend fun collectDeviceSpecs(
+    charging: String,
+    full: String,
+    discharging: String,
+): List<DeviceSpec> = withContext(Dispatchers.IO) {
+    NativeAdbService.ensureConnectionResponsive()
+    val props = NativeAdbService.shell(PROP_BUNDLE_COMMAND)
+        .lineSequence()
+        .map { it.trim() }
+        .toList()
+
+    // 各项独立命令并行拉取，async 继承 IO 调度器才真正并发
+    coroutineScope {
+        listOf(
+            async {
+                DeviceSpec(R.string.tools_info_model, "${props.getOrElse(1) { "" }} ${props.getOrElse(0) { "" }}".trim())
+            },
+            async {
+                val version = props.getOrElse(2) { "" }
+                val sdk = props.getOrElse(3) { "" }
+                DeviceSpec(
+                    R.string.tools_info_android_version,
+                    if (sdk.isNotBlank()) "$version (SDK $sdk)" else version,
+                )
+            },
+            async {
+                val cpu = NativeAdbService.shell("cat /proc/cpuinfo")
+                val hardware = lineValue(cpu, "Hardware").ifBlank { props.getOrElse(5) { "" } }
+                DeviceSpec(R.string.tools_info_cpu_model, hardware)
+            },
+            async { DeviceSpec(R.string.tools_info_cpu_abi, props.getOrElse(4) { "" }) },
+            async {
+                val mem = NativeAdbService.shell("cat /proc/meminfo")
+                val total = lineValue(mem, "MemTotal").replace("kB", "").trim().toLongOrNull() ?: 0L
+                val avail = lineValue(mem, "MemAvailable").replace("kB", "").trim().toLongOrNull() ?: 0L
+                DeviceSpec(R.string.tools_info_ram, if (total > 0L) "${readableSize(avail)} / ${readableSize(total)}" else "unknown")
+            },
+            async {
+                val size = NativeAdbService.shell("wm size")
+                DeviceSpec(R.string.tools_info_screen, extractDisplaySize(size, "Physical"))
+            },
+            async {
+                val density = NativeAdbService.shell("wm density")
+                DeviceSpec(R.string.tools_info_density, extractDensity(density, "Physical"))
+            },
+            async { DeviceSpec(R.string.tools_info_serial, props.getOrElse(6) { "" }) },
+            async {
+                val battery = NativeAdbService.shell("dumpsys battery")
+                val level = lineValue(battery, "level")
+                val status = when (lineValue(battery, "status")) {
+                    "2" -> charging
+                    "5" -> full
+                    else -> discharging
+                }
+                val tenths = lineValue(battery, "temperature").toIntOrNull() ?: 0
+                DeviceSpec(R.string.tools_info_battery, "$level% ($status) ${tenths / 10}.${tenths % 10}°C")
+            },
+            async {
+                val df = NativeAdbService.shell("df -h /data")
+                val row = df.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.elementAtOrNull(1)
+                val columns = row?.split(Regex("\\s+")).orEmpty()
+                DeviceSpec(
+                    R.string.tools_info_storage,
+                    if (columns.size > 3) "${columns[3]} / ${columns[1]}" else "unknown",
+                )
+            },
+        ).awaitAll()
+    }.filter { it.value.isNotBlank() && it.value != "unknown" }
+}
+
+private fun readableSize(kilobytes: Long): String =
+    if (kilobytes >= 1048576L) "%.1f GB".format(kilobytes / 1048576.0)
+    else "%.1f MB".format(kilobytes / 1024.0)
 
 @Composable
 internal fun UtilityToolsScreen(
@@ -178,6 +285,7 @@ internal fun UtilityToolsScreen(
     var activationLoading by remember { mutableStateOf(false) }
     var activationBusy by remember { mutableStateOf(false) }
     var activationDetectFailed by remember { mutableStateOf(false) }
+    var specsSheetOpen by remember { mutableStateOf(false) }
 
     val saveShotLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png"),
@@ -204,6 +312,242 @@ internal fun UtilityToolsScreen(
                 }
         }
     }
+
+    fun enableAdbOverTcp(port: Int) {
+        if (adbOverTcpBusy) return
+        scope.launch {
+            if (!NativeAdbService.isConnected()) {
+                AppRuntime.snackbar(R.string.tools_not_connected)
+                return@launch
+            }
+            adbOverTcpBusy = true
+            val outcome = runCatching { switchAdbPort(port) }
+            adbOverTcpBusy = false
+            outcome.onSuccess { switched ->
+                if (switched) {
+                    adbOverTcpOn = true
+                    activeTcpPort = port.toString()
+                    AppRuntime.snackbar(R.string.tools_wireless_adb_on, port as Any)
+                } else {
+                    AppRuntime.snackbar(R.string.tools_wireless_adb_failed, AppRuntime.stringResource(R.string.tools_apply_not_effective))
+                }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                if (it is AdbPortReconnectFailure) {
+                    adbOverTcpOn = true
+                    activeTcpPort = port.toString()
+                    AppRuntime.snackbar(R.string.tools_wireless_adb_reconnect_failed, port, it.message ?: "")
+                } else {
+                    AppRuntime.snackbar(R.string.tools_wireless_adb_failed, it.message ?: "")
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        scope.launch(Dispatchers.IO) {
+            // 属性可能残留禁用哨兵值或异常文本：只有合法端口号才视为已启用
+            val port = runCatching {
+                NativeAdbService.shell("getprop service.adb.tcp.port").trim()
+            }.getOrDefault("")
+            val valid = port.toIntOrNull() in 1024..65535
+            adbOverTcpOn = valid
+            activeTcpPort = if (valid) port else ""
+        }
+    }
+
+    fun openSpecsSheet() {
+        scope.launch {
+            if (!NativeAdbService.isConnected()) {
+                AppRuntime.snackbar(R.string.tools_not_connected)
+                return@launch
+            }
+            specsSheetOpen = true
+        }
+    }
+
+    fun openActivationSheet() {
+        if (activationBusy) return
+        scope.launch {
+            if (!NativeAdbService.isConnected()) {
+                AppRuntime.snackbar(R.string.tools_not_connected)
+                return@launch
+            }
+            activationLoading = true
+            activationSheetOpen = true
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val installed = NativeAdbService.shell("pm list packages")
+                        .lineSequence()
+                        .map { it.removePrefix("package:").trim() }
+                        .toSet()
+                    detectedActivatables = KNOWN_ACTIVATABLES.filter { it.packageName in installed }
+                }
+            }.onFailure {
+                activationDetectFailed = true
+                AppRuntime.snackbar(R.string.tools_activate_detect_failed, it.message ?: "")
+            }.onSuccess {
+                activationDetectFailed = false
+            }
+            activationLoading = false
+        }
+    }
+
+    fun activateApps(apps: List<ActivatableApp>) {
+        // 立即关闭弹窗，执行结果用 snackbar 报告，避免脚本卡住时用户被困在弹窗里
+        activationSheetOpen = false
+        scope.launch {
+            activationBusy = true
+            for (app in apps) {
+                AppRuntime.snackbar(R.string.tools_activate_executing, app.name)
+                val outcome = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val attempt = tryStartupScripts(app.startupScripts) { NativeAdbService.shell(it) }
+                        if (attempt.exitCode != null && attempt.exitCode != 0) {
+                            throw ActivationFailure("exit=${attempt.exitCode}: ${attempt.output}")
+                        }
+                        // 脚本零退出或状态未知都不能证明常驻服务已启动。
+                        attempt
+                    }
+                }.onFailure { AppRuntime.snackbar(R.string.tools_activate_failed, app.name, it.message ?: "") }
+                outcome.onSuccess { attempt ->
+                    if (attempt.exitCode == null) {
+                        // 未收到退出标记，不能确认脚本是否执行完毕。
+                        AppRuntime.snackbar(R.string.tools_activate_script_run, app.name)
+                    } else {
+                        AppRuntime.snackbar(R.string.tools_activate_success, app.name)
+                    }
+                }
+            }
+            activationBusy = false
+            activationSheetOpen = false
+        }
+    }
+
+    val tools = listOf(
+            ToolItem(
+                icon = Icons.Rounded.CameraAlt,
+                titleResId = R.string.tools_screenshot,
+                descResId = R.string.tools_screenshot_desc,
+                onClick = {
+                    scope.launch {
+                        if (!NativeAdbService.isConnected()) {
+                            AppRuntime.snackbar(R.string.tools_not_connected)
+                            return@launch
+                        }
+                        AppRuntime.snackbar(R.string.tools_screenshot_executing)
+                        val stamp = "img_${System.currentTimeMillis()}"
+                        val remote = File(REMOTE_SHOT_DIR, "$stamp.png").path
+                        val outcome = runCatching {
+                            withContext(Dispatchers.IO) {
+                                NativeAdbService.shell("screencap -p $remote")
+                                val bytes = NativeAdbService.pull(remote)
+                                // 写进专用子目录：file_paths.xml 只声明该目录，
+                                // FileProvider 的可共享范围不扩大到整个 cache
+                                val shotDir = File(context.cacheDir, SCREENSHOT_DIR).apply { mkdirs() }
+                                File(shotDir, "$stamp.png").apply { writeBytes(bytes) }
+                            }
+                        }
+                        // 无论成功失败都清理设备端临时文件
+                        runCatching {
+                            withContext(Dispatchers.IO) { NativeAdbService.shell("rm -f $remote") }
+                        }
+                        outcome
+                            .onSuccess { pendingShot = it }
+                            .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
+                    }
+                },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.RestartAlt,
+                titleResId = R.string.tools_advanced_reboot,
+                descResId = R.string.tools_advanced_reboot_desc,
+                onClick = {
+                    scope.launch {
+                        if (!NativeAdbService.isConnected()) {
+                            AppRuntime.snackbar(R.string.tools_not_connected)
+                            return@launch
+                        }
+                        // 用户态软重启要求 Android 11+：开列表前查一次目标 SDK 并缓存，
+                        // 查询失败按不支持处理，老设备不会看到一个点了无效的选项
+                        if (targetSdk == null) {
+                            targetSdk = runCatching {
+                                withContext(Dispatchers.IO) {
+                                    NativeAdbService.shell("getprop ro.build.version.sdk")
+                                        .trim().toIntOrNull()
+                                }
+                            }.getOrNull()
+                        }
+                        showRebootDialog = true
+                    }
+                },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.Visibility,
+                titleResId = R.string.tools_screen_density,
+                descResId = R.string.tools_screen_density_desc,
+                onClick = {
+                    scope.launch {
+                        if (!NativeAdbService.isConnected()) {
+                            AppRuntime.snackbar(R.string.tools_not_connected)
+                            return@launch
+                        }
+                        // 取值失败就不开弹窗，避免用户对着空表单操作
+                        val loaded = runCatching {
+                            withContext(Dispatchers.IO) {
+                                val output = NativeAdbService.shell("wm density")
+                                val stock = extractDensity(output, "Physical")
+                                val override = extractDensity(output, "Override")
+                                stockDensity = stock
+                                activeDensity = override.ifBlank { stock }
+                            }
+                        }.onFailure { AppRuntime.snackbar(R.string.tools_density_read_failed, it.message ?: "") }
+                        if (loaded.isSuccess) densitySheetOpen = true
+                    }
+                },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.AspectRatio,
+                titleResId = R.string.tools_screen_resolution,
+                descResId = R.string.tools_screen_resolution_desc,
+                onClick = {
+                    scope.launch {
+                        if (!NativeAdbService.isConnected()) {
+                            AppRuntime.snackbar(R.string.tools_not_connected)
+                            return@launch
+                        }
+                        val loaded = runCatching {
+                            withContext(Dispatchers.IO) {
+                                val output = NativeAdbService.shell("wm size")
+                                val stock = extractDisplaySize(output, "Physical")
+                                val override = extractDisplaySize(output, "Override")
+                                stockResolution = stock
+                                activeResolution = override.ifBlank { stock }
+                            }
+                        }.onFailure { AppRuntime.snackbar(R.string.tools_resolution_read_failed, it.message ?: "") }
+                        if (loaded.isSuccess) resolutionSheetOpen = true
+                    }
+                },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.Wifi,
+                titleResId = R.string.tools_wireless_adb,
+                descResId = R.string.tools_wireless_adb_desc,
+                onClick = { if (!adbOverTcpBusy) portSheetOpen = true },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.Verified,
+                titleResId = R.string.tools_activate_app,
+                descResId = R.string.tools_activate_app_desc,
+                onClick = { openActivationSheet() },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.PhoneAndroid,
+                titleResId = R.string.tools_device_info,
+                descResId = R.string.tools_device_info_desc,
+                onClick = { openSpecsSheet() },
+            ),
+        )
 
     fun reboot(mode: RebootMode) {
         scope.launch {
@@ -302,226 +646,6 @@ internal fun UtilityToolsScreen(
         }
     }
 
-    fun enableAdbOverTcp(port: Int) {
-        if (adbOverTcpBusy) return
-        scope.launch {
-            if (!NativeAdbService.isConnected()) {
-                AppRuntime.snackbar(R.string.tools_not_connected)
-                return@launch
-            }
-            adbOverTcpBusy = true
-            val outcome = runCatching { switchAdbPort(port) }
-            adbOverTcpBusy = false
-            outcome.onSuccess { switched ->
-                if (switched) {
-                    adbOverTcpOn = true
-                    activeTcpPort = port.toString()
-                    AppRuntime.snackbar(R.string.tools_wireless_adb_on, port as Any)
-                } else {
-                    AppRuntime.snackbar(R.string.tools_wireless_adb_failed, AppRuntime.stringResource(R.string.tools_apply_not_effective))
-                }
-            }.onFailure {
-                if (it is CancellationException) throw it
-                if (it is AdbPortReconnectFailure) {
-                    adbOverTcpOn = true
-                    activeTcpPort = port.toString()
-                    AppRuntime.snackbar(R.string.tools_wireless_adb_reconnect_failed, port, it.message ?: "")
-                } else {
-                    AppRuntime.snackbar(R.string.tools_wireless_adb_failed, it.message ?: "")
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        scope.launch(Dispatchers.IO) {
-            // 属性可能残留禁用哨兵值或异常文本：只有合法端口号才视为已启用
-            val port = runCatching {
-                NativeAdbService.shell("getprop service.adb.tcp.port").trim()
-            }.getOrDefault("")
-            val valid = port.toIntOrNull() in 1024..65535
-            adbOverTcpOn = valid
-            activeTcpPort = if (valid) port else ""
-        }
-    }
-
-    fun openActivationSheet() {
-        if (activationBusy) return
-        scope.launch {
-            if (!NativeAdbService.isConnected()) {
-                AppRuntime.snackbar(R.string.tools_not_connected)
-                return@launch
-            }
-            activationLoading = true
-            activationSheetOpen = true
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    val installed = NativeAdbService.shell("pm list packages")
-                        .lineSequence()
-                        .map { it.removePrefix("package:").trim() }
-                        .toSet()
-                    detectedActivatables = KNOWN_ACTIVATABLES.filter { it.packageName in installed }
-                }
-            }.onFailure {
-                activationDetectFailed = true
-                AppRuntime.snackbar(R.string.tools_activate_detect_failed, it.message ?: "")
-            }.onSuccess {
-                activationDetectFailed = false
-            }
-            activationLoading = false
-        }
-    }
-
-    fun activateApps(apps: List<ActivatableApp>) {
-        // 立即关闭弹窗，执行结果用 snackbar 报告，避免脚本卡住时用户被困在弹窗里
-        activationSheetOpen = false
-        scope.launch {
-            activationBusy = true
-            for (app in apps) {
-                AppRuntime.snackbar(R.string.tools_activate_executing, app.name)
-                val outcome = runCatching {
-                    withContext(Dispatchers.IO) {
-                        val attempt = tryStartupScripts(app.startupScripts) { NativeAdbService.shell(it) }
-                        if (attempt.exitCode != null && attempt.exitCode != 0) {
-                            throw ActivationFailure("exit=${attempt.exitCode}: ${attempt.output}")
-                        }
-                        // 脚本零退出或状态未知都不能证明常驻服务已启动。
-                        attempt
-                    }
-                }.onFailure { AppRuntime.snackbar(R.string.tools_activate_failed, app.name, it.message ?: "") }
-                outcome.onSuccess { attempt ->
-                    if (attempt.exitCode == null) {
-                        // 未收到退出标记，不能确认脚本是否执行完毕。
-                        AppRuntime.snackbar(R.string.tools_activate_script_run, app.name)
-                    } else {
-                        AppRuntime.snackbar(R.string.tools_activate_success, app.name)
-                    }
-                }
-            }
-            activationBusy = false
-            activationSheetOpen = false
-        }
-    }
-
-    val tools = listOf(
-        ToolItem(
-            icon = Icons.Rounded.CameraAlt,
-            titleResId = R.string.tools_screenshot,
-            descResId = R.string.tools_screenshot_desc,
-            onClick = {
-                scope.launch {
-                    if (!NativeAdbService.isConnected()) {
-                        AppRuntime.snackbar(R.string.tools_not_connected)
-                        return@launch
-                    }
-                    AppRuntime.snackbar(R.string.tools_screenshot_executing)
-                    val stamp = "img_${System.currentTimeMillis()}"
-                    val remote = File(REMOTE_SHOT_DIR, "$stamp.png").path
-                    val outcome = runCatching {
-                        withContext(Dispatchers.IO) {
-                            NativeAdbService.shell("screencap -p $remote")
-                            val bytes = NativeAdbService.pull(remote)
-                            // 写进专用子目录：file_paths.xml 只声明该目录，
-                            // FileProvider 的可共享范围不扩大到整个 cache
-                            val shotDir = File(context.cacheDir, SCREENSHOT_DIR).apply { mkdirs() }
-                            File(shotDir, "$stamp.png").apply { writeBytes(bytes) }
-                        }
-                    }
-                    // 无论成功失败都清理设备端临时文件
-                    runCatching {
-                        withContext(Dispatchers.IO) { NativeAdbService.shell("rm -f $remote") }
-                    }
-                    outcome
-                        .onSuccess { pendingShot = it }
-                        .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
-                }
-            },
-        ),
-        ToolItem(
-            icon = Icons.Rounded.RestartAlt,
-            titleResId = R.string.tools_advanced_reboot,
-            descResId = R.string.tools_advanced_reboot_desc,
-            onClick = {
-                scope.launch {
-                    if (!NativeAdbService.isConnected()) {
-                        AppRuntime.snackbar(R.string.tools_not_connected)
-                        return@launch
-                    }
-                    // 用户态软重启要求 Android 11+：开列表前查一次目标 SDK 并缓存，
-                    // 查询失败按不支持处理，老设备不会看到一个点了无效的选项
-                    if (targetSdk == null) {
-                        targetSdk = runCatching {
-                            withContext(Dispatchers.IO) {
-                                NativeAdbService.shell("getprop ro.build.version.sdk")
-                                    .trim().toIntOrNull()
-                            }
-                        }.getOrNull()
-                    }
-                    showRebootDialog = true
-                }
-            },
-        ),
-        ToolItem(
-            icon = Icons.Rounded.Visibility,
-            titleResId = R.string.tools_screen_density,
-            descResId = R.string.tools_screen_density_desc,
-            onClick = {
-                scope.launch {
-                    if (!NativeAdbService.isConnected()) {
-                        AppRuntime.snackbar(R.string.tools_not_connected)
-                        return@launch
-                    }
-                    // 取值失败就不开弹窗，避免用户对着空表单操作
-                    val loaded = runCatching {
-                        withContext(Dispatchers.IO) {
-                            val output = NativeAdbService.shell("wm density")
-                            val stock = extractDensity(output, "Physical")
-                            val override = extractDensity(output, "Override")
-                            stockDensity = stock
-                            activeDensity = override.ifBlank { stock }
-                        }
-                    }.onFailure { AppRuntime.snackbar(R.string.tools_density_read_failed, it.message ?: "") }
-                    if (loaded.isSuccess) densitySheetOpen = true
-                }
-            },
-        ),
-        ToolItem(
-            icon = Icons.Rounded.AspectRatio,
-            titleResId = R.string.tools_screen_resolution,
-            descResId = R.string.tools_screen_resolution_desc,
-            onClick = {
-                scope.launch {
-                    if (!NativeAdbService.isConnected()) {
-                        AppRuntime.snackbar(R.string.tools_not_connected)
-                        return@launch
-                    }
-                    val loaded = runCatching {
-                        withContext(Dispatchers.IO) {
-                            val output = NativeAdbService.shell("wm size")
-                            val stock = extractDisplaySize(output, "Physical")
-                            val override = extractDisplaySize(output, "Override")
-                            stockResolution = stock
-                            activeResolution = override.ifBlank { stock }
-                        }
-                    }.onFailure { AppRuntime.snackbar(R.string.tools_resolution_read_failed, it.message ?: "") }
-                    if (loaded.isSuccess) resolutionSheetOpen = true
-                }
-            },
-        ),
-        ToolItem(
-            icon = Icons.Rounded.Wifi,
-            titleResId = R.string.tools_wireless_adb,
-            descResId = R.string.tools_wireless_adb_desc,
-            onClick = { if (!adbOverTcpBusy) portSheetOpen = true },
-        ),
-        ToolItem(
-            icon = Icons.Rounded.Verified,
-            titleResId = R.string.tools_activate_app,
-            descResId = R.string.tools_activate_app_desc,
-            onClick = { openActivationSheet() },
-        ),
-    )
-
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = { SnackbarHost(snackHostState) },
@@ -593,97 +717,102 @@ internal fun UtilityToolsScreen(
             // 对话框必须位于 Scaffold 内部: OverlayDialog 默认 renderInRootScaffold=true,
             // 在 Scaffold 外部时会落入 LocalDialogStates 的默认空列表, 没有任何 MiuixPopupHost 渲染它
             val shot = pendingShot
-            if (shot != null) {
-                ScreenshotResultDialog(
-                    fileName = shot.name,
-                    onCancel = {
-                        shot.delete()
-                        pendingShot = null
-                    },
-                    onSave = { saveShotLauncher.launch(shot.name) },
-                    onOpen = {
-                        val uri = FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            shot,
-                        )
-                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                            setDataAndType(uri, "image/png")
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        runCatching { context.startActivity(intent) }
-                            .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
-                        pendingShot = null
-                    },
+    if (shot != null) {
+        ScreenshotResultDialog(
+            fileName = shot.name,
+            onCancel = {
+                shot.delete()
+                pendingShot = null
+            },
+            onSave = { saveShotLauncher.launch(shot.name) },
+            onOpen = {
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    shot,
                 )
-            }
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "image/png")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                runCatching { context.startActivity(intent) }
+                    .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
+                pendingShot = null
+            },
+        )
+    }
 
-            if (showRebootDialog) {
-                RebootDialog(
-                    showSoftReboot = (targetSdk ?: 0) >= 30,
-                    onDismiss = { showRebootDialog = false },
-                    // 先收起义确认弹窗，确认后再真正执行
-                    onReboot = {
-                        showRebootDialog = false
-                        pendingReboot = it
-                    },
-                )
-            }
+    if (showRebootDialog) {
+        RebootDialog(
+            showSoftReboot = (targetSdk ?: 0) >= 30,
+            onDismiss = { showRebootDialog = false },
+            // 先收起义确认弹窗，确认后再真正执行
+            onReboot = {
+                showRebootDialog = false
+                pendingReboot = it
+            },
+        )
+    }
 
-            pendingReboot?.let { mode ->
-                RebootConfirmDialog(
-                    mode = mode,
-                    // 取消确认回到动作列表，让用户改选别的模式而不是从头再来
-                    onDismiss = {
-                        pendingReboot = null
-                        showRebootDialog = true
-                    },
-                    onConfirm = { reboot(mode) },
-                )
-            }
+    pendingReboot?.let { mode ->
+        RebootConfirmDialog(
+            mode = mode,
+            // 取消确认回到动作列表，让用户改选别的模式而不是从头再来
+            onDismiss = {
+                pendingReboot = null
+                showRebootDialog = true
+            },
+            onConfirm = { reboot(mode) },
+        )
+    }
 
-            if (densitySheetOpen) {
-                DensitySheet(
-                    stockDensity = stockDensity,
-                    activeDensity = activeDensity,
-                    onDismiss = { densitySheetOpen = false },
-                    onApply = ::applyDensity,
-                    onRestore = ::restoreDensity,
-                )
-            }
+    if (densitySheetOpen) {
+        DensitySheet(
+            stockDensity = stockDensity,
+            activeDensity = activeDensity,
+            onDismiss = { densitySheetOpen = false },
+            onApply = ::applyDensity,
+            onRestore = ::restoreDensity,
+        )
+    }
 
-            if (resolutionSheetOpen) {
-                ResolutionSheet(
-                    stockResolution = stockResolution,
-                    activeResolution = activeResolution,
-                    onDismiss = { resolutionSheetOpen = false },
-                    onApply = ::applyResolution,
-                    onRestore = ::restoreResolution,
-                )
-            }
+    if (resolutionSheetOpen) {
+        ResolutionSheet(
+            stockResolution = stockResolution,
+            activeResolution = activeResolution,
+            onDismiss = { resolutionSheetOpen = false },
+            onApply = ::applyResolution,
+            onRestore = ::restoreResolution,
+        )
+    }
 
-            if (portSheetOpen) {
-                PortSheet(
-                    activePort = activeTcpPort,
-                    busy = adbOverTcpBusy,
-                    onDismiss = { portSheetOpen = false },
-                    onApply = {
-                        portSheetOpen = false
-                        enableAdbOverTcp(it)
-                    },
-                )
-            }
+    if (portSheetOpen) {
+        PortSheet(
+            activePort = activeTcpPort,
+            busy = adbOverTcpBusy,
+            onDismiss = { portSheetOpen = false },
+            onApply = {
+                portSheetOpen = false
+                enableAdbOverTcp(it)
+            },
+        )
+    }
 
-            if (activationSheetOpen) {
-                ActivationSheet(
-                    apps = detectedActivatables,
-                    loading = activationLoading,
-                    detectFailed = activationDetectFailed,
-                    onDismiss = { activationSheetOpen = false },
-                    onActivate = ::activateApps,
-                )
-            }
+    if (activationSheetOpen) {
+        ActivationSheet(
+            apps = detectedActivatables,
+            loading = activationLoading,
+            detectFailed = activationDetectFailed,
+            onDismiss = { activationSheetOpen = false },
+            onActivate = ::activateApps,
+        )
+    }
+
+    DeviceSpecsSheet(
+        show = specsSheetOpen,
+        onDismissRequest = { specsSheetOpen = false },
+    )
         }
     }
 }
@@ -1152,3 +1281,106 @@ private val RebootMode.titleResId: Int
         RebootMode.Recovery -> R.string.tools_reboot_recovery
         RebootMode.Fastboot -> R.string.tools_reboot_fastboot
     }
+
+@Composable
+private fun DeviceSpecsSheet(
+    show: Boolean,
+    onDismissRequest: () -> Unit,
+) {
+    var state by remember(show) { mutableStateOf<SpecsState>(SpecsState.Loading) }
+
+    val charging = stringResource(R.string.tools_info_battery_charging)
+    val full = stringResource(R.string.tools_info_battery_full)
+    val discharging = stringResource(R.string.tools_info_battery_discharging)
+
+    LaunchedEffect(show) {
+        if (!show) return@LaunchedEffect
+        state = SpecsState.Loading
+        state = runCatching {
+            collectDeviceSpecs(charging, full, discharging)
+        }.fold(
+            onSuccess = { SpecsState.Ready(it) },
+            onFailure = { SpecsState.Failed(it.message ?: "") },
+        )
+    }
+
+    OverlayBottomSheet(
+        show = show,
+        title = stringResource(R.string.tools_device_info),
+        onDismissRequest = onDismissRequest,
+        defaultWindowInsetsPadding = false,
+    ) {
+        // 左上角关闭：规格要连着取几轮，只靠下滑或点外面容易被当成还在加载
+        IconButton(onClick = onDismissRequest) {
+            Icon(
+                imageVector = MiuixIcons.Regular.Close,
+                contentDescription = stringResource(R.string.cd_close),
+            )
+        }
+        when (val current = state) {
+            SpecsState.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = UiSpacing.PageBottom * 2),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.tools_info_loading),
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            }
+
+            is SpecsState.Failed -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = UiSpacing.PageBottom),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.tools_info_failed, current.reason),
+                        color = colorScheme.error,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+
+            is SpecsState.Ready -> {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(UiSpacing.ContentVertical)) {
+                        current.specs.forEach { spec ->
+                            SpecRow(label = stringResource(spec.labelRes), value = spec.value)
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(UiSpacing.SheetBottom))
+    }
+}
+
+@Composable
+private fun SpecRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+        Text(
+            text = value,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
