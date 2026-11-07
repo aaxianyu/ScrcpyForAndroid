@@ -49,3 +49,6 @@ abandoned_assets/
 app/src/main/assets/bin/scrcpy-server-v*
 
 docs/
+
+# device-side helper dex (built from app/probe by preBuild)
+app/src/main/assets/bin/*.dex

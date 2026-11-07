@@ -1,6 +1,7 @@
 package io.github.miuzarte.scrcpyforandroid.nativecore
 
 import android.util.Log
+import io.github.miuzarte.scrcpyforandroid.BuildConfig
 import io.github.miuzarte.scrcpyforandroid.storage.AppSettings
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -261,12 +262,60 @@ object NativeAdbService {
     }
 
     /**
+     * 传输层此刻是否还活着：读 @Volatile 的连接引用并问一次 socket，不排队、不阻塞。
+     *
+     * [isConnected] 要抢连接锁，只能在协程里、在没持锁的位置调；错误分类发生在命令
+     * 失败的回调上，那条路上不能等锁（命令本身可能正持着锁），所以另给一个无锁的读法。
+     */
+    fun isTransportAlive(): Boolean = connection?.isAlive() == true
+
+    /**
+     * 当前真实连接的 host:port（USB 为 "usb:<id>"）；未连接或锁被占用返回 null。
+     *
+     * 应用管理的图标 / 列表缓存按设备分目录隔离，key 必须跟真实连接一致——
+     * `AppRuntime.currentConnectionTarget` 与真实连接可能不同步（切设备后仍持有旧值），
+     * 拿它当 key 会把新设备的数据写进旧设备目录，于是新设备一个图标都读不到。
+     *
+     * 非挂起（调用方是 SideEffect）：拿不到锁就返回 null，由调用方回退快照 key。
+     */
+    fun connectedAddress(): String? {
+        if (!mutex.tryLock()) return null
+        return try {
+            val host = connectedHost ?: return null
+            if (host.startsWith("usb:")) host else "${host}:${connectedPort ?: return null}"
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    /**
      * Execute a shell command on the connected device and return stdout text.
      */
-    suspend fun shell(command: String): String {
+    suspend fun shell(command: String, timeoutMs: Long = 0): String {
         val conn = snapshotConnection()
-        val response = conn.shell(command)
-        Log.d(TAG, "command: $command, response: $response")
+        // timeoutMs > 0 时用线程中断兜底：对端切断连接后回读卡在阻塞队列，协程取消本身唤不醒它
+        val response = if (timeoutMs > 0) {
+            withTimeout(timeoutMs) {
+                runInterruptible(Dispatchers.IO) { conn.shell(command) }
+            }
+        } else {
+            conn.shell(command)
+        }
+        // 响应可能含设备序列号等持久标识，只在调试构建记录，且不输出响应原文
+        if (BuildConfig.DEBUG) Log.d(TAG, "shell ok: $command")
+        return response
+    }
+
+    /**
+     * Ask the device's adbd to restart in TCP/IP mode on the given port.
+     * Uses the protocol-level "tcpip:" service, which requires no root.
+     */
+    suspend fun switchToTcpTransport(port: Int): String {
+        val conn = snapshotConnection()
+        val response = conn.openStream("tcpip:$port")
+            .use { it.inputStream.readBytes().toString(Charsets.UTF_8) }
+        // 与 shell 同口径：响应来自设备，可能含持久标识，只在调试构建记录且不带原文
+        if (BuildConfig.DEBUG) Log.d(TAG, "tcpip ok: port=$port")
         return response
     }
 
@@ -356,16 +405,16 @@ object NativeAdbService {
         snapshotConnection().push(localPath.toFile().readBytes(), remotePath)
     }
 
-    suspend fun push(input: InputStream, remotePath: String, unixMode: Int = 420) {
-        snapshotConnection().push(input, remotePath, unixMode)
+    suspend fun push(input: InputStream, remotePath: String, unixMode: Int = 420, onProgress: ((Long) -> Unit)? = null) {
+        snapshotConnection().push(input, remotePath, unixMode, onProgress)
     }
 
     suspend fun pull(remotePath: String): ByteArray {
         return snapshotConnection().pull(remotePath)
     }
 
-    suspend fun pull(remotePath: String, output: OutputStream) {
-        snapshotConnection().pull(remotePath, output)
+    suspend fun pull(remotePath: String, output: OutputStream, onProgress: ((Long) -> Unit)? = null) {
+        snapshotConnection().pull(remotePath, output, onProgress)
     }
 
     suspend fun openAbstractSocket(name: String): AdbSocketStream {

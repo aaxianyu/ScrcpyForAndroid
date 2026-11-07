@@ -863,8 +863,16 @@ internal class DirectAdbConnection(
     }
 
     fun shell(command: String): String =
-        openStream("shell:$command")
-            .use { it.inputStream.readBytes().toString(Charsets.UTF_8) }
+        openStream("shell:$command").use { stream ->
+            val bytes = stream.inputStream.readBytes()
+            // 读到 EOF 可能是对端正常结束，也可能是链路断开。后者只拿到半截输出，
+            // 必须抛错让调用方按断连处理——把截断数据当成功返回会让探针 JSON 解析失败。
+            // 判定安全：onPeerClose 先置 closedByPeer 再投递结束标记，读到 EOF 时它已可见。
+            if (!stream.closedByPeer) {
+                throw IOException("ADB shell stream ended before peer closed: ${bytes.size} bytes received")
+            }
+            bytes.toString(Charsets.UTF_8)
+        }
 
     /**
      * Push raw bytes to a remote path using the minimal ADB "sync" protocol.
@@ -877,7 +885,7 @@ internal class DirectAdbConnection(
         }
     }
 
-    fun push(input: InputStream, remotePath: String, unixMode: Int = 420) {
+    fun push(input: InputStream, remotePath: String, unixMode: Int = 420, onProgress: ((Long) -> Unit)? = null) {
         openStream("sync:")
             .use { stream ->
                 val out = stream.outputStream
@@ -896,6 +904,7 @@ internal class DirectAdbConnection(
                     out.write("DATA".toByteArray(Charsets.US_ASCII))
                     out.writeIntLE(len)
                     out.write(chunkBuf, 0, len)
+                    onProgress?.invoke(len.toLong())
                 }
 
                 out.write("DONE".toByteArray(Charsets.US_ASCII))
@@ -921,7 +930,7 @@ internal class DirectAdbConnection(
         return output.toByteArray()
     }
 
-    fun pull(remotePath: String, output: OutputStream) {
+    fun pull(remotePath: String, output: OutputStream, onProgress: ((Long) -> Unit)? = null) {
         openStream("sync:")
             .use { stream ->
                 val out = stream.outputStream
@@ -941,6 +950,7 @@ internal class DirectAdbConnection(
                             val chunk = ByteArray(msgLen)
                             inp.readExact(chunk)
                             output.write(chunk)
+                            onProgress?.invoke(msgLen.toLong())
                         }
 
                         "DONE" -> {
@@ -1041,7 +1051,7 @@ internal class DirectAdbConnection(
                         }
                     }
 
-                    A_CLSE -> streams.remove(msg.arg1)?.forceClose()
+                    A_CLSE -> streams.remove(msg.arg1)?.onPeerClose()
                     A_OPEN -> sendMsg(A_CLSE, 0, msg.arg0)
                 }
             }
@@ -1201,6 +1211,17 @@ class AdbSocketStream(
     @Volatile
     var closed: Boolean = false
 
+    /**
+     * 对端是否主动关闭了这条流（收到 A_CLSE）。
+     *
+     * 只有它为 true 时「读到 EOF」才代表输出完整。链路断开同样会让 [inputStream] 读到
+     * EOF，但那时已收到的字节只是半截——调用方必须能区分，否则截断的输出会被当成
+     * 完整结果（探针 JSON 被切断后报解析错误，界面显示乱码）。
+     */
+    @Volatile
+    var closedByPeer: Boolean = false
+        private set
+
     private val latch = CountDownLatch(1)
     private val latchOk = AtomicBoolean(false)
     private val queue = LinkedBlockingQueue<Any>()
@@ -1232,6 +1253,12 @@ class AdbSocketStream(
 
     internal fun onData(data: ByteArray) {
         if (!closed) queue.offer(data)
+    }
+
+    /** 对端正常结束这条流（A_CLSE）：EOF 代表输出完整。 */
+    internal fun onPeerClose() {
+        closedByPeer = true
+        forceClose()
     }
 
     internal fun forceClose() {

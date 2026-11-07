@@ -1,6 +1,8 @@
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Properties
+import javax.tools.ToolProvider
+import org.gradle.api.tasks.TaskProvider
 
 plugins {
     alias(libs.plugins.android.application)
@@ -273,6 +275,97 @@ val downloadScrcpyServer by tasks.registering {
 
 tasks.named("preBuild") {
     dependsOn(downloadScrcpyServer)
+}
+
+// 被控设备端辅助程序 (app_process 加载的 dex): probe/java/*.java 只在本模块的构建期
+// 编译 (javac + d8) 成 dex 进 assets, 不参与 app 的 Kotlin 编译, 产物不进版本库 (见 .gitignore)。
+// 每个 helper 一个任务、一份 dex、一个独立构建目录, 互不干扰。
+fun registerDeviceHelperDex(name: String, sourcePath: String): TaskProvider<Task> = tasks.register(name) {
+    description = "Compile the device-side helper $name into assets/bin/$name.dex"
+    group = "build setup"
+
+    val helperSource = layout.projectDirectory.file(sourcePath)
+    val assetsBinDir = layout.projectDirectory.dir("src/main/assets/bin")
+    val helperDex = assetsBinDir.file("$name.dex").asFile
+    inputs.file(helperSource)
+    outputs.file(helperDex)
+
+    doLast {
+        val localProps = Properties().apply {
+            val file = rootProject.layout.projectDirectory.file("local.properties").asFile
+            if (file.exists()) file.inputStream().use { load(it) }
+        }
+        val sdkDir = localProps.getProperty("sdk.dir")
+            ?: System.getenv("ANDROID_HOME")
+            ?: System.getenv("ANDROID_SDK_ROOT")
+            ?: error("Android SDK not found: set sdk.dir in local.properties or ANDROID_HOME")
+        val compileSdkVersion = android.compileSdk.toString()
+        val buildToolsVersion = android.buildToolsVersion ?: error("buildToolsVersion missing")
+        // 平台目录可能带次版本号 (android-37.0), 按主版本号前缀匹配
+        val platformsDir = File(sdkDir, "platforms")
+        val platformDir = platformsDir.listFiles { file ->
+            file.isDirectory && file.name.startsWith("android-$compileSdkVersion")
+        }?.firstOrNull() ?: error("no platform dir for android-$compileSdkVersion in ${platformsDir.path}")
+        val androidJar = File(platformDir, "android.jar")
+        require(androidJar.exists()) { "android.jar not found at ${androidJar.path}" }
+        val d8 = File(sdkDir, "build-tools/$buildToolsVersion/d8.bat")
+            .takeIf { it.exists() }
+            ?: File(sdkDir, "build-tools/$buildToolsVersion/d8")
+        require(d8.exists()) { "d8 not found in build-tools/$buildToolsVersion" }
+
+        val buildDir = layout.buildDirectory.dir(name).get().asFile
+        val classesDir = File(buildDir, "classes").apply { mkdirs() }
+        val dexOutDir = File(buildDir, "dex").apply { mkdirs() }
+
+        val compiler = ToolProvider.getSystemJavaCompiler()
+            ?: error("No system Java compiler: Gradle must run on a JDK (not a JRE)")
+        val javacArgs = arrayOf(
+            "--release",
+            "17",
+            "-classpath",
+            androidJar.path,
+            "-nowarn",
+            "-d",
+            classesDir.path,
+            helperSource.asFile.path,
+        )
+        val javacExit = compiler.run(null, null, null, *javacArgs)
+        require(javacExit == 0) { "$name: javac failed with exit code $javacExit" }
+
+        val classFiles = classesDir.walkTopDown().filter { it.isFile }.toList()
+        require(classFiles.isNotEmpty()) { "$name: javac produced no class files" }
+        val d8Args = listOf(
+            "--release",
+            "--min-api",
+            "26",
+            "--lib",
+            androidJar.path,
+            "--output",
+            dexOutDir.path,
+        ) + classFiles.map { it.path }
+        // d8 在 Windows 上是 .bat, 必须经 cmd 调用; 用 ProcessBuilder 避免依赖 Gradle exec API
+        val isWindows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+        val d8Process = if (isWindows) {
+            ProcessBuilder(listOf("cmd", "/c", d8.path) + d8Args)
+        } else {
+            ProcessBuilder(listOf(d8.path) + d8Args)
+        }.redirectErrorStream(true).start()
+        val d8Exit = d8Process.waitFor()
+        require(d8Exit == 0) { "$name: d8 failed with exit code $d8Exit" }
+
+        val dexFile = File(dexOutDir, "classes.dex")
+        require(dexFile.exists()) { "d8 produced no dex" }
+        assetsBinDir.asFile.mkdirs()
+        dexFile.copyTo(helperDex, overwrite = true)
+        logger.lifecycle("$name.dex built (${helperDex.length()} bytes)")
+    }
+}
+
+val buildAppProbeDex = registerDeviceHelperDex("appprobe", "probe/java/AppProbe.java")
+val buildScreenStandbyDex = registerDeviceHelperDex("screenstandby", "probe/java/ScreenStandby.java")
+
+tasks.named("preBuild") {
+    dependsOn(buildAppProbeDex, buildScreenStandbyDex)
 }
 
 // 语言接线校验: 保证新加的 Activity 不会绕过 LocalizedActivity, 且多语言配置三处一致
