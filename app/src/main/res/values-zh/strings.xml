@@ -54,6 +54,18 @@
     <string name="button_pair">配对</string>
     <string name="button_confirm">确定</string>
     <string name="button_add_device">添加设备</string>
+    <string name="button_close">关闭</string>
+    <string name="button_scan_devices">扫描设备</string>
+    <string name="lan_scan_title">局域网扫描</string>
+    <string name="lan_scan_starting">正在准备扫描…</string>
+    <string name="lan_scan_sweeping">正在快扫 5555 端口…</string>
+    <string name="lan_scan_deep">正在深扫… %1$d%%</string>
+    <string name="lan_scan_failed">扫描失败</string>
+    <string name="lan_scan_no_interface">未找到可用的网络接口</string>
+    <string name="lan_scan_no_devices">未发现设备</string>
+    <string name="lan_scan_no_devices_hint">请确认目标设备已开启无线调试</string>
+    <string name="lan_scan_found_devices">发现 %1$d 个设备</string>
+    <string name="lan_scan_local_device">本机</string>
     <string name="button_direct_connect">直接连接</string>
     <string name="button_auto_discover">自动发现</string>
     <string name="button_discovering">发现中…</string>
@@ -78,6 +90,7 @@
     <string name="device_cd_config_left">配置显示在左侧</string>
     <string name="device_menu_quick_sort">快速设备排序</string>
     <string name="device_menu_virtual_button_sort">虚拟按钮排序</string>
+    <string name="device_menu_swipe_ball_sort">悬浮球排序</string>
     <string name="device_menu_clear_logs">清空日志</string>
     <string name="device_hint_long_press_edit">长按可编辑</string>
     <string name="device_cannot_modify_connected">无法修改已连接的设备</string>
@@ -221,15 +234,8 @@
     <string name="pref_summary_ignore_rotation_lock">启用后使用传感器方向，忽略系统自动旋转锁定状态</string>
     <string name="pref_title_back_to_device">全屏时返回键发送到远程</string>
     <string name="pref_summary_back_to_device">启用后系统返回键会发送给设备，不再退出全屏控制页\n此时退出全屏需要回到桌面通过图标重新进入应用</string>
-    <string name="pref_title_show_virtual_buttons">全屏时显示虚拟按钮</string>
-    <string name="pref_summary_show_virtual_buttons">在全屏控制页中显示返回键、主页键等虚拟按钮</string>
     <string name="pref_title_virtual_button_direction">虚拟按钮方向</string>
     <string name="pref_title_virtual_button_height">虚拟按钮高度</string>
-    <string name="pref_title_show_floating_button">全屏时显示悬浮球</string>
-    <string name="pref_summary_show_floating_button">在全屏控制页中显示可拖动的悬浮球，点击后弹出完整虚拟按键菜单</string>
-    <string name="pref_title_floating_button_size">悬浮球尺寸</string>
-    <string name="pref_title_floating_button_bg_opacity">悬浮球背景透明度</string>
-    <string name="pref_title_floating_button_ring_opacity">悬浮球白环透明度</string>
     <string name="pref_title_fullscreen_compat_mode">全屏兼容模式</string>
     <string name="pref_summary_fullscreen_compat_mode">启用后全屏控制页不再跨 Activity，会导致画中画不可用</string>
 
@@ -336,6 +342,29 @@
     <string name="vb_toggle_ime">拉起输入法</string>
     <string name="vb_paste_clipboard">粘贴本机剪贴板</string>
     <string name="vb_exit_fullscreen">退出全屏</string>
+    <string name="vb_expand_status_bar">控制中心</string>
+    <string name="vb_temp_hide_virtual_buttons">切换到悬浮球</string>
+    <string name="vb_restore_virtual_buttons">切换到虚拟按钮</string>
+    <string name="vb_virtual_buttons">虚拟按钮</string>
+
+    <!-- Swipe floating ball -->
+    <string name="sfb_order_title">悬浮球排序</string>
+    <string name="sfb_order_swipe_visible">滑动悬浮球时显示</string>
+    <string name="sfb_order_click_visible">单击悬浮球时显示</string>
+    <string name="sfb_order_swipe_overflow">滑动菜单已满</string>
+    <string name="pref_title_fullscreen_control_mode">全屏控制模式</string>
+    <string name="pref_title_fullscreen_control_off">关闭</string>
+    <string name="pref_title_show_swipe_floating_ball">悬浮球</string>
+    <string name="pref_title_swipe_floating_ball_sort">悬浮球排序</string>
+    <string name="pref_summary_swipe_floating_ball_sort">滑动或单击呼出，勾选会出现在滑动菜单中，上限 5 个</string>
+    <string name="pref_title_temp_floating_button_size">悬浮球尺寸</string>
+    <string name="pref_title_swipe_floating_ball_opacity">悬浮球不透明度</string>
+    <string name="sfb_order_snap_title">边缘吸附</string>
+    <string name="sfb_order_snap_summary">拖动松手后吸附到最近的屏幕边缘</string>
+    <string name="sfb_order_idle_dim_title">无操作渐隐</string>
+    <string name="sfb_order_idle_dim_summary">无操作 3 秒后渐隐悬浮球</string>
+    <string name="sfb_order_action_hint_title">操作提示</string>
+    <string name="sfb_order_action_hint_summary">滑动到球上时显示即将执行的操作</string>
 
     <!-- Dock Positions -->
     <string name="dock_follow">跟随</string>
@@ -416,8 +445,11 @@
     <string name="password_status_authenticated">创建时已验证</string>
     <string name="password_status_unauthenticated">创建时未经验证</string>
     <string name="password_status_burned">创建时已验证（熔断）</string>
-    <string name="password_rename">重命名密码</string>
+    <string name="password_status_auto_enter">自动回车</string>
+    <string name="password_edit">编辑</string>
     <string name="password_lockscreen_label">锁屏密码</string>
+    <string name="password_auto_enter">填充后自动回车</string>
+    <string name="password_auto_enter_detail">填充该密码后自动补发一次回车键</string>
     <string name="password_disclaimer">免责声明\n0. 无法保证没有 bug\n1. 本功能的防护边界仅包括加密存储、按需认证和使用后内存清理，不构成绝对安全保证\n2. 在 root / posed / hook / 调试器 / 恶意输入法 等环境下，密码仍可能泄露\n3. 本功能不会绕过系统锁屏认证，仅用于你已合法授权控制的设备\n4. 关闭\"填充密码时需要验证\"会显著降低安全性，请谨慎选择</string>
 
     <!-- File Manager -->
@@ -628,5 +660,11 @@
     <string name="language_follow_system">跟随系统</string>
     <string name="language_english">英语</string>
     <string name="language_chinese">中文</string>
+
+    <!-- Utility tools -->
+    <string name="tools_title">实用工具</string>
+    <string name="tools_app_manager">应用管理</string>
+    <string name="tools_not_implemented">尚未实现</string>
+    <string name="tools_not_connected">未连接设备</string>
 
 </resources>

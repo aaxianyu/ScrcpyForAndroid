@@ -54,6 +54,18 @@
     <string name="button_pair">Pair</string>
     <string name="button_confirm">OK</string>
     <string name="button_add_device">Add device</string>
+    <string name="button_close">Close</string>
+    <string name="button_scan_devices">Scan devices</string>
+    <string name="lan_scan_title">LAN scan</string>
+    <string name="lan_scan_starting">Starting scan…</string>
+    <string name="lan_scan_sweeping">Sweeping port 5555 across the LAN…</string>
+    <string name="lan_scan_deep">Deep scanning… %1$d%%</string>
+    <string name="lan_scan_failed">Scan failed</string>
+    <string name="lan_scan_no_interface">No usable network interface found</string>
+    <string name="lan_scan_no_devices">No devices found</string>
+    <string name="lan_scan_no_devices_hint">Make sure the target device has wireless debugging enabled</string>
+    <string name="lan_scan_found_devices">%1$d device(s) found</string>
+    <string name="lan_scan_local_device">This device</string>
     <string name="button_direct_connect">Direct connect</string>
     <string name="button_auto_discover">Auto discover</string>
     <string name="button_discovering">Discovering…</string>
@@ -78,6 +90,7 @@
     <string name="device_cd_config_left">Config panel on left</string>
     <string name="device_menu_quick_sort">Quick device sort</string>
     <string name="device_menu_virtual_button_sort">Virtual button order</string>
+    <string name="device_menu_swipe_ball_sort">Swipe ball order</string>
     <string name="device_menu_clear_logs">Clear logs</string>
     <string name="device_hint_long_press_edit">Long press to edit</string>
     <string name="device_cannot_modify_connected">Cannot modify a connected device</string>
@@ -222,15 +235,8 @@
     <string name="pref_summary_ignore_rotation_lock">When enabled, uses sensor orientation, ignoring system auto-rotation lock</string>
     <string name="pref_title_back_to_device">Send BACK to device in fullscreen</string>
     <string name="pref_summary_back_to_device">When enabled, the system back key is sent to the device and no longer exits the fullscreen control page.\nTo exit fullscreen, return to the desktop and re-enter via the app icon</string>
-    <string name="pref_title_show_virtual_buttons">Show virtual buttons in fullscreen</string>
-    <string name="pref_summary_show_virtual_buttons">Show Back, Home and other virtual buttons on the fullscreen control page</string>
     <string name="pref_title_virtual_button_direction">Virtual button direction</string>
     <string name="pref_title_virtual_button_height">Virtual button height</string>
-    <string name="pref_title_show_floating_button">Show floating button in fullscreen</string>
-    <string name="pref_summary_show_floating_button">Show a draggable floating button on the fullscreen control page; tap to open the full virtual button menu</string>
-    <string name="pref_title_floating_button_size">Floating button size</string>
-    <string name="pref_title_floating_button_bg_opacity">Floating button background opacity</string>
-    <string name="pref_title_floating_button_ring_opacity">Floating button ring opacity</string>
     <string name="pref_title_fullscreen_compat_mode">Fullscreen compatibility mode</string>
     <string name="pref_summary_fullscreen_compat_mode">When enabled, the fullscreen control page no longer spans Activities; Picture-in-Picture will be unavailable</string>
 
@@ -337,6 +343,29 @@
     <string name="vb_toggle_ime">Toggle IME</string>
     <string name="vb_paste_clipboard">Paste local clipboard</string>
     <string name="vb_exit_fullscreen">Exit fullscreen</string>
+    <string name="vb_expand_status_bar">Quick settings</string>
+    <string name="vb_temp_hide_virtual_buttons">Switch to swipe ball</string>
+    <string name="vb_restore_virtual_buttons">Switch to virtual buttons</string>
+    <string name="vb_virtual_buttons">Virtual buttons</string>
+
+    <!-- Swipe floating ball -->
+    <string name="sfb_order_title">Swipe ball order</string>
+    <string name="sfb_order_swipe_visible">Shown when swiping the ball</string>
+    <string name="sfb_order_click_visible">Shown when tapping the ball</string>
+    <string name="sfb_order_swipe_overflow">Swipe menu is full</string>
+    <string name="pref_title_fullscreen_control_mode">Fullscreen control mode</string>
+    <string name="pref_title_fullscreen_control_off">Off</string>
+    <string name="pref_title_show_swipe_floating_ball">Swipe ball</string>
+    <string name="pref_title_swipe_floating_ball_sort">Swipe ball order</string>
+    <string name="pref_summary_swipe_floating_ball_sort">Swipe or tap the ball to open the menu. Checked items appear in the radial menu, up to 5</string>
+    <string name="pref_title_temp_floating_button_size">Swipe ball size</string>
+    <string name="pref_title_swipe_floating_ball_opacity">Swipe ball opacity</string>
+    <string name="sfb_order_snap_title">Edge snapping</string>
+    <string name="sfb_order_snap_summary">Snap to the nearest screen edge after dragging</string>
+    <string name="sfb_order_idle_dim_title">Fade when idle</string>
+    <string name="sfb_order_idle_dim_summary">Fade the ball after 3 seconds of inactivity</string>
+    <string name="sfb_order_action_hint_title">Action hint</string>
+    <string name="sfb_order_action_hint_summary">Show the action name when sliding over a ball</string>
 
     <!-- Dock Positions -->
     <string name="dock_follow">Follow</string>
@@ -417,8 +446,11 @@
     <string name="password_status_authenticated">Authenticated when created</string>
     <string name="password_status_unauthenticated">Unauthenticated when created</string>
     <string name="password_status_burned">Authenticated when created (burned)</string>
-    <string name="password_rename">Rename password</string>
+    <string name="password_status_auto_enter">Auto-Enter</string>
+    <string name="password_edit">Edit</string>
     <string name="password_lockscreen_label">Lockscreen password</string>
+    <string name="password_auto_enter">Auto-Enter after filling</string>
+    <string name="password_auto_enter_detail">Automatically send an Enter key after this password is filled</string>
     <string name="password_disclaimer">Disclaimer\n0. Cannot guarantee there are no bugs.\n1. The protection boundary of this feature only includes encrypted storage, on-demand authentication, and memory cleanup after use; it does not constitute an absolute security guarantee.\n2. Under root / posed / hook / debugger / malicious input method environments, passwords may still leak.\n3. This feature does not bypass system lock screen authentication; it is only for devices you have legally authorized control over.\n4. Disabling \"Require authentication when filling passwords\" will significantly reduce security; please choose carefully</string>
 
     <!-- File Manager -->
@@ -629,5 +661,11 @@
     <string name="language_follow_system">Follow system</string>
     <string name="language_english">English</string>
     <string name="language_chinese">Chinese</string>
+
+    <!-- Utility tools -->
+    <string name="tools_title">Utility tools</string>
+    <string name="tools_app_manager">App manager</string>
+    <string name="tools_not_implemented">Not implemented yet</string>
+    <string name="tools_not_connected">No device connected</string>
 
 </resources>
