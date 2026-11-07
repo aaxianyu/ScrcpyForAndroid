@@ -255,6 +255,10 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
             stringPreferencesKey("new_display"),
             "",
         )
+        val CUSTOM_DISPLAY = Pair(
+            stringPreferencesKey("custom_display"),
+            "",
+        )
         val START_APP = Pair(
             stringPreferencesKey("start_app"),
             "",
@@ -352,6 +356,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
             list = LIST.defaultValue,
             audioDup = AUDIO_DUP.defaultValue,
             newDisplay = NEW_DISPLAY.defaultValue,
+            customDisplay = CUSTOM_DISPLAY.defaultValue,
             startApp = START_APP.defaultValue,
             startAppCustom = START_APP_CUSTOM.defaultValue,
             startAppUseCustom = START_APP_USE_CUSTOM.defaultValue,
@@ -425,6 +430,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         val list: String,
         val audioDup: Boolean,
         val newDisplay: String,
+        val customDisplay: String,
         val startApp: String,
         val startAppCustom: String,
         val startAppUseCustom: Boolean,
@@ -496,6 +502,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         bundleField(LIST) { it.list },
         bundleField(AUDIO_DUP) { it.audioDup },
         bundleField(NEW_DISPLAY) { it.newDisplay },
+        bundleField(CUSTOM_DISPLAY) { it.customDisplay },
         bundleField(START_APP) { it.startApp },
         bundleField(START_APP_CUSTOM) { it.startAppCustom },
         bundleField(START_APP_USE_CUSTOM) { it.startAppUseCustom },
@@ -569,6 +576,7 @@ class ScrcpyOptions(context: Context): Settings(context, "ScrcpyOptions") {
         list = preferences.read(LIST),
         audioDup = preferences.read(AUDIO_DUP),
         newDisplay = preferences.read(NEW_DISPLAY),
+        customDisplay = preferences.read(CUSTOM_DISPLAY),
         startApp = preferences.read(START_APP),
         startAppCustom = preferences.read(START_APP_CUSTOM),
         startAppUseCustom = preferences.read(START_APP_USE_CUSTOM),
@@ -727,6 +735,7 @@ internal fun encodeBundleToJson(bundle: ScrcpyOptions.Bundle): JSONObject =
         .put("list", bundle.list)
         .put("audioDup", bundle.audioDup)
         .put("newDisplay", bundle.newDisplay)
+        .put("customDisplay", bundle.customDisplay)
         .put("startApp", bundle.startApp)
         .put("startAppCustom", bundle.startAppCustom)
         .put("startAppUseCustom", bundle.startAppUseCustom)
@@ -975,6 +984,10 @@ internal fun decodeBundleFromJson(bundleJson: JSONObject?): ScrcpyOptions.Bundle
         newDisplay = json.optStringOrDefault(
             "newDisplay",
             ScrcpyOptions.NEW_DISPLAY.defaultValue,
+        ),
+        customDisplay = json.optStringOrDefault(
+            "customDisplay",
+            ScrcpyOptions.CUSTOM_DISPLAY.defaultValue,
         ),
         startApp = json.optStringOrDefault(
             "startApp",

@@ -1,5 +1,8 @@
 package io.github.miuzarte.scrcpyforandroid.pages
 
+import android.content.Context
+import android.util.DisplayMetrics
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
@@ -16,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
@@ -56,7 +60,14 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
 import kotlin.math.roundToInt
+
+// 与工具页屏幕分辨率/密度的安全区间一致: 越界值会生成不可用的虚拟显示
+private const val CUSTOM_DISPLAY_SIZE_MIN = 320
+private const val CUSTOM_DISPLAY_SIZE_MAX = 4320
+private const val CUSTOM_DISPLAY_DPI_MIN = 80
+private const val CUSTOM_DISPLAY_DPI_MAX = 640
 
 @Composable
 internal fun ScrcpyAllOptionsScreen(
@@ -373,6 +384,7 @@ internal fun ScrcpyAllOptionsPage(
 ) {
     val focusManager = LocalFocusManager.current
     val resources = LocalResources.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val taskScope = remember { CoroutineScope(Dispatchers.IO + SupervisorJob()) }
 
@@ -760,6 +772,72 @@ internal fun ScrcpyAllOptionsPage(
     var newDisplayDpiInput by rememberSaveable(soBundle.newDisplay) {
         mutableStateOf(ndDpi?.toString() ?: "")
     }
+
+    // 只填一段时另一段保持不改写
+    val customDisplayParsed = remember(soBundle.customDisplay) {
+        NewDisplay.parseFrom(soBundle.customDisplay)
+    }
+
+    // 输入状态绑配置档而不是选项值: 选项值每次按键都会变, 用值当 key 会把另一个输入框一起重置
+    var customDisplayWidthInput by rememberSaveable(selectedProfileId) {
+        mutableStateOf(customDisplayParsed.width?.toString() ?: "")
+    }
+    var customDisplayHeightInput by rememberSaveable(selectedProfileId) {
+        mutableStateOf(customDisplayParsed.height?.toString() ?: "")
+    }
+    var customDisplayDpiInput by rememberSaveable(selectedProfileId) {
+        mutableStateOf(customDisplayParsed.dpi?.toString() ?: "")
+    }
+    var customDisplayWidthEdited by rememberSaveable(selectedProfileId) {
+        mutableStateOf(false)
+    }
+    var customDisplayHeightEdited by rememberSaveable(selectedProfileId) {
+        mutableStateOf(false)
+    }
+    var customDisplayDpiEdited by rememberSaveable(selectedProfileId) {
+        mutableStateOf(false)
+    }
+    // 与工具页一致的安全区间: 越界尺寸或密度会生成不可用的虚拟显示
+    val customDisplayCanSwap = remember(customDisplayWidthInput, customDisplayHeightInput) {
+        customDisplayWidthInput.toIntOrNull()?.let { it in CUSTOM_DISPLAY_SIZE_MIN..CUSTOM_DISPLAY_SIZE_MAX } == true &&
+            customDisplayHeightInput.toIntOrNull()
+                ?.let { it in CUSTOM_DISPLAY_SIZE_MIN..CUSTOM_DISPLAY_SIZE_MAX } == true
+    }
+
+    // 每次输入即写回: 光标留在框里直接退出页面时 onFocusLost 不会触发, 值会丢。
+    // 失焦只钳制真正编辑过的字段: SuperTextField 首次组合会先触发一次 onFocusLost, 不能借它改写已存的旧值
+
+    fun dimensionInRange(text: String): String {
+        val value = text.filter(Char::isDigit).toIntOrNull() ?: return ""
+        return value.takeIf { it in CUSTOM_DISPLAY_SIZE_MIN..CUSTOM_DISPLAY_SIZE_MAX }?.toString() ?: ""
+    }
+
+    fun dpiInRange(text: String): String {
+        val value = text.filter(Char::isDigit).toIntOrNull() ?: return ""
+        return value.takeIf { it in CUSTOM_DISPLAY_DPI_MIN..CUSTOM_DISPLAY_DPI_MAX }?.toString() ?: ""
+    }
+
+    // 失焦时把低于下限的输入抬到下限
+    fun clampedDimension(text: String): String {
+        val value = text.filter(Char::isDigit).toIntOrNull() ?: return ""
+        return value.coerceIn(CUSTOM_DISPLAY_SIZE_MIN, CUSTOM_DISPLAY_SIZE_MAX).toString()
+    }
+
+    fun clampedDpi(text: String): String {
+        val value = text.filter(Char::isDigit).toIntOrNull() ?: return ""
+        return value.coerceIn(CUSTOM_DISPLAY_DPI_MIN, CUSTOM_DISPLAY_DPI_MAX).toString()
+    }
+
+    // 写回时越界值按空处理: 半截输入不该被当成钳制后的尺寸写进选项
+    fun persistCustomDisplay(width: String, height: String, dpi: String) {
+        soBundle = soBundle.copy(
+            customDisplay = NewDisplay.parseFrom(
+                dimensionInRange(width),
+                dimensionInRange(height),
+                dpiInRange(dpi),
+            ).toString(),
+        )
+    }
     val newDisplayWidthBlank = remember(newDisplayWidthInput) {
         newDisplayWidthInput.trim().isEmpty()
     }
@@ -845,6 +923,7 @@ internal fun ScrcpyAllOptionsPage(
     }
 
     LazyColumn(
+        modifier = Modifier.imePadding(),
         contentPadding = contentPadding,
         scrollBehavior = scrollBehavior,
         state = listState,
@@ -2173,6 +2252,206 @@ internal fun ScrcpyAllOptionsPage(
                                     ),
                                     modifier = Modifier.weight(1f),
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card {
+                Column(
+                    modifier = Modifier.padding(vertical = UiSpacing.Large),
+                    verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = UiSpacing.Large),
+                        verticalArrangement = Arrangement.spacedBy(UiSpacing.Medium),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.scrcpyopt_custom_display),
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(R.string.scrcpyopt_custom_display_desc),
+                            color = colorScheme.onSurfaceVariantSummary,
+                            style = textStyles.footnote1,
+                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+                            ) {
+                                SuperTextField(
+                                    label = stringResource(R.string.tools_resolution_width),
+                                    value = customDisplayWidthInput,
+                                    onValueChange = { raw ->
+                                        val digits = raw.filter(Char::isDigit)
+                                        val value = digits.toIntOrNull()
+                                        if (digits.isEmpty() || (value != null && value <= CUSTOM_DISPLAY_SIZE_MAX)) {
+                                            customDisplayWidthInput = digits
+                                            customDisplayWidthEdited = true
+                                            persistCustomDisplay(
+                                                digits,
+                                                customDisplayHeightInput,
+                                                customDisplayDpiInput,
+                                            )
+                                        }
+                                    },
+                                    onFocusLost = {
+                                        if (customDisplayWidthEdited) {
+                                            customDisplayWidthInput = clampedDimension(customDisplayWidthInput)
+                                            persistCustomDisplay(
+                                                customDisplayWidthInput,
+                                                customDisplayHeightInput,
+                                                customDisplayDpiInput,
+                                            )
+                                        }
+                                    },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Next,
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onNext = { focusManager.moveFocus(FocusDirection.Next) },
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                SuperTextField(
+                                    label = stringResource(R.string.tools_resolution_height),
+                                    value = customDisplayHeightInput,
+                                    onValueChange = { raw ->
+                                        val digits = raw.filter(Char::isDigit)
+                                        val value = digits.toIntOrNull()
+                                        if (digits.isEmpty() || (value != null && value <= CUSTOM_DISPLAY_SIZE_MAX)) {
+                                            customDisplayHeightInput = digits
+                                            customDisplayHeightEdited = true
+                                            persistCustomDisplay(
+                                                customDisplayWidthInput,
+                                                digits,
+                                                customDisplayDpiInput,
+                                            )
+                                        }
+                                    },
+                                    onFocusLost = {
+                                        if (customDisplayHeightEdited) {
+                                            customDisplayHeightInput = clampedDimension(customDisplayHeightInput)
+                                            persistCustomDisplay(
+                                                customDisplayWidthInput,
+                                                customDisplayHeightInput,
+                                                customDisplayDpiInput,
+                                            )
+                                        }
+                                    },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Next,
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onNext = { focusManager.moveFocus(FocusDirection.Next) },
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                SuperTextField(
+                                    label = stringResource(R.string.tools_resolution_density),
+                                    value = customDisplayDpiInput,
+                                    onValueChange = { raw ->
+                                        val digits = raw.filter(Char::isDigit)
+                                        val value = digits.toIntOrNull()
+                                        if (digits.isEmpty() || (value != null && value <= CUSTOM_DISPLAY_DPI_MAX)) {
+                                            customDisplayDpiInput = digits
+                                            customDisplayDpiEdited = true
+                                            persistCustomDisplay(
+                                                customDisplayWidthInput,
+                                                customDisplayHeightInput,
+                                                digits,
+                                            )
+                                        }
+                                    },
+                                    onFocusLost = {
+                                        if (customDisplayDpiEdited) {
+                                            customDisplayDpiInput = clampedDpi(customDisplayDpiInput)
+                                            persistCustomDisplay(
+                                                customDisplayWidthInput,
+                                                customDisplayHeightInput,
+                                                customDisplayDpiInput,
+                                            )
+                                        }
+                                    },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done,
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onDone = { focusManager.clearFocus() },
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            BoxWithConstraints(
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                val gap = UiSpacing.ContentHorizontal
+                                val inputWidth = (maxWidth - gap * 2) / 3
+                                val trailingButtonWidth = inputWidth * 2 + gap
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(gap),
+                                ) {
+                                    TextButton(
+                                        text = stringResource(R.string.cd_clear),
+                                        onClick = {
+                                            customDisplayWidthInput = ""
+                                            customDisplayHeightInput = ""
+                                            customDisplayDpiInput = ""
+                                            soBundle = soBundle.copy(customDisplay = "")
+                                        },
+                                        modifier = Modifier.width(inputWidth),
+                                        enabled = customDisplayWidthInput.isNotBlank() ||
+                                            customDisplayHeightInput.isNotBlank() ||
+                                            customDisplayDpiInput.isNotBlank(),
+                                    )
+                                    // 双态按钮: 宽度与高度都落在 320..4320 时对调二者, 否则取本机整屏参数填入
+                                    TextButton(
+                                        text = stringResource(
+                                            if (customDisplayCanSwap) R.string.button_swap else R.string.scrcpyopt_native,
+                                        ),
+                                        onClick = {
+                                            if (customDisplayCanSwap) {
+                                                val oldWidth = customDisplayWidthInput
+                                                val oldHeight = customDisplayHeightInput
+                                                customDisplayWidthInput = oldHeight
+                                                customDisplayHeightInput = oldWidth
+                                            } else {
+                                                // 取本机整屏参数: resources.displayMetrics 给的是应用窗口的可用尺寸(不含系统栏),
+                                                // 而这里要的是「本机」作为被控设备时的屏幕参数
+                                                val metrics = DisplayMetrics()
+                                                val windowManager =
+                                                    context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                                                @Suppress("DEPRECATION")
+                                                windowManager.defaultDisplay.getRealMetrics(metrics)
+                                                customDisplayWidthInput = metrics.widthPixels.toString()
+                                                customDisplayHeightInput = metrics.heightPixels.toString()
+                                                customDisplayDpiInput = metrics.densityDpi.toString()
+                                            }
+                                            persistCustomDisplay(
+                                                customDisplayWidthInput,
+                                                customDisplayHeightInput,
+                                                customDisplayDpiInput,
+                                            )
+                                        },
+                                        modifier = Modifier.width(trailingButtonWidth),
+                                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                                    )
+                                }
                             }
                         }
                     }

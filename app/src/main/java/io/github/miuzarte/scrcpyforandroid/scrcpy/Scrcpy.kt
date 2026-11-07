@@ -17,6 +17,7 @@ import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.nativecore.ScrcpyAudioPlayer
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Shared.*
 import io.github.miuzarte.scrcpyforandroid.services.*
+import io.github.miuzarte.scrcpyforandroid.services.DisplayOverride
 import io.github.miuzarte.scrcpyforandroid.services.EventLogger.logEvent
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
 import kotlinx.coroutines.*
@@ -380,6 +381,18 @@ class Scrcpy(
             }
 
             lastStopReason = reason
+            // 会话自己结束(远端断开/服务端异常)不会走停止或断开入口, 这里补一次设备显示还原
+            if (reason != StopReason.USER) {
+                runCatching { DisplayOverride.restore() }
+                    .onFailure {
+                        logEvent(
+                            R.string.vm_display_restore_failed,
+                            it.message ?: it.javaClass.simpleName,
+                            level = Log.WARN,
+                            error = it,
+                        )
+                    }
+            }
             Log.i(TAG, "stop(): Stopping scrcpy session (reason=$reason)")
 
             return@withLock try {
@@ -629,6 +642,20 @@ class Scrcpy(
         @Volatile
         private var cachedRecentTasks: List<RecentTaskInfo>? = null
 
+        /** [bindDevice] 记录的连接地址；null = 尚未绑定过设备 */
+        @Volatile
+        private var deviceAddress: String? = null
+
+        /**
+         * 缓存代次：切换设备时 +1。
+         *
+         * 取数协程在拿数据前记下代次，落缓存前核对：代次变了说明这次取的是上一台设备的
+         * 数据，直接丢弃，不让它在清空之后写回来。用代次而不是等锁——连接流程不能被在途
+         * 取数卡住。
+         */
+        @Volatile
+        private var cacheEpoch = 0
+
         val refreshBusyState: StateFlow<Boolean> = _refreshBusy.asStateFlow()
         val refreshVersionState: StateFlow<Int> = _refreshVersion.asStateFlow()
         val videoEncoders: List<EncoderInfo> get() = cachedVideoEncoders.orEmpty()
@@ -640,6 +667,28 @@ class Scrcpy(
         val recentTasks: List<RecentTaskInfo> get() = cachedRecentTasks.orEmpty()
 
         fun findCachedApp(packageName: String): AppInfo? = cachedAppsByPackage[packageName]
+
+        /**
+         * 绑定当前设备地址：地址与上次绑定的不同时，作废按设备缓存的清单
+         * （编码器 / 显示 / 相机 / 应用 / 最近任务）并推进 [refreshVersionState]，
+         * 让界面按空列表重组、需要时重新拉取；同一地址重连（keepalive 恢复）保留缓存。
+         *
+         * 不等待在途取数：由 [cacheEpoch] 让它们丢弃结果（各 get 落缓存前核对）。
+         */
+        fun bindDevice(address: String) {
+            if (deviceAddress == address) return
+            deviceAddress = address
+            cacheEpoch++
+            cachedVideoEncoders = null
+            cachedAudioEncoders = null
+            cachedDisplays = null
+            cachedCameras = null
+            cachedCameraSizes = null
+            cachedApps = null
+            cachedAppsByPackage = emptyMap()
+            cachedRecentTasks = null
+            _refreshVersion.update { it + 1 }
+        }
 
         suspend fun getVideoEncoders(forceRefresh: Boolean = false): List<EncoderInfo> {
             cachedVideoEncoders?.takeUnless { forceRefresh }?.let { return it }
@@ -661,10 +710,13 @@ class Scrcpy(
                     return@withLock cachedVideoEncoders.orEmpty() to cachedAudioEncoders.orEmpty()
 
                 runTrackedFetch {
+                    val epoch = cacheEpoch
                     val output = executeList(ListOptions.ENCODERS)
                     val (video, audio) = parseEncoders(output)
-                    cachedVideoEncoders = video
-                    cachedAudioEncoders = audio
+                    if (cacheEpoch == epoch) {
+                        cachedVideoEncoders = video
+                        cachedAudioEncoders = audio
+                    }
                     logListPreview(
                         list = ListOptions.ENCODERS,
                         countSummary = "video=${video.size} audio=${audio.size}",
@@ -680,9 +732,10 @@ class Scrcpy(
             return displaysMutex.withLock {
                 cachedDisplays?.takeUnless { forceRefresh } ?: run {
                     runTrackedFetch {
+                        val epoch = cacheEpoch
                         val output = executeList(ListOptions.DISPLAYS)
                         val parsed = parseDisplays(output)
-                        cachedDisplays = parsed
+                        if (cacheEpoch == epoch) cachedDisplays = parsed
                         logListPreview(
                             list = ListOptions.DISPLAYS,
                             countSummary = "displays=${parsed.size}",
@@ -699,9 +752,10 @@ class Scrcpy(
             return camerasMutex.withLock {
                 cachedCameras?.takeUnless { forceRefresh } ?: run {
                     runTrackedFetch {
+                        val epoch = cacheEpoch
                         val output = executeList(ListOptions.CAMERAS)
                         val parsed = parseCameras(output)
-                        cachedCameras = parsed
+                        if (cacheEpoch == epoch) cachedCameras = parsed
                         logListPreview(
                             list = ListOptions.CAMERAS,
                             countSummary = "cameras=${parsed.size}",
@@ -718,6 +772,7 @@ class Scrcpy(
             return cameraSizesMutex.withLock {
                 cachedCameraSizes?.takeUnless { forceRefresh } ?: run {
                     runTrackedFetch {
+                        val epoch = cacheEpoch
                         val output = executeList(ListOptions.CAMERA_SIZES)
                         val parsed = parseCameraSizes(output)
                             .sortedWith(
@@ -725,7 +780,7 @@ class Scrcpy(
                                     size.substringBefore('x').toIntOrNull() ?: 0
                                 },
                             )
-                        cachedCameraSizes = parsed
+                        if (cacheEpoch == epoch) cachedCameraSizes = parsed
                         logListPreview(
                             list = ListOptions.CAMERA_SIZES,
                             countSummary = "sizes=${parsed.size}",
@@ -742,12 +797,15 @@ class Scrcpy(
             return appsMutex.withLock {
                 cachedApps?.takeUnless { forceRefresh } ?: run {
                     runTrackedFetch {
+                        val epoch = cacheEpoch
                         val output = executeList(ListOptions.APPS)
                         val parsed = parseApps(output)
-                        cachedApps = parsed
-                        cachedAppsByPackage = parsed.associateBy { it.packageName }
-                        cachedRecentTasks = cachedRecentTasks?.map { task ->
-                            task.copy(appLabel = cachedAppsByPackage[task.packageName]?.label)
+                        if (cacheEpoch == epoch) {
+                            cachedApps = parsed
+                            cachedAppsByPackage = parsed.associateBy { it.packageName }
+                            cachedRecentTasks = cachedRecentTasks?.map { task ->
+                                task.copy(appLabel = cachedAppsByPackage[task.packageName]?.label)
+                            }
                         }
                         logListPreview(
                             list = ListOptions.APPS,
@@ -765,11 +823,12 @@ class Scrcpy(
             return recentTasksMutex.withLock {
                 cachedRecentTasks?.takeUnless { forceRefresh } ?: run {
                     runTrackedFetch {
+                        val epoch = cacheEpoch
                         val output = NativeAdbService.shell("dumpsys activity recents")
                         val parsed = parseRecentTasks(output).map { task ->
                             task.copy(appLabel = cachedAppsByPackage[task.packageName]?.label)
                         }
-                        cachedRecentTasks = parsed
+                        if (cacheEpoch == epoch) cachedRecentTasks = parsed
                         Log.i(TAG, "recentTasks(): parsed count=${parsed.size}")
                         parsed
                     }
