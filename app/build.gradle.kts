@@ -62,7 +62,8 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 54
-        versionName = "0.7.2"
+        // 本分支增强版: 版本名带 e 后缀, 与上游发布区分; versionCode 与上游 v0.7.2 同号
+        versionName = "0.7.2e"
 
         externalNativeBuild {
             cmake {

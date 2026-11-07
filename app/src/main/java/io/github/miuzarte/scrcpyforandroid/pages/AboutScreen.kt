@@ -57,6 +57,7 @@ internal fun AboutScreen() {
 
     LaunchedEffect(Unit) {
         AppUpdateChecker.ensureChecked(BuildConfig.VERSION_NAME)
+        AppUpdateChecker.ensureUpstreamChecked()
     }
 
     val scrollProgress by remember {
@@ -139,6 +140,7 @@ private fun AboutContent(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val updateState by AppUpdateChecker.state.collectAsState()
+    val upstreamState by AppUpdateChecker.upstreamState.collectAsState()
     val backdrop = rememberLayerBackdrop()
     var isOs3Effect by remember { mutableStateOf(true) }
     val blurEnabled = remember(enableBlur) { enableBlur && isBlurEffectSupported() }
@@ -154,13 +156,19 @@ private fun AboutContent(
     var initialLogoAreaY by remember { mutableFloatStateOf(0f) }
 
     val textAboutError = stringResource(R.string.about_error)
-    val (releaseStatusText, releasesUrl) = remember(textAboutError, updateState) {
-        when (val state = updateState) {
-            AppUpdateChecker.State.Idle -> null to AppUpdateChecker.RELEASES_URL
-            AppUpdateChecker.State.Checking -> "..." to AppUpdateChecker.RELEASES_URL
-            is AppUpdateChecker.State.Ready -> state.release.latestVersion to state.release.htmlUrl
-            is AppUpdateChecker.State.Error -> textAboutError to AppUpdateChecker.RELEASES_URL
-        }
+    val textUpToDate = stringResource(R.string.about_branch_up_to_date)
+    // 本分支: 有新版显示版本号, 否则显示「已是最新」; 检查中/失败不显示状态, 点击一律打开本分支 releases
+    val ownStatusText: String? = when (val state = updateState) {
+        is AppUpdateChecker.State.Ready ->
+            if (state.release.hasUpdate) state.release.latestVersion else textUpToDate
+        else -> null
+    }
+    // 上游: 只读展示最新正式版
+    val upstreamStatusText: String? = when (val state = upstreamState) {
+        AppUpdateChecker.State.Idle -> null
+        AppUpdateChecker.State.Checking -> "..."
+        AppUpdateChecker.State.Error -> textAboutError
+        is AppUpdateChecker.State.Ready -> state.release.latestVersion
     }
 
     LaunchedEffect(lazyListState) {
@@ -369,12 +377,13 @@ private fun AboutContent(
                         .padding(bottom = padding.calculateBottomPadding()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    // 本分支
                     AboutCard {
                         ArrowPreference(
-                            title = stringResource(R.string.about_project_repo),
+                            title = stringResource(R.string.about_branch_repo),
                             endActions = {
                                 Text(
-                                    text = "GitHub",
+                                    text = "GitHub/aaxianyu",
                                     fontSize = textStyles.body2.fontSize,
                                     color = colorScheme.onSurfaceVariantActions,
                                 )
@@ -387,9 +396,9 @@ private fun AboutContent(
                             },
                         )
                         ArrowPreference(
-                            title = stringResource(R.string.about_releases),
+                            title = stringResource(R.string.about_branch_releases),
                             endActions = {
-                                releaseStatusText?.let {
+                                ownStatusText?.let {
                                     Text(
                                         text = it,
                                         fontSize = textStyles.body2.fontSize,
@@ -400,10 +409,44 @@ private fun AboutContent(
                             onClick = {
                                 haptic.contextClick()
                                 context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        releasesUrl.toUri(),
-                                    ),
+                                    Intent(Intent.ACTION_VIEW, AppUpdateChecker.RELEASES_URL.toUri()),
+                                )
+                            },
+                        )
+                    }
+                    // 上游项目: 只读, 不提示更新
+                    AboutCard {
+                        ArrowPreference(
+                            title = stringResource(R.string.about_upstream_repo),
+                            endActions = {
+                                Text(
+                                    text = "GitHub/Miuzarte",
+                                    fontSize = textStyles.body2.fontSize,
+                                    color = colorScheme.onSurfaceVariantActions,
+                                )
+                            },
+                            onClick = {
+                                haptic.contextClick()
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, AppUpdateChecker.UPSTREAM_REPO_URL.toUri()),
+                                )
+                            },
+                        )
+                        ArrowPreference(
+                            title = stringResource(R.string.about_upstream_releases),
+                            endActions = {
+                                upstreamStatusText?.let {
+                                    Text(
+                                        text = it,
+                                        fontSize = textStyles.body2.fontSize,
+                                        color = colorScheme.onSurfaceVariantActions,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                haptic.contextClick()
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, AppUpdateChecker.UPSTREAM_RELEASES_URL.toUri()),
                                 )
                             },
                         )

@@ -412,13 +412,10 @@ fun MainScreen() {
         }
     }
 
-    LaunchedEffect(asBundle.lastUpdateCheckAt) {
-        val now = System.currentTimeMillis()
-        if (now - asBundle.lastUpdateCheckAt < AppUpdateChecker.CHECK_INTERVAL_MS) return@LaunchedEffect
-        taskScope.launch {
-            appSettings.updateBundle { it.copy(lastUpdateCheckAt = now) }
-            AppUpdateChecker.ensureChecked(BuildConfig.VERSION_NAME)
-        }
+    // 更新检查的 12h 节流在 AppUpdateChecker.ensureChecked 内部（连同上游版本查询）,
+    // 这里不再重复判断 lastUpdateCheckAt: 12h 内重开页面直接复用缓存, 省掉一次 GitHub API 调用
+    LaunchedEffect(Unit) {
+        AppUpdateChecker.ensureChecked(BuildConfig.VERSION_NAME)
     }
 
     val textMainPressBackAgain = stringResource(R.string.main_press_back_again)
