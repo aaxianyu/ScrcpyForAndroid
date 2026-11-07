@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -34,8 +36,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
@@ -69,8 +74,17 @@ import java.io.IOException
 
 private const val REMOTE_SHOT_DIR = "/data/local/tmp"
 private const val SCREENSHOT_DIR = "screenshots"
+private const val DENSITY_MIN = 80
+private const val DENSITY_MAX = 640
 // 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
 private const val REBOOT_RESULT_WAIT_MS = 3_000L
+
+private fun extractDensity(shellOutput: String, kind: String): String {
+    val target = "$kind density:"
+    return shellOutput.lineSequence()
+        .firstOrNull { it.startsWith(target) }
+        ?.removePrefix(target)?.trim().orEmpty()
+}
 
 @Composable
 internal fun UtilityToolsScreen(
@@ -98,6 +112,9 @@ internal fun UtilityToolsScreen(
     var pendingReboot by remember { mutableStateOf<RebootMode?>(null) }
     // 目标设备 SDK：null 表示还没查过或查询失败，此时软重启一律不展示
     var targetSdk by remember { mutableStateOf<Int?>(null) }
+    var densitySheetOpen by remember { mutableStateOf(false) }
+    var stockDensity by remember { mutableStateOf("") }
+    var activeDensity by remember { mutableStateOf("") }
 
     val saveShotLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png"),
@@ -138,6 +155,47 @@ internal fun UtilityToolsScreen(
             runCatching {
                 NativeAdbService.shell(mode.shellCommand, REBOOT_RESULT_WAIT_MS)
             }.onFailure { AppRuntime.snackbar(R.string.tools_reboot_unconfirmed, AppRuntime.stringResource(mode.titleResId)) }
+        }
+    }
+
+    fun applyDensity(value: String) {
+        scope.launch {
+            densitySheetOpen = false
+            // shell 传输成功不代表命令生效：设完回读，Override 对得上才认成功
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    NativeAdbService.shell("wm density $value")
+                    parseWmSetting(NativeAdbService.shell("wm density"), "density")?.override == value
+                }
+            }.onSuccess { effective ->
+                if (effective) {
+                    activeDensity = value
+                    AppRuntime.snackbar(R.string.tools_density_applied, value)
+                } else {
+                    AppRuntime.snackbar(R.string.tools_density_failed, AppRuntime.stringResource(R.string.tools_apply_not_effective))
+                }
+            }.onFailure { AppRuntime.snackbar(R.string.tools_density_failed, it.message ?: "") }
+        }
+    }
+
+    fun restoreDensity() {
+        scope.launch {
+            densitySheetOpen = false
+            // reset 生效的判据：回读有效（Physical 在场且格式合法）且 Override 行消失
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    NativeAdbService.shell("wm density reset")
+                    isWmRestored(NativeAdbService.shell("wm density"), "density")
+                        ?: throw IOException(AppRuntime.stringResource(R.string.tools_readback_unconfirmed))
+                }
+            }.onSuccess { effective ->
+                if (effective) {
+                    activeDensity = stockDensity
+                    AppRuntime.snackbar(R.string.tools_density_restored, stockDensity)
+                } else {
+                    AppRuntime.snackbar(R.string.tools_density_failed, AppRuntime.stringResource(R.string.tools_apply_not_effective))
+                }
+            }.onFailure { AppRuntime.snackbar(R.string.tools_density_failed, it.message ?: "") }
         }
     }
 
@@ -196,6 +254,30 @@ internal fun UtilityToolsScreen(
                         }.getOrNull()
                     }
                     showRebootDialog = true
+                }
+            },
+        ),
+        ToolItem(
+            icon = Icons.Rounded.Visibility,
+            titleResId = R.string.tools_screen_density,
+            descResId = R.string.tools_screen_density_desc,
+            onClick = {
+                scope.launch {
+                    if (!NativeAdbService.isConnected()) {
+                        AppRuntime.snackbar(R.string.tools_not_connected)
+                        return@launch
+                    }
+                    // 取值失败就不开弹窗，避免用户对着空表单操作
+                    val loaded = runCatching {
+                        withContext(Dispatchers.IO) {
+                            val output = NativeAdbService.shell("wm density")
+                            val stock = extractDensity(output, "Physical")
+                            val override = extractDensity(output, "Override")
+                            stockDensity = stock
+                            activeDensity = override.ifBlank { stock }
+                        }
+                    }.onFailure { AppRuntime.snackbar(R.string.tools_density_read_failed, it.message ?: "") }
+                    if (loaded.isSuccess) densitySheetOpen = true
                 }
             },
         ),
@@ -314,6 +396,84 @@ internal fun UtilityToolsScreen(
                         showRebootDialog = true
                     },
                     onConfirm = { reboot(mode) },
+                )
+            }
+
+            if (densitySheetOpen) {
+                DensitySheet(
+                    stockDensity = stockDensity,
+                    activeDensity = activeDensity,
+                    onDismiss = { densitySheetOpen = false },
+                    onApply = ::applyDensity,
+                    onRestore = ::restoreDensity,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DensitySheet(
+    stockDensity: String,
+    activeDensity: String,
+    onDismiss: () -> Unit,
+    onApply: (String) -> Unit,
+    onRestore: () -> Unit,
+) {
+    var input by remember { mutableStateOf("") }
+
+    // 极端密度值会让设备 UI 几乎不可用，限制在常见安全区间
+    val inSafeRange = input.toIntOrNull()?.let { it in DENSITY_MIN..DENSITY_MAX } ?: false
+
+    OverlayDialog(
+        show = true,
+        title = stringResource(R.string.tools_screen_density),
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
+            if (stockDensity.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.tools_density_factory, stockDensity),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            if (activeDensity.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.tools_density_now, activeDensity),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            SuperTextField(
+                value = input,
+                onValueChange = { input = it.filter(Char::isDigit) },
+                label = stringResource(R.string.tools_density_hint, DENSITY_MIN, DENSITY_MAX),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.button_cancel),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.tools_density_restore),
+                    onClick = onRestore,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.button_confirm),
+                    // 统一走规范化值，避免前导零输入与回读不一致
+                    onClick = { onApply(normalizeToolValue(input, DENSITY_MIN..DENSITY_MAX) ?: return@TextButton) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    enabled = inSafeRange,
                 )
             }
         }

@@ -686,5 +686,17 @@
     <string name="tools_reboot_confirm">Execute %1$s?</string>
     <string name="tools_reboot_executing">Executing: %1$s…</string>
     <string name="tools_reboot_unconfirmed">Cannot confirm %1$s. Check the device.</string>
+    <string name="tools_screen_density">Screen density</string>
+    <string name="tools_screen_density_desc">Adjust display density</string>
+    <string name="tools_density_factory">Factory: %1$s</string>
+    <string name="tools_density_now">Active: %1$s</string>
+    <string name="tools_density_hint">Density (%1$d–%2$d)</string>
+    <string name="tools_density_restore">Restore</string>
+    <string name="tools_density_applied">Density set to %1$s</string>
+    <string name="tools_density_restored">Density restored to factory: %1$s</string>
+    <string name="tools_density_failed">Failed to change density: %1$s</string>
+    <string name="tools_density_read_failed">Failed to read density: %1$s</string>
+    <string name="tools_apply_not_effective">Command finished but the setting did not take effect</string>
+    <string name="tools_readback_unconfirmed">Unable to confirm the setting: invalid or empty readback</string>
 
 </resources>

@@ -685,5 +685,17 @@
     <string name="tools_reboot_confirm">是否执行「%1$s」？</string>
     <string name="tools_reboot_executing">正在执行：%1$s…</string>
     <string name="tools_reboot_unconfirmed">无法确认「%1$s」的执行结果，请查看设备。</string>
+    <string name="tools_screen_density">屏幕密度</string>
+    <string name="tools_screen_density_desc">调整屏幕显示密度</string>
+    <string name="tools_density_factory">出厂值：%1$s</string>
+    <string name="tools_density_now">当前值：%1$s</string>
+    <string name="tools_density_hint">密度值（%1$d–%2$d）</string>
+    <string name="tools_density_restore">恢复</string>
+    <string name="tools_density_applied">密度已设为 %1$s</string>
+    <string name="tools_density_restored">密度已恢复出厂值：%1$s</string>
+    <string name="tools_density_failed">修改密度失败：%1$s</string>
+    <string name="tools_density_read_failed">读取密度失败：%1$s</string>
+    <string name="tools_apply_not_effective">命令已执行但未生效</string>
+    <string name="tools_readback_unconfirmed">无法确认设置状态：回读为空或格式无效</string>
 
 </resources>
