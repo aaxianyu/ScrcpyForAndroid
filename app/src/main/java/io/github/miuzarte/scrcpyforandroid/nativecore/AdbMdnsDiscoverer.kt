@@ -18,6 +18,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 
 /**
  * Performs mDNS discovery for ADB TLS pairing/connect services on the local network.
@@ -74,6 +77,116 @@ internal object AdbMdnsDiscoverer {
         matchInstanceName: String? = null,
     ): Pair<String, Int>? {
         return discoverService(TLS_PAIRING, timeoutMs, includeLanDevices, matchInstanceName, null)
+    }
+
+    /**
+     * Collect every device advertising the ADB connect service within [timeoutMs].
+     *
+     * 与 [discoverConnectService] 的差别是不等第一个结果就返回，而是在整个超时窗口内持续
+     * 收集。Android 11+ 的无线调试用随机端口，扫不出固定端口，只能靠这里的 mDNS 广播。
+     *
+     * @param onFound 每解析出一台设备立即回调，供调用方增量展示。
+     */
+    @Suppress("DEPRECATION")
+    suspend fun discoverConnectServices(
+        timeoutMs: Long,
+        onFound: ((host: String, port: Int) -> Unit)? = null,
+    ): List<Pair<String, Int>> {
+        check(::nsdManager.isInitialized) { "AdbMdnsDiscoverer is not initialized" }
+        val found = LinkedHashSet<Pair<String, Int>>()
+        val latch = CountDownLatch(1)
+
+        // 部分 Android 版本同一时刻只允许一个 resolve 在飞，后来者直接吃
+        // FAILURE_ALREADY_ACTIVE；这里排队串行处理（串行在所有版本上都正确）。
+        val pending = ArrayDeque<NsdServiceInfo>()
+        var resolving = false
+
+        fun resolveNext() {
+            val next = synchronized(pending) {
+                val head = pending.removeFirstOrNull()
+                if (head == null) resolving = false
+                head
+            } ?: return
+
+            runCatching {
+                nsdManager.resolveService(next, object: NsdManager.ResolveListener {
+                    override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                        Log.v(TAG, "resolve failed: ${serviceInfo.serviceName}, error=$errorCode")
+                        resolveNext()
+                    }
+
+                    override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                        val hostAddress = resolvedHostAddress(serviceInfo)
+                        // 只收 IPv4：调用方按 "ip:port" 拼串，v6 字面量不带方括号会被整段
+                        // 当成 host 而丢掉端口（TCP 那条路径本来也是纯 v4）。另外
+                        // hostAddresses 的顺序不保证，v6 可能排在最前。
+                        if (!hostAddress.isNullOrBlank() && !hostAddress.contains(':')) {
+                            // 同一 host:port 被再次解析成功时不再回调，避免 UI 出现重复卡片
+                            val added = synchronized(found) { found.add(hostAddress to serviceInfo.port) }
+                            if (added) onFound?.invoke(hostAddress, serviceInfo.port)
+                        }
+                        resolveNext()
+                    }
+                })
+            }.onFailure { e ->
+                Log.w(TAG, "resolveService failed for ${next.serviceName}", e)
+                resolveNext()
+            }
+        }
+
+        fun submit(serviceInfo: NsdServiceInfo) {
+            val shouldStart = synchronized(pending) {
+                pending.addLast(serviceInfo)
+                if (resolving) false else { resolving = true; true }
+            }
+            if (shouldStart) resolveNext()
+        }
+
+        val discoveryListener = object: NsdManager.DiscoveryListener {
+            override fun onDiscoveryStarted(serviceType: String) = Unit
+
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                Log.w(TAG, "start discovery failed: $serviceType, error=$errorCode")
+                latch.countDown()
+            }
+
+            override fun onDiscoveryStopped(serviceType: String) = Unit
+
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
+
+            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                submit(serviceInfo)
+            }
+
+            override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
+        }
+
+        // 与单设备发现路径（discoverService）共用 discoveryLock：NsdManager 不允许同一
+        // service type 的两个并发发现，后来者直接吃 FAILURE_ALREADY_ACTIVE。后台自动
+        // 连接（DeviceAdbBackgroundRunner）可能在扫描期间发起单设备发现，不加锁会让
+        // 扫描的 mDNS 段整段落空。
+        // 锁外先取 Job 引用：withLock 是 critical section，内部不能有挂起点，
+        // 只能用非挂起的 isActive 判取消（取消时 break 出循环，finally 停掉发现）
+        val job = currentCoroutineContext()[Job]
+        discoveryLock.withLock {
+            nsdManager.discoverServices(TLS_CONNECT, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+            try {
+                // 分片等待而不是一次 await(timeoutMs)：协程被取消时能立即从 await 返回、
+                // 走 finally 停掉 NsdManager 发现；否则离开页面后仍会残留一个完整超时
+                // 窗口的后台发现（最坏 12s），期间还占着锁阻塞其它发现。
+                val chunkMs = 200L
+                var remaining = timeoutMs
+                while (remaining > 0 && job?.isActive != false) {
+                    val step = minOf(chunkMs, remaining)
+                    if (latch.await(step, TimeUnit.MILLISECONDS)) break
+                    remaining -= step
+                }
+            } finally {
+                runCatching { nsdManager.stopServiceDiscovery(discoveryListener) }
+            }
+        }
+
+        return synchronized(found) { found.toList() }
     }
 
     private fun discoverService(
