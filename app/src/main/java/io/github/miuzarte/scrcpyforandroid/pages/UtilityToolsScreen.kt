@@ -4,15 +4,18 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -23,6 +26,7 @@ import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -59,6 +64,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -72,6 +78,7 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
 import java.io.File
 import java.io.IOException
@@ -87,6 +94,33 @@ private const val ADB_TCP_PORT_MIN = 1024
 private const val ADB_TCP_PORT_MAX = 65535
 // 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
 private const val REBOOT_RESULT_WAIT_MS = 3_000L
+
+private data class ActivatableApp(
+    val name: String,
+    val packageName: String,
+    val startupScripts: List<String>,
+)
+
+// 激活失败时把最后一条 shell 输出带给用户
+private class ActivationFailure(output: String) : Exception(output)
+
+// 各应用的激活入口脚本路径为公开约定，按包名探测是否已安装
+private val KNOWN_ACTIVATABLES = listOf(
+    ActivatableApp(
+        name = "Shizuku",
+        packageName = "moe.shizuku.privileged.api",
+        startupScripts = listOf(
+            "sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh",
+            "APK=\$(pm path moe.shizuku.privileged.api | head -1 | cut -d: -f2); \$(dirname \$APK)/lib/arm64/libshizuku.so",
+        ),
+    ),
+    ActivatableApp("冰箱", "com.catchingnow.icebox",
+        listOf("sh /sdcard/Android/data/com.catchingnow.icebox/files/start.sh")),
+    ActivatableApp("黑域", "me.piebridge.brevent",
+        listOf("sh /data/data/me.piebridge.brevent/brevent.sh")),
+    ActivatableApp("小黑屋", "web1n.stopapp",
+        listOf("sh /storage/emulated/0/Android/data/web1n.stopapp/files/starter.sh")),
+)
 
 private fun extractDensity(shellOutput: String, kind: String): String {
     val target = "$kind density:"
@@ -139,6 +173,11 @@ internal fun UtilityToolsScreen(
     var activeTcpPort by remember { mutableStateOf("") }
     var adbOverTcpBusy by remember { mutableStateOf(false) }
     var portSheetOpen by remember { mutableStateOf(false) }
+    var activationSheetOpen by remember { mutableStateOf(false) }
+    var detectedActivatables by remember { mutableStateOf<List<ActivatableApp>>(emptyList()) }
+    var activationLoading by remember { mutableStateOf(false) }
+    var activationBusy by remember { mutableStateOf(false) }
+    var activationDetectFailed by remember { mutableStateOf(false) }
 
     val saveShotLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png"),
@@ -306,6 +345,64 @@ internal fun UtilityToolsScreen(
         }
     }
 
+    fun openActivationSheet() {
+        if (activationBusy) return
+        scope.launch {
+            if (!NativeAdbService.isConnected()) {
+                AppRuntime.snackbar(R.string.tools_not_connected)
+                return@launch
+            }
+            activationLoading = true
+            activationSheetOpen = true
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val installed = NativeAdbService.shell("pm list packages")
+                        .lineSequence()
+                        .map { it.removePrefix("package:").trim() }
+                        .toSet()
+                    detectedActivatables = KNOWN_ACTIVATABLES.filter { it.packageName in installed }
+                }
+            }.onFailure {
+                activationDetectFailed = true
+                AppRuntime.snackbar(R.string.tools_activate_detect_failed, it.message ?: "")
+            }.onSuccess {
+                activationDetectFailed = false
+            }
+            activationLoading = false
+        }
+    }
+
+    fun activateApps(apps: List<ActivatableApp>) {
+        // 立即关闭弹窗，执行结果用 snackbar 报告，避免脚本卡住时用户被困在弹窗里
+        activationSheetOpen = false
+        scope.launch {
+            activationBusy = true
+            for (app in apps) {
+                AppRuntime.snackbar(R.string.tools_activate_executing, app.name)
+                val outcome = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val attempt = tryStartupScripts(app.startupScripts) { NativeAdbService.shell(it) }
+                        if (attempt.exitCode != null && attempt.exitCode != 0) {
+                            throw ActivationFailure("exit=${attempt.exitCode}: ${attempt.output}")
+                        }
+                        // 脚本零退出或状态未知都不能证明常驻服务已启动。
+                        attempt
+                    }
+                }.onFailure { AppRuntime.snackbar(R.string.tools_activate_failed, app.name, it.message ?: "") }
+                outcome.onSuccess { attempt ->
+                    if (attempt.exitCode == null) {
+                        // 未收到退出标记，不能确认脚本是否执行完毕。
+                        AppRuntime.snackbar(R.string.tools_activate_script_run, app.name)
+                    } else {
+                        AppRuntime.snackbar(R.string.tools_activate_success, app.name)
+                    }
+                }
+            }
+            activationBusy = false
+            activationSheetOpen = false
+        }
+    }
+
     val tools = listOf(
         ToolItem(
             icon = Icons.Rounded.CameraAlt,
@@ -416,6 +513,12 @@ internal fun UtilityToolsScreen(
             titleResId = R.string.tools_wireless_adb,
             descResId = R.string.tools_wireless_adb_desc,
             onClick = { if (!adbOverTcpBusy) portSheetOpen = true },
+        ),
+        ToolItem(
+            icon = Icons.Rounded.Verified,
+            titleResId = R.string.tools_activate_app,
+            descResId = R.string.tools_activate_app_desc,
+            onClick = { openActivationSheet() },
         ),
     )
 
@@ -571,6 +674,16 @@ internal fun UtilityToolsScreen(
                     },
                 )
             }
+
+            if (activationSheetOpen) {
+                ActivationSheet(
+                    apps = detectedActivatables,
+                    loading = activationLoading,
+                    detectFailed = activationDetectFailed,
+                    onDismiss = { activationSheetOpen = false },
+                    onActivate = ::activateApps,
+                )
+            }
         }
     }
 }
@@ -629,6 +742,108 @@ private fun PortSheet(
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.textButtonColorsPrimary(),
                     enabled = portValid && !busy,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivationSheet(
+    apps: List<ActivatableApp>,
+    loading: Boolean,
+    detectFailed: Boolean,
+    onDismiss: () -> Unit,
+    onActivate: (List<ActivatableApp>) -> Unit,
+) {
+    val selection = remember { mutableStateListOf<ActivatableApp>() }
+    val haptic = LocalHapticFeedback.current
+
+    OverlayDialog(
+        show = true,
+        title = stringResource(R.string.tools_activate_app),
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
+            when {
+                loading -> {
+                    Text(
+                        text = stringResource(R.string.tools_activate_detecting),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+
+                detectFailed -> {
+                    Text(
+                        text = stringResource(R.string.tools_activate_detect_failed_hint),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+
+                apps.isEmpty() -> {
+                    Text(
+                        text = stringResource(R.string.tools_activate_none),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+
+                else -> {
+                    Text(
+                        text = stringResource(R.string.tools_activate_hint),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
+                    apps.forEach { app ->
+                        // 整行可点 + Sink 按压反馈；复选框只显示状态，避免行与框各切一次
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            pressFeedbackType = PressFeedbackType.Sink,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            haptic.contextClick()
+                                            if (app in selection) selection.remove(app) else selection.add(app)
+                                        },
+                                    )
+                                    .padding(UiSpacing.PageItem),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+                            ) {
+                                Text(
+                                    text = app.name,
+                                    fontSize = 15.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Checkbox(
+                                    state = if (app in selection) ToggleableState.On else ToggleableState.Off,
+                                    onClick = null,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.button_cancel),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.button_confirm),
+                    onClick = { onActivate(selection.toList()) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    enabled = selection.isNotEmpty(),
                 )
             }
         }

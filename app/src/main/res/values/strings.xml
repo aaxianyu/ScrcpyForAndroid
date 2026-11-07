@@ -717,6 +717,17 @@
     <string name="tools_wireless_adb_port_hint">Port range %1$d–%2$d</string>
     <string name="tools_wireless_adb_port_label">Port (default %1$d)</string>
     <string name="tools_wireless_adb_failed">Failed to enable wireless debugging: %1$s</string>
+    <string name="tools_activate_app">Activate apps</string>
+    <string name="tools_activate_app_desc">Activate Shizuku, Brevent and similar apps</string>
+    <string name="tools_activate_detecting">Detecting installed apps…</string>
+    <string name="tools_activate_detect_failed">Failed to detect apps: %1$s</string>
+    <string name="tools_activate_detect_failed_hint">App detection failed. Check the ADB connection and retry.</string>
+    <string name="tools_activate_none">No supported apps detected</string>
+    <string name="tools_activate_hint">Select apps to activate via ADB shell</string>
+    <string name="tools_activate_executing">Activating %1$s…</string>
+    <string name="tools_activate_success">%1$s startup script exited with code 0; confirm the service status in the app</string>
+    <string name="tools_activate_script_run">%1$s startup script attempted; execution status unknown. Confirm the service status in the app</string>
     <string name="tools_readback_unconfirmed">Unable to confirm the setting: invalid or empty readback</string>
+    <string name="tools_activate_failed">Failed to activate %1$s: %2$s</string>
 
 </resources>

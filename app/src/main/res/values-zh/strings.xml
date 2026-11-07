@@ -716,6 +716,17 @@
     <string name="tools_wireless_adb_port_hint">端口范围 %1$d–%2$d</string>
     <string name="tools_wireless_adb_port_label">端口（默认 %1$d）</string>
     <string name="tools_wireless_adb_failed">开启无线调试失败：%1$s</string>
+    <string name="tools_activate_app">激活应用</string>
+    <string name="tools_activate_app_desc">激活 Shizuku、黑域等应用</string>
+    <string name="tools_activate_detecting">正在检测已安装的应用…</string>
+    <string name="tools_activate_detect_failed">检测应用失败：%1$s</string>
+    <string name="tools_activate_detect_failed_hint">应用检测失败，请检查 ADB 连接后重试。</string>
+    <string name="tools_activate_none">未检测到支持的应用</string>
+    <string name="tools_activate_hint">选择要通过 ADB shell 激活的应用</string>
+    <string name="tools_activate_executing">正在激活 %1$s…</string>
+    <string name="tools_activate_success">%1$s 启动脚本已以退出码 0 结束，请到应用内确认服务状态</string>
+    <string name="tools_activate_script_run">%1$s 启动脚本已尝试，执行状态未知，请到应用内确认服务状态</string>
     <string name="tools_readback_unconfirmed">无法确认设置状态：回读为空或格式无效</string>
+    <string name="tools_activate_failed">激活 %1$s 失败：%2$s</string>
 
 </resources>
