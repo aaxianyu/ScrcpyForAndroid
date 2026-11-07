@@ -9,9 +9,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +44,7 @@ import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
+import io.github.miuzarte.scrcpyforandroid.ui.SheetActionRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,17 +56,21 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
 import java.io.File
 import java.io.IOException
 
 private const val REMOTE_SHOT_DIR = "/data/local/tmp"
 private const val SCREENSHOT_DIR = "screenshots"
+// 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
+private const val REBOOT_RESULT_WAIT_MS = 3_000L
 
 @Composable
 internal fun UtilityToolsScreen(
@@ -81,6 +93,11 @@ internal fun UtilityToolsScreen(
 
     // SAF 选择器弹出时 Activity 可能被系统回收，rememberSaveable 才能在重建后捞回待保存的临时文件
     var pendingShot by rememberSaveable { mutableStateOf<File?>(null) }
+    var showRebootDialog by remember { mutableStateOf(false) }
+    // 弹窗列表里选中了哪个模式，等待二次确认；null 表示没有待确认的操作
+    var pendingReboot by remember { mutableStateOf<RebootMode?>(null) }
+    // 目标设备 SDK：null 表示还没查过或查询失败，此时软重启一律不展示
+    var targetSdk by remember { mutableStateOf<Int?>(null) }
 
     val saveShotLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png"),
@@ -105,6 +122,22 @@ internal fun UtilityToolsScreen(
                     local.delete()
                     AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "")
                 }
+        }
+    }
+
+    fun reboot(mode: RebootMode) {
+        scope.launch {
+            if (!NativeAdbService.isConnected()) {
+                AppRuntime.snackbar(R.string.tools_not_connected)
+                return@launch
+            }
+            showRebootDialog = false
+            pendingReboot = null
+            // 标题是资源 ID，直接当格式化参数会印出整数；必须先解析成本地化文案
+            AppRuntime.snackbar(R.string.tools_reboot_executing, AppRuntime.stringResource(mode.titleResId))
+            runCatching {
+                NativeAdbService.shell(mode.shellCommand, REBOOT_RESULT_WAIT_MS)
+            }.onFailure { AppRuntime.snackbar(R.string.tools_reboot_unconfirmed, AppRuntime.stringResource(mode.titleResId)) }
         }
     }
 
@@ -139,6 +172,30 @@ internal fun UtilityToolsScreen(
                     outcome
                         .onSuccess { pendingShot = it }
                         .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
+                }
+            },
+        ),
+        ToolItem(
+            icon = Icons.Rounded.RestartAlt,
+            titleResId = R.string.tools_advanced_reboot,
+            descResId = R.string.tools_advanced_reboot_desc,
+            onClick = {
+                scope.launch {
+                    if (!NativeAdbService.isConnected()) {
+                        AppRuntime.snackbar(R.string.tools_not_connected)
+                        return@launch
+                    }
+                    // 用户态软重启要求 Android 11+：开列表前查一次目标 SDK 并缓存，
+                    // 查询失败按不支持处理，老设备不会看到一个点了无效的选项
+                    if (targetSdk == null) {
+                        targetSdk = runCatching {
+                            withContext(Dispatchers.IO) {
+                                NativeAdbService.shell("getprop ro.build.version.sdk")
+                                    .trim().toIntOrNull()
+                            }
+                        }.getOrNull()
+                    }
+                    showRebootDialog = true
                 }
             },
         ),
@@ -235,6 +292,30 @@ internal fun UtilityToolsScreen(
                     },
                 )
             }
+
+            if (showRebootDialog) {
+                RebootDialog(
+                    showSoftReboot = (targetSdk ?: 0) >= 30,
+                    onDismiss = { showRebootDialog = false },
+                    // 先收起义确认弹窗，确认后再真正执行
+                    onReboot = {
+                        showRebootDialog = false
+                        pendingReboot = it
+                    },
+                )
+            }
+
+            pendingReboot?.let { mode ->
+                RebootConfirmDialog(
+                    mode = mode,
+                    // 取消确认回到动作列表，让用户改选别的模式而不是从头再来
+                    onDismiss = {
+                        pendingReboot = null
+                        showRebootDialog = true
+                    },
+                    onConfirm = { reboot(mode) },
+                )
+            }
         }
     }
 }
@@ -282,3 +363,98 @@ private data class ToolItem(
     val descResId: Int,
     val onClick: () -> Unit,
 )
+
+private enum class RebootMode(val shellCommand: String) {
+    Normal("reboot"),
+    // 用户态软重启只重启 Android 运行时，需 Android 11+ 且 init 支持
+    Soft("setprop sys.powerctl reboot,userspace"),
+    Shutdown("setprop sys.powerctl shutdown"),
+    Recovery("reboot recovery"),
+    Fastboot("reboot bootloader"),
+}
+
+@Composable
+private fun RebootDialog(
+    showSoftReboot: Boolean,
+    onDismiss: () -> Unit,
+    onReboot: (RebootMode) -> Unit,
+) {
+    OverlayDialog(
+        show = true,
+        title = stringResource(R.string.tools_advanced_reboot),
+        // 水平内缩 10dp / 垂直 24dp，与应用管理单击列表项弹出的动作面板一致
+        insideMargin = DpSize(10.dp, 24.dp),
+        onDismissRequest = onDismiss,
+        onDismissFinished = onDismiss,
+    ) {
+        Column(
+            modifier = Modifier,
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+        ) {
+            // 软重启由调用方按目标设备版本决定，其余选项所有设备都支持
+            RebootMode.entries.filter { it != RebootMode.Soft || showSoftReboot }.forEach { mode ->
+                SheetActionRow(
+                    label = stringResource(mode.titleResId),
+                    enabled = true,
+                    onClick = { onReboot(mode) },
+                )
+            }
+            // 末行「取消」：与应用管理动作面板同一组件与配色，点它等于什么都不做
+            Spacer(Modifier.height(16.dp))
+            TextButton(
+                text = stringResource(R.string.button_cancel),
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp),
+                textStyle = textStyles.button.copy(fontWeight = FontWeight.Medium),
+            )
+            // 面板底部留白由 dialog 的垂直 insideMargin（24dp）给出
+        }
+    }
+}
+
+// 高级重启的每一步都会立即生效，列表里点完直接执行没有反悔机会，所以再加一道确认
+@Composable
+private fun RebootConfirmDialog(
+    mode: RebootMode,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    OverlayDialog(
+        show = true,
+        title = stringResource(R.string.tools_reboot_confirm_title),
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.Medium)) {
+            Text(
+                text = stringResource(R.string.tools_reboot_confirm, stringResource(mode.titleResId)),
+                color = colorScheme.onSurfaceVariantSummary,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.button_cancel),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.button_confirm),
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+private val RebootMode.titleResId: Int
+    get() = when (this) {
+        RebootMode.Normal -> R.string.tools_reboot_normal
+        RebootMode.Soft -> R.string.tools_reboot_soft
+        RebootMode.Shutdown -> R.string.tools_reboot_shutdown
+        RebootMode.Recovery -> R.string.tools_reboot_recovery
+        RebootMode.Fastboot -> R.string.tools_reboot_fastboot
+    }

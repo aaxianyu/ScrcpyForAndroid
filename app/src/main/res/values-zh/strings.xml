@@ -674,5 +674,16 @@
     <string name="tools_screenshot_failed_no_storage">无法打开所选的保存位置</string>
     <string name="tools_screenshot_save">保存</string>
     <string name="tools_screenshot_open">打开</string>
+    <string name="tools_advanced_reboot">高级重启</string>
+    <string name="tools_advanced_reboot_desc">重启、Recovery、Fastboot 等</string>
+    <string name="tools_reboot_normal">重启</string>
+    <string name="tools_reboot_soft">软重启</string>
+    <string name="tools_reboot_shutdown">关机</string>
+    <string name="tools_reboot_recovery">Recovery 模式</string>
+    <string name="tools_reboot_fastboot">Fastboot 模式</string>
+    <string name="tools_reboot_confirm_title">确认</string>
+    <string name="tools_reboot_confirm">是否执行「%1$s」？</string>
+    <string name="tools_reboot_executing">正在执行：%1$s…</string>
+    <string name="tools_reboot_unconfirmed">无法确认「%1$s」的执行结果，请查看设备。</string>
 
 </resources>

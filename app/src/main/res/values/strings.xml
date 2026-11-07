@@ -675,5 +675,16 @@
     <string name="tools_screenshot_failed_no_storage">Cannot open the selected location</string>
     <string name="tools_screenshot_save">Save</string>
     <string name="tools_screenshot_open">Open</string>
+    <string name="tools_advanced_reboot">Advanced reboot</string>
+    <string name="tools_advanced_reboot_desc">Reboot, Recovery, Fastboot, etc.</string>
+    <string name="tools_reboot_normal">Reboot</string>
+    <string name="tools_reboot_soft">Soft reboot</string>
+    <string name="tools_reboot_shutdown">Shutdown</string>
+    <string name="tools_reboot_recovery">Recovery mode</string>
+    <string name="tools_reboot_fastboot">Fastboot mode</string>
+    <string name="tools_reboot_confirm_title">Confirm</string>
+    <string name="tools_reboot_confirm">Execute %1$s?</string>
+    <string name="tools_reboot_executing">Executing: %1$s…</string>
+    <string name="tools_reboot_unconfirmed">Cannot confirm %1$s. Check the device.</string>
 
 </resources>
