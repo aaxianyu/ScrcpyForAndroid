@@ -11,12 +11,28 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 连接期间的保活服务: 系统选择器等界面盖住应用时进程仍按前台调度, ADB 探测与链路不中断 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
     <!-- USB Host特性声明（可选，不强制要求） -->
     <uses-feature
         android:name="android.hardware.usb.host"
         android:required="false" />
     <!-- Android 17+: 本地网络访问权限 (门控局域网 mDNS 发现和局域网连接, 部分设备默认阻止) -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
+    <!-- 应用管理「从本机应用安装」需要枚举本机已安装应用;
+         ROM 未授予时选择器走权限提示分支 -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- 系统安装器按发起应用做未知来源校验: 导出 APK 的查看意图由本应用发出,
+         未声明时安装器直接退出 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
@@ -69,6 +85,24 @@
                 <action android:name="io.github.miuzarte.scrcpyforandroid.USB_PERMISSION" />
             </intent-filter>
         </receiver>
+
+        <!-- 截图「打开」按钮所需的文件共享 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- 连接期间保活服务 -->
+        <service
+            android:name=".services.AdbKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="true" />
 
     </application>
 

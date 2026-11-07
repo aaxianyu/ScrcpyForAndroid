@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path
+        name="screenshots"
+        path="screenshots/" />
+    <!-- 导出 APK 的「安装」：复制产物到这里再交给安装器；路径须与 LocalApkInstall.STAGING_DIR 一致 -->
+    <cache-path
+        name="install"
+        path="appmanager-local-install/" />
+</paths>

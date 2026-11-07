@@ -27,6 +27,8 @@
     <string name="cd_select_font">Select font</string>
     <string name="cd_fullscreen">Fullscreen</string>
     <string name="cd_close">Close</string>
+    <string name="cd_select_all">Select all</string>
+    <string name="cd_clear_selection">Clear selection</string>
     <string name="cd_save">Save</string>
     <string name="cd_edit">Edit</string>
     <string name="cd_drag_sort">Drag to sort</string>
@@ -64,8 +66,9 @@
     <string name="lan_scan_no_interface">No usable network interface found</string>
     <string name="lan_scan_no_devices">No devices found</string>
     <string name="lan_scan_no_devices_hint">Make sure the target device has wireless debugging enabled</string>
-    <string name="lan_scan_found_devices">%1$d device(s) found</string>
+    <string name="lan_scan_found_devices">Devices found: %1$d</string>
     <string name="lan_scan_local_device">This device</string>
+    <string name="lan_scan_fill">Fill in</string>
     <string name="button_direct_connect">Direct connect</string>
     <string name="button_auto_discover">Auto discover</string>
     <string name="button_discovering">Discovering…</string>
@@ -143,6 +146,12 @@
     <string name="bottomsheet_all_apps">All apps</string>
     <string name="bottomsheet_loading_apps">Loading app list…</string>
     <string name="bottomsheet_no_apps">No app list available</string>
+    <string name="bottomsheet_search_apps">Search apps</string>
+    <string name="bottomsheet_no_search_result">No matching apps found</string>
+    <string name="bottomsheet_add_favorite">Add to favorites</string>
+    <string name="bottomsheet_remove_favorite">Remove from favorites</string>
+    <string name="bottomsheet_favorite_added">Added "%s" to favorites</string>
+    <string name="bottomsheet_favorite_removed">Removed "%s" from favorites</string>
 
     <!-- Fullscreen Control -->
     <string name="fullscreen_failed_app_list">Failed to get app list</string>
@@ -220,6 +229,8 @@
     <string name="pref_tips_preview_card_on_top">It is recommended to also enable \"Hide device page log box\"</string>
     <string name="pref_title_preview_card_height">Preview card height</string>
     <string name="pref_summary_preview_card_height">Preview card height on device page</string>
+    <string name="pref_title_preview_card_tap_fullscreen">Tap preview card to go fullscreen</string>
+    <string name="pref_summary_preview_card_tap_fullscreen">Tap the device preview card to open fullscreen control</string>
     <string name="pref_title_quick_device_sort">Quick device sort</string>
     <string name="pref_summary_quick_device_sort">Manually sort quick devices on the device page</string>
     <string name="pref_title_virtual_button_sort">Virtual button order</string>
@@ -302,6 +313,9 @@
     <string name="pref_summary_clear_logs_on_exit">Clear logs when double-pressing back to exit the app</string>
     <string name="pref_title_hide_log_box">Hide device page log box</string>
     <string name="pref_summary_hide_log_box">Hide the log box at the bottom of the device page</string>
+    <string name="pref_title_snackbar_duration">Snackbar duration</string>
+    <string name="pref_summary_snackbar_duration">Adjust how long snackbars stay at the bottom of the screen</string>
+    <string name="pref_snackbar_duration_demo">Snackbar duration: %1$d ms</string>
     <string name="pref_title_gamepad_device_name">Virtual gamepad device name</string>
     <string name="pref_title_language">Language</string>
     <string name="pref_summary_language">App display language</string>
@@ -350,6 +364,8 @@
 
     <!-- Swipe floating ball -->
     <string name="sfb_order_title">Swipe ball order</string>
+    <string name="sfb_group_display">Behavior</string>
+    <string name="sfb_group_menu">Menu items</string>
     <string name="sfb_order_swipe_visible">Shown when swiping the ball</string>
     <string name="sfb_order_click_visible">Shown when tapping the ball</string>
     <string name="sfb_order_swipe_overflow">Swipe menu is full</string>
@@ -366,6 +382,8 @@
     <string name="sfb_order_idle_dim_summary">Fade the ball after 3 seconds of inactivity</string>
     <string name="sfb_order_action_hint_title">Action hint</string>
     <string name="sfb_order_action_hint_summary">Show the action name when sliding over a ball</string>
+    <string name="sfb_order_expand_anim_title">Expand animation</string>
+    <string name="sfb_order_expand_anim_summary">Reveal actions one by one when swiping, or instantly when off</string>
 
     <!-- Dock Positions -->
     <string name="dock_follow">Follow</string>
@@ -450,7 +468,6 @@
     <string name="password_edit">Edit</string>
     <string name="password_lockscreen_label">Lockscreen password</string>
     <string name="password_auto_enter">Auto-Enter after filling</string>
-    <string name="password_auto_enter_detail">Automatically send an Enter key after this password is filled</string>
     <string name="password_disclaimer">Disclaimer\n0. Cannot guarantee there are no bugs.\n1. The protection boundary of this feature only includes encrypted storage, on-demand authentication, and memory cleanup after use; it does not constitute an absolute security guarantee.\n2. Under root / posed / hook / debugger / malicious input method environments, passwords may still leak.\n3. This feature does not bypass system lock screen authentication; it is only for devices you have legally authorized control over.\n4. Disabling \"Require authentication when filling passwords\" will significantly reduce security; please choose carefully</string>
 
     <!-- File Manager -->
@@ -500,6 +517,20 @@
     <string name="terminal_snack_input_failed">Terminal input failed: %1$s</string>
     <string name="terminal_snack_session_failed">Terminal session creation failed: %1$s</string>
     <string name="terminal_snack_output_failed">Terminal output failed: %1$s</string>
+    <string name="terminal_menu_command_bookmarks">Shell bookmarks</string>
+    <string name="bookmark_title">Shell Bookmarks</string>
+    <string name="bookmark_section_auto_enter">Auto-run</string>
+    <string name="bookmark_section_list">Bookmarks</string>
+    <string name="bookmark_auto_enter">Auto press Enter to run</string>
+    <string name="bookmark_auto_enter_summary">Send the command with a trailing Enter so it runs immediately</string>
+    <string name="bookmark_empty">No shell bookmarks yet</string>
+    <string name="bookmark_empty_hint">Tap + to create a shell bookmark</string>
+    <string name="bookmark_create">Create bookmark</string>
+    <string name="bookmark_edit">Edit bookmark</string>
+    <string name="bookmark_delete">Delete</string>
+    <string name="bookmark_delete_confirm">Delete “%1$s”?</string>
+    <string name="bookmark_hint_name">Bookmark name</string>
+    <string name="bookmark_hint_command">Shell command to execute</string>
     <string name="fm_exception_cannot_read_filename">Cannot read file name</string>
     <string name="fm_exception_cannot_read_selected_file">Cannot read selected file</string>
     <string name="fm_exception_folder_name_empty">Folder name cannot be empty</string>
@@ -573,6 +604,8 @@
     <string name="scrcpyopt_min_size_alignment">Min size alignment</string>
     <string name="scrcpyopt_min_size_alignment_invalid">Alignment must be a power of 2 (1, 2, 4, 8, or 16)</string>
     <string name="scrcpyopt_max_size">Max resolution</string>
+    <string name="scrcpyopt_custom_display">Modify device display while mirroring</string>
+    <string name="scrcpyopt_custom_display_desc">The display is restored only on a manual stop or disconnect; force-stopping the app or an abnormal disconnection will not restore it</string>
     <string name="scrcpyopt_max_fps">Max framerate</string>
     <string name="scrcpyopt_camera_id">Camera ID</string>
     <string name="scrcpyopt_camera_facing">Camera facing</string>
@@ -605,6 +638,8 @@
     <string name="scrcpyopt_log_level">Log level</string>
 
     <!-- DeviceTabViewModel snackbar & log messages -->
+    <string name="vm_display_override_failed">Failed to apply the display override: %1$s</string>
+    <string name="vm_display_restore_failed">Failed to restore the display: %1$s</string>
     <string name="vm_adb_connected">ADB connected</string>
     <string name="vm_scrcpy_started">scrcpy started</string>
     <string name="vm_scrcpy_started_recording">scrcpy started and recording</string>
@@ -650,6 +685,16 @@
     <string name="vm_adb_disconnected_device">ADB disconnected: %1$s</string>
     <string name="vm_mdns_updated">mDNS discovered new port, updated quick device: %1$s:%2$s -> %1$s:%3$s</string>
     <string name="vm_quick_probe_success">ADB quick probe connection succeeded: %1$s:%2$s</string>
+
+    <string name="adb_keepalive_channel">ADB connection</string>
+    <string name="adb_keepalive_title">ADB connection active</string>
+    <string name="adb_keepalive_connected">Connected</string>
+    <string name="adb_keepalive_start_failed">Keep-alive service failed to start</string>
+
+    <string name="pref_title_keep_alive">Background keep-alive</string>
+    <string name="pref_summary_keep_alive">Keep probing in the background while connected, so switching apps does not drop the session; a keep-alive notification is shown</string>
+    <string name="pref_keep_alive_permission_denied">Notification permission is required to show the keep-alive status</string>
+
     <string name="vm_device_switched_profile">Current connected device switched to profile: %1$s</string>
 
     <string name="usb_connection">USB Connection</string>
@@ -671,7 +716,9 @@
     <string name="tools_screenshot">Screenshot</string>
     <string name="tools_screenshot_desc">Capture the device screen to a PNG file</string>
     <string name="tools_screenshot_executing">Capturing screenshot…</string>
+    <string name="tools_screenshot_done">Screenshot captured</string>
     <string name="tools_screenshot_saved">Screenshot saved: %1$s</string>
+    <string name="tools_screenshot_saved_downloads">Screenshot saved to Download/Scrcpy</string>
     <string name="tools_screenshot_failed">Screenshot failed: %1$s</string>
     <string name="tools_screenshot_failed_no_storage">Cannot open the selected location</string>
     <string name="tools_screenshot_save">Save</string>
@@ -683,40 +730,56 @@
     <string name="tools_reboot_shutdown">Shutdown</string>
     <string name="tools_reboot_recovery">Recovery mode</string>
     <string name="tools_reboot_fastboot">Fastboot mode</string>
-    <string name="tools_reboot_confirm_title">Confirm</string>
-    <string name="tools_reboot_confirm">Execute %1$s?</string>
+    <string name="tools_reboot_confirm_normal_title">Confirm reboot</string>
+    <string name="tools_reboot_confirm_normal_desc">Reboot the device?</string>
+    <string name="tools_reboot_confirm_soft_title">Confirm soft reboot</string>
+    <string name="tools_reboot_confirm_soft_desc">Soft reboot the device?</string>
+    <string name="tools_reboot_confirm_shutdown_title">Confirm shutdown</string>
+    <string name="tools_reboot_confirm_shutdown_desc">Shut down the device?</string>
+    <string name="tools_reboot_confirm_recovery_title">Reboot to Recovery</string>
+    <string name="tools_reboot_confirm_recovery_desc">Enter Recovery mode?</string>
+    <string name="tools_reboot_confirm_fastboot_title">Reboot to Fastboot</string>
+    <string name="tools_reboot_confirm_fastboot_desc">Enter Fastboot mode?</string>
     <string name="tools_reboot_executing">Executing: %1$s…</string>
     <string name="tools_reboot_unconfirmed">Cannot confirm %1$s. Check the device.</string>
     <string name="tools_screen_density">Screen density</string>
     <string name="tools_screen_density_desc">Adjust display density</string>
-    <string name="tools_density_factory">Factory: %1$s</string>
-    <string name="tools_density_now">Active: %1$s</string>
     <string name="tools_density_hint">Density (%1$d–%2$d)</string>
-    <string name="tools_density_restore">Restore</string>
     <string name="tools_density_applied">Density set to %1$s</string>
     <string name="tools_density_restored">Density restored to factory: %1$s</string>
     <string name="tools_density_failed">Failed to change density: %1$s</string>
     <string name="tools_density_read_failed">Failed to read density: %1$s</string>
     <string name="tools_apply_not_effective">Command finished but the setting did not take effect</string>
-    <string name="tools_value_unknown">Unknown</string>
+    <string name="tools_value_factory">Factory</string>
+    <string name="tools_value_now">Active</string>
+    <string name="tools_value_restore">Restore</string>
     <string name="tools_screen_resolution">Screen resolution</string>
     <string name="tools_screen_resolution_desc">Adjust display resolution</string>
-    <string name="tools_resolution_factory">Factory: %1$s</string>
-    <string name="tools_resolution_now">Active: %1$s</string>
-    <string name="tools_resolution_width">Width %1$s</string>
-    <string name="tools_resolution_height">Height %1$s</string>
-    <string name="tools_resolution_restore">Restore</string>
+    <string name="tools_screen_standby">Screen standby</string>
+    <string name="tools_screen_standby_desc">Turn the screen off without locking the device</string>
+    <string name="tools_screen_standby_dialog_desc">Turn off the display and touch input without locking the device</string>
+    <string name="tools_screen_standby_turn_off">Turn off screen</string>
+    <string name="tools_screen_standby_wake_up">Turn on screen</string>
+    <string name="tools_screen_standby_success_off">Device screen turned off</string>
+    <string name="tools_screen_standby_success_on">Device screen turned on</string>
+    <string name="tools_screen_standby_failed">Screen standby failed: %1$s</string>
+    <string name="tools_screen_standby_timeout">Screen standby failed: the device did not respond in time</string>
+    <string name="tools_resolution_width">Width</string>
+    <string name="tools_resolution_density">Density</string>
+    <string name="tools_resolution_height">Height</string>
     <string name="tools_resolution_applied">Resolution set to %1$sx%2$s</string>
     <string name="tools_resolution_restored">Resolution restored to factory: %1$s</string>
     <string name="tools_resolution_failed">Failed to change resolution: %1$s</string>
     <string name="tools_resolution_read_failed">Failed to read resolution: %1$s</string>
     <string name="tools_wireless_adb">Wireless debugging</string>
-    <string name="tools_wireless_adb_desc">Restart adbd in TCP/IP mode on a custom port</string>
+    <string name="tools_wireless_adb_desc">Enable TCP/IP mode and set the listening port</string>
     <string name="tools_wireless_adb_active">Active on port %1$s</string>
     <string name="tools_wireless_adb_on">Wireless debugging enabled on port %1$d</string>
     <string name="tools_wireless_adb_reconnect_failed">Port %1$d accepted, but reconnection failed. Connect manually to this port. Details: %2$s</string>
-    <string name="tools_wireless_adb_port_hint">Port range %1$d–%2$d</string>
-    <string name="tools_wireless_adb_port_label">Port (default %1$d)</string>
+    <string name="tools_wireless_adb_port_default">When left blank</string>
+    <string name="tools_wireless_adb_port_now">Current port</string>
+    <string name="tools_wireless_adb_port_off">Not enabled</string>
+    <string name="tools_wireless_adb_port_label">Port (%1$d–%2$d)</string>
     <string name="tools_wireless_adb_failed">Failed to enable wireless debugging: %1$s</string>
     <string name="tools_activate_app">Activate apps</string>
     <string name="tools_activate_app_desc">Activate Shizuku, Brevent and similar apps</string>
@@ -731,7 +794,10 @@
     <string name="tools_readback_unconfirmed">Unable to confirm the setting: invalid or empty readback</string>
     <string name="tools_activate_failed">Failed to activate %1$s: %2$s</string>
     <string name="tools_device_info">Device info</string>
-    <string name="tools_device_info_desc">Model, system, battery, storage and more</string>
+    <string name="tools_device_info_desc">View model, system, battery, storage and more</string>
+    <string name="tools_device_info_copy_all">Copy all</string>
+    <string name="tools_device_info_copied">Device info copied</string>
+    <string name="tools_device_info_copy_line">%1$s: %2$s</string>
     <string name="tools_info_loading">Loading device info…</string>
     <string name="tools_info_failed">Failed to load device info: %1$s</string>
     <string name="tools_info_model">Model</string>
@@ -746,9 +812,10 @@
     <string name="tools_info_battery_charging">charging</string>
     <string name="tools_info_battery_full">full</string>
     <string name="tools_info_battery_discharging">discharging</string>
+    <string name="tools_info_battery_value">%1$s%% · %2$s · %3$s°C</string>
     <string name="tools_info_storage">Storage</string>
     <string name="tools_process_manager">Process manager</string>
-    <string name="tools_process_manager_desc">Running apps by memory use</string>
+    <string name="tools_process_manager_desc">View and stop running apps by memory use</string>
     <string name="tools_process_loading">Reading process list…</string>
     <string name="tools_process_empty">No running apps</string>
     <string name="tools_process_empty_filtered">Nothing left after hiding system apps</string>
@@ -779,7 +846,8 @@
     <string name="app_manager_display_options">Display options</string>
     <string name="app_manager_install_apk">Install APK</string>
     <string name="app_manager_hide_version">Hide version</string>
-    <string name="app_manager_hide_apk_size">Hide APK size</string>
+    <string name="app_manager_hide_apk_size">Hide package size</string>
+    <string name="app_manager_split_badge">Split</string>
     <string name="app_manager_group_user">User</string>
     <string name="app_manager_group_system">System</string>
     <string name="app_manager_long_press_multi_select">Long press to enter multi-select</string>
@@ -807,25 +875,31 @@
     <string name="app_manager_disable">Disable</string>
     <string name="app_manager_enable">Enable</string>
     <string name="app_manager_clear_data">Clear data</string>
-    <string name="app_manager_export_apk">Export APK</string>
+    <string name="app_manager_export_apk">Export package</string>
     <string name="app_manager_uninstall">Uninstall</string>
-    <string name="app_manager_install_source_title">Install APK</string>
-    <string name="app_manager_install_source_desc">Choose an APK file, or install a device app to the ADB device</string>
+    <string name="app_manager_install_source_title">Install app</string>
+    <string name="app_manager_install_source_desc">Choose a package from files, or select an app from this device</string>
     <string name="app_manager_install_source_file">File manager</string>
     <string name="app_manager_install_source_local">Installed</string>
     <string name="app_manager_install_nothing">No app selected</string>
-    <string name="app_manager_local_picker_title">Install a device app</string>
+    <string name="app_manager_install_no_apk">No installable APK in this archive</string>
+    <string name="app_manager_local_picker_title">Select from this device</string>
     <string name="app_manager_local_permission_hint">Grant the \"Read app list\" permission, then close and reopen this window.</string>
     <string name="app_manager_local_go_to_settings">Go to settings</string>
     <string name="app_manager_local_install_confirm">Install %d selected app(s) to the device?</string>
+    <string name="app_manager_local_install_confirm_split">%1$d of them ship split APKs; all parts are pushed</string>
     <string name="app_manager_local_install_confirm_single">Install "%s" to this device?</string>
+    <string name="app_manager_local_install_confirm_single_split">Ships split APKs; all parts are pushed</string>
     <string name="app_manager_local_select_first">Select apps first</string>
     <string name="app_manager_local_install_n">Install %d app(s)</string>
-    <string name="app_manager_install_success">Installed %1$d APK(s)</string>
+    <string name="app_manager_install_success">Installed %1$d app(s)</string>
+    <string name="app_manager_install_success_named">Installed %1$s</string>
     <string name="app_manager_install_partial">%1$d succeeded, %2$d failed: %3$s</string>
     <string name="app_manager_install_failed">Install failed: %1$s</string>
+    <string name="app_manager_install_failed_missing_split">Install failed: missing split APKs</string>
+    <string name="app_manager_install_unreadable_package">cannot read the package name</string>
     <string name="app_manager_confirm_title_app">App manager</string>
-    <string name="app_manager_confirm_title_install">Install APK</string>
+    <string name="app_manager_confirm_title_install">Install app</string>
     <string name="app_manager_confirm_uninstall_single">Uninstall %1$s?</string>
     <string name="app_manager_confirm_disable_single">Disable %1$s? It will disappear from the launcher.</string>
     <string name="app_manager_confirm_enable_single">Enable %1$s?</string>
@@ -852,18 +926,36 @@
     <string name="app_manager_clear_data_failed">Clear data failed: %1$s</string>
     <string name="app_manager_open_failed">Cannot open %1$s: %2$s</string>
     <string name="app_manager_exported">Exported %1$s</string>
-    <string name="app_manager_exported_to_downloads">Exported %1$s to the Downloads folder</string>
+    <string name="app_manager_exported_to_downloads">Exported %1$s to Download/Scrcpy</string>
     <string name="app_manager_export_failed">Export failed: %1$s</string>
+    <string name="app_manager_export_target_gone">Export target not found; it may have been uninstalled — refresh the list</string>
+    <string name="app_manager_export_kind_querying">Confirming the export format…</string>
+    <string name="app_manager_export_prompt_busy">A save dialog is already open; pick a location there</string>
+    <string name="app_manager_export_kind_timeout">Timed out confirming the export format; try again</string>
+    <string name="app_manager_export_kind_changed">Install packages changed; export again</string>
+    <string name="app_manager_export_lost">Export did not finish; export again</string>
+    <string name="app_manager_export_not_published">output was not written</string>
+    <string name="app_manager_export_no_target">no writable location</string>
+    <string name="app_manager_install_package_gone">Install source not found; it may have been uninstalled — refresh the list</string>
+    <string name="app_manager_export_outcome_partial">Exported %1$d of %2$d app(s) · %3$d failed: %4$s</string>
+    <string name="app_manager_export_open_failed">Cannot open the exported file</string>
+    <string name="app_manager_export_open_folder_failed">Cannot open the containing folder</string>
+    <string name="app_manager_snackbar_open">Open</string>
+    <string name="app_manager_snackbar_install">Install</string>
+    <string name="app_manager_export_install_denied">Install permission not granted; installation cancelled</string>
+    <string name="app_manager_export_install_failed">Cannot start the installer</string>
+    <string name="app_manager_export_install_preparing">Preparing the installer</string>
     <string name="app_manager_cd_search">Search</string>
     <string name="app_manager_cd_display_options">Display options</string>
-    <string name="app_manager_cd_install_apk">Install APK</string>
     <string name="app_manager_cd_app_icon">App icon</string>
     <string name="app_manager_fast_scroller">Fast scroller</string>
+    <string name="app_manager_transfer_preparing">Preparing</string>
+    <string name="app_manager_transfer_transferring">Transferring</string>
+    <string name="app_manager_transfer_device_processing">Processing on device</string>
     <string name="app_manager_transfer_installing">Installing</string>
     <string name="app_manager_transfer_exporting">Extracting</string>
     <string name="app_manager_transfer_progress">%1$s / %2$s</string>
     <string name="app_manager_transfer_count">Item %1$d of %2$d</string>
-    <string name="app_manager_transfer_unknown_size">Transferring…</string>
     <string name="app_manager_transfer_cancel">Cancel</string>
     <string name="app_manager_transfer_abort_title">Abort the transfer?</string>
     <string name="app_manager_transfer_abort_summary">The current item will be interrupted and already transferred data is discarded.</string>
@@ -873,10 +965,12 @@
     <string name="app_manager_confirm_title_batch_export">Export %1$d app(s)?</string>
     <string name="app_manager_confirm_title_export_single">Export %1$s?</string>
     <string name="app_manager_confirm_summary_batch_export">The selected apps will be packed into one ZIP archive at the location you choose.</string>
-    <string name="app_manager_confirm_summary_batch_export_downloads">The selected apps will be packed into one ZIP archive in the system Downloads folder.</string>
-    <string name="app_manager_confirm_summary_export_single">The APK will be saved as &lt;package name&gt;.apk at the location you choose.</string>
-    <string name="app_manager_confirm_summary_export_single_downloads">The APK will be saved as &lt;package name&gt;.apk in the system Downloads folder.</string>
+    <string name="app_manager_confirm_summary_batch_export_downloads">The selected apps will be packed into one ZIP archive in the system Download/Scrcpy folder.</string>
+    <string name="app_manager_confirm_summary_batch_export_split">%1$d of them ship split APKs, exported as .apks</string>
+    <string name="app_manager_confirm_summary_export_single">Will be saved to the location you choose.</string>
+    <string name="app_manager_confirm_summary_export_single_downloads">Will be saved to the Download/Scrcpy folder.</string>
+    <string name="app_manager_confirm_summary_export_single_split">Ships split APKs; exported as .apks</string>
     <string name="app_manager_export_outcome">Exported %1$d of %2$d app(s)</string>
+    <string name="app_manager_export_outcome_downloads">Exported %1$d of %2$d app(s) to Download/Scrcpy</string>
     <string name="app_manager_export_rolled_back">Export of %1$d app(s) did not finish; the file was not saved. Please try again.</string>
-
 </resources>
