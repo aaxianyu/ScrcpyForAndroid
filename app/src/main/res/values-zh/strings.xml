@@ -708,6 +708,14 @@
     <string name="tools_resolution_restored">分辨率已恢复出厂值：%1$s</string>
     <string name="tools_resolution_failed">修改分辨率失败：%1$s</string>
     <string name="tools_resolution_read_failed">读取分辨率失败：%1$s</string>
+    <string name="tools_wireless_adb">无线调试</string>
+    <string name="tools_wireless_adb_desc">以 TCP/IP 模式在自定义端口重启 adbd</string>
+    <string name="tools_wireless_adb_active">已在端口 %1$s 上运行</string>
+    <string name="tools_wireless_adb_on">无线调试已在端口 %1$d 开启</string>
+    <string name="tools_wireless_adb_reconnect_failed">设备已接受切换到端口 %1$d，但重新连接失败。请手动连接此端口。详情：%2$s</string>
+    <string name="tools_wireless_adb_port_hint">端口范围 %1$d–%2$d</string>
+    <string name="tools_wireless_adb_port_label">端口（默认 %1$d）</string>
+    <string name="tools_wireless_adb_failed">开启无线调试失败：%1$s</string>
     <string name="tools_readback_unconfirmed">无法确认设置状态：回读为空或格式无效</string>
 
 </resources>

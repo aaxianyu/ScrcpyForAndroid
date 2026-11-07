@@ -709,6 +709,14 @@
     <string name="tools_resolution_restored">Resolution restored to factory: %1$s</string>
     <string name="tools_resolution_failed">Failed to change resolution: %1$s</string>
     <string name="tools_resolution_read_failed">Failed to read resolution: %1$s</string>
+    <string name="tools_wireless_adb">Wireless debugging</string>
+    <string name="tools_wireless_adb_desc">Restart adbd in TCP/IP mode on a custom port</string>
+    <string name="tools_wireless_adb_active">Active on port %1$s</string>
+    <string name="tools_wireless_adb_on">Wireless debugging enabled on port %1$d</string>
+    <string name="tools_wireless_adb_reconnect_failed">Port %1$d accepted, but reconnection failed. Connect manually to this port. Details: %2$s</string>
+    <string name="tools_wireless_adb_port_hint">Port range %1$d–%2$d</string>
+    <string name="tools_wireless_adb_port_label">Port (default %1$d)</string>
+    <string name="tools_wireless_adb_failed">Failed to enable wireless debugging: %1$s</string>
     <string name="tools_readback_unconfirmed">Unable to confirm the setting: invalid or empty readback</string>
 
 </resources>

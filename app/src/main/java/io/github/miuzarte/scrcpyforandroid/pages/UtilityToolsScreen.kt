@@ -22,8 +22,10 @@ import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +54,7 @@ import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
 import io.github.miuzarte.scrcpyforandroid.ui.SheetActionRow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -79,6 +82,9 @@ private const val DENSITY_MIN = 80
 private const val DENSITY_MAX = 640
 private const val RES_MIN = 320
 private const val RES_MAX = 4320
+private const val ADB_TCP_DEFAULT_PORT = 5555
+private const val ADB_TCP_PORT_MIN = 1024
+private const val ADB_TCP_PORT_MAX = 65535
 // 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
 private const val REBOOT_RESULT_WAIT_MS = 3_000L
 
@@ -99,6 +105,7 @@ private fun extractDisplaySize(shellOutput: String, kind: String): String {
 @Composable
 internal fun UtilityToolsScreen(
     scrollBehavior: ScrollBehavior,
+    switchAdbPort: suspend (Int) -> Boolean,
 ) {
     val haptic = LocalHapticFeedback.current
     val navigator = LocalRootNavigator.current
@@ -128,6 +135,10 @@ internal fun UtilityToolsScreen(
     var resolutionSheetOpen by remember { mutableStateOf(false) }
     var stockResolution by remember { mutableStateOf("") }
     var activeResolution by remember { mutableStateOf("") }
+    var adbOverTcpOn by remember { mutableStateOf(false) }
+    var activeTcpPort by remember { mutableStateOf("") }
+    var adbOverTcpBusy by remember { mutableStateOf(false) }
+    var portSheetOpen by remember { mutableStateOf(false) }
 
     val saveShotLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png"),
@@ -252,6 +263,49 @@ internal fun UtilityToolsScreen(
         }
     }
 
+    fun enableAdbOverTcp(port: Int) {
+        if (adbOverTcpBusy) return
+        scope.launch {
+            if (!NativeAdbService.isConnected()) {
+                AppRuntime.snackbar(R.string.tools_not_connected)
+                return@launch
+            }
+            adbOverTcpBusy = true
+            val outcome = runCatching { switchAdbPort(port) }
+            adbOverTcpBusy = false
+            outcome.onSuccess { switched ->
+                if (switched) {
+                    adbOverTcpOn = true
+                    activeTcpPort = port.toString()
+                    AppRuntime.snackbar(R.string.tools_wireless_adb_on, port as Any)
+                } else {
+                    AppRuntime.snackbar(R.string.tools_wireless_adb_failed, AppRuntime.stringResource(R.string.tools_apply_not_effective))
+                }
+            }.onFailure {
+                if (it is CancellationException) throw it
+                if (it is AdbPortReconnectFailure) {
+                    adbOverTcpOn = true
+                    activeTcpPort = port.toString()
+                    AppRuntime.snackbar(R.string.tools_wireless_adb_reconnect_failed, port, it.message ?: "")
+                } else {
+                    AppRuntime.snackbar(R.string.tools_wireless_adb_failed, it.message ?: "")
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        scope.launch(Dispatchers.IO) {
+            // 属性可能残留禁用哨兵值或异常文本：只有合法端口号才视为已启用
+            val port = runCatching {
+                NativeAdbService.shell("getprop service.adb.tcp.port").trim()
+            }.getOrDefault("")
+            val valid = port.toIntOrNull() in 1024..65535
+            adbOverTcpOn = valid
+            activeTcpPort = if (valid) port else ""
+        }
+    }
+
     val tools = listOf(
         ToolItem(
             icon = Icons.Rounded.CameraAlt,
@@ -357,6 +411,12 @@ internal fun UtilityToolsScreen(
                 }
             },
         ),
+        ToolItem(
+            icon = Icons.Rounded.Wifi,
+            titleResId = R.string.tools_wireless_adb,
+            descResId = R.string.tools_wireless_adb_desc,
+            onClick = { if (!adbOverTcpBusy) portSheetOpen = true },
+        ),
     )
 
     Scaffold(
@@ -403,7 +463,12 @@ internal fun UtilityToolsScreen(
                             tools.forEach { tool ->
                                 ArrowPreference(
                                     title = stringResource(tool.titleResId),
-                                    summary = stringResource(tool.descResId),
+                                    summary =
+                                        if (tool.titleResId == R.string.tools_wireless_adb && adbOverTcpOn) {
+                                            stringResource(R.string.tools_wireless_adb_active, activeTcpPort)
+                                        } else {
+                                            stringResource(tool.descResId)
+                                        },
                                     startAction = {
                                         Icon(
                                             imageVector = tool.icon,
@@ -492,6 +557,78 @@ internal fun UtilityToolsScreen(
                     onDismiss = { resolutionSheetOpen = false },
                     onApply = ::applyResolution,
                     onRestore = ::restoreResolution,
+                )
+            }
+
+            if (portSheetOpen) {
+                PortSheet(
+                    activePort = activeTcpPort,
+                    busy = adbOverTcpBusy,
+                    onDismiss = { portSheetOpen = false },
+                    onApply = {
+                        portSheetOpen = false
+                        enableAdbOverTcp(it)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortSheet(
+    activePort: String,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (Int) -> Unit,
+) {
+    var input by remember { mutableStateOf("") }
+
+    // 空输入回退默认端口
+    val resolvedPort = input.ifBlank { ADB_TCP_DEFAULT_PORT.toString() }
+    val portValid = resolvedPort.toIntOrNull()?.let { it in ADB_TCP_PORT_MIN..ADB_TCP_PORT_MAX } ?: false
+
+    OverlayDialog(
+        show = true,
+        title = stringResource(R.string.tools_wireless_adb),
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
+            if (activePort.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.tools_wireless_adb_active, activePort),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            Text(
+                text = stringResource(R.string.tools_wireless_adb_port_hint, ADB_TCP_PORT_MIN, ADB_TCP_PORT_MAX),
+                fontSize = 12.sp,
+                color = colorScheme.onSurfaceVariantSummary,
+            )
+            SuperTextField(
+                value = input,
+                onValueChange = { input = it.filter(Char::isDigit) },
+                label = stringResource(R.string.tools_wireless_adb_port_label, ADB_TCP_DEFAULT_PORT),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.button_cancel),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.button_confirm),
+                    onClick = { onApply(resolvedPort.toInt()) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    enabled = portValid && !busy,
                 )
             }
         }
