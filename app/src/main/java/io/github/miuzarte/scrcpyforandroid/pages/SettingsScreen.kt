@@ -1,7 +1,9 @@
 package io.github.miuzarte.scrcpyforandroid.pages
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +27,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import io.github.miuzarte.scrcpyforandroid.BuildConfig
 import io.github.miuzarte.scrcpyforandroid.LockscreenPasswordActivity
@@ -37,6 +40,7 @@ import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SectionSmallTitle
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
+import io.github.miuzarte.scrcpyforandroid.services.AdbKeepAliveService
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
 import io.github.miuzarte.scrcpyforandroid.services.AppUpdateChecker
 import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
@@ -92,6 +96,13 @@ fun queryAdbKeyDisplayName(context: Context, uri: Uri): String? =
             if (columnIndex >= 0 && cursor.moveToFirst()) cursor.getString(columnIndex)
             else null
         }
+
+private fun notificationPermissionGranted(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
 
 @Composable
 fun SettingsScreen(
@@ -149,6 +160,16 @@ fun SettingsPage(
     val serverPicker = LocalServerPicker.current
     val terminalFontPicker = LocalTerminalFontPicker.current
     val isScrcpyStreaming = AppRuntime.scrcpy?.isStarted() == true
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            AdbKeepAliveService.refresh(context)
+        } else {
+            AppRuntime.snackbar(R.string.pref_keep_alive_permission_denied)
+        }
+    }
 
     val acBundle by adbClientData.bundleState.collectAsState()
 
@@ -447,6 +468,14 @@ fun SettingsPage(
                         }
                     },
                 )
+                SwitchPreference(
+                    title = stringResource(R.string.pref_title_preview_card_tap_fullscreen),
+                    summary = stringResource(R.string.pref_summary_preview_card_tap_fullscreen),
+                    checked = asBundle.devicePreviewCardTapFullscreen,
+                    onCheckedChange = {
+                        asBundle = asBundle.copy(devicePreviewCardTapFullscreen = it)
+                    },
+                )
                 ArrowPreference(
                     title = stringResource(R.string.pref_title_quick_device_sort),
                     summary = stringResource(R.string.pref_summary_quick_device_sort),
@@ -461,6 +490,14 @@ fun SettingsPage(
                     onClick = {
                         haptic.contextClick()
                         navigator.push(RootScreen.VirtualButtonOrder)
+                    },
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.pref_title_swipe_floating_ball_sort),
+                    summary = stringResource(R.string.pref_summary_swipe_floating_ball_sort),
+                    onClick = {
+                        haptic.contextClick()
+                        navigator.push(RootScreen.SwipeFloatingBallOrder)
                     },
                 )
                 ArrowPreference(
@@ -507,17 +544,62 @@ fun SettingsPage(
                         )
                     },
                 )
-                SwitchPreference(
-                    title = stringResource(R.string.pref_title_show_virtual_buttons),
-                    summary = stringResource(R.string.pref_summary_show_virtual_buttons),
-                    checked = asBundle.showFullscreenVirtualButtons,
-                    onCheckedChange = {
-                        asBundle = asBundle.copy(
-                            showFullscreenVirtualButtons = it,
-                        )
-                    },
+                // 「显示全屏虚拟按钮」开关不再提供 UI：它的职责已并入上面的控制模式
+                // （选「关闭」即可收起按钮条），两处并存时状态会互相覆盖。
+                // 偏好键保留，老用户已有的值不丢。
+                val controlMode = remember(asBundle.fullscreenControlMode) {
+                    AppSettings.FullscreenControlMode
+                        .fromStoredValue(asBundle.fullscreenControlMode)
+                }
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.pref_title_fullscreen_control_mode),
+                    entries = listOf(
+                        DropdownEntry(
+                            items = listOf(
+                                DropdownItem(
+                                    text = stringResource(R.string.vb_virtual_buttons),
+                                    selected =
+                                        controlMode ==
+                                                AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS,
+                                    onClick = {
+                                        asBundle = asBundle.copy(
+                                            fullscreenControlMode =
+                                                AppSettings.FullscreenControlMode
+                                                    .VIRTUAL_BUTTONS.rawValue,
+                                        )
+                                    },
+                                ),
+                                DropdownItem(
+                                    text = stringResource(R.string.pref_title_show_swipe_floating_ball),
+                                    selected =
+                                        controlMode ==
+                                                AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL,
+                                    onClick = {
+                                        asBundle = asBundle.copy(
+                                            fullscreenControlMode =
+                                                AppSettings.FullscreenControlMode
+                                                    .SWIPE_FLOATING_BALL.rawValue,
+                                        )
+                                    },
+                                ),
+                                DropdownItem(
+                                    text = stringResource(R.string.pref_title_fullscreen_control_off),
+                                    selected =
+                                        controlMode == AppSettings.FullscreenControlMode.OFF,
+                                    onClick = {
+                                        asBundle = asBundle.copy(
+                                            fullscreenControlMode =
+                                                AppSettings.FullscreenControlMode.OFF.rawValue,
+                                        )
+                                    },
+                                ),
+                            ),
+                        ),
+                    ),
                 )
-                AnimatedVisibility(asBundle.showFullscreenVirtualButtons) {
+                AnimatedVisibility(
+                    controlMode == AppSettings.FullscreenControlMode.VIRTUAL_BUTTONS,
+                ) {
                     Column {
                         OverlayDropdownPreference(
                             entries = listOf(
@@ -595,24 +677,16 @@ fun SettingsPage(
                         )
                     }
                 }
-                SwitchPreference(
-                    title = stringResource(R.string.pref_title_show_floating_button),
-                    summary = stringResource(R.string.pref_summary_show_floating_button),
-                    checked = asBundle.showFullscreenFloatingButton,
-                    onCheckedChange = {
-                        asBundle = asBundle.copy(
-                            showFullscreenFloatingButton = it,
-                        )
-                    },
-                )
-                AnimatedVisibility(asBundle.showFullscreenFloatingButton) {
+                AnimatedVisibility(
+                    controlMode == AppSettings.FullscreenControlMode.SWIPE_FLOATING_BALL,
+                ) {
                     Column {
                         ArrowSlider(
-                            title = stringResource(R.string.pref_title_floating_button_size),
-                            value = asBundle.fullscreenFloatingButtonSizeDp.toFloat(),
+                            title = stringResource(R.string.pref_title_temp_floating_button_size),
+                            value = asBundle.tempFloatingButtonSizeDp.toFloat(),
                             onValueChange = {
                                 asBundle = asBundle.copy(
-                                    fullscreenFloatingButtonSizeDp =
+                                    tempFloatingButtonSizeDp =
                                         it.roundToInt().coerceIn(32, 64),
                                 )
                             },
@@ -620,24 +694,24 @@ fun SettingsPage(
                             steps = 64 - 32 - 1,
                             unit = "dp",
                             displayFormatter = { it.roundToInt().toString() },
-                            inputInitialValue = asBundle.fullscreenFloatingButtonSizeDp.toString(),
+                            inputInitialValue = asBundle.tempFloatingButtonSizeDp.toString(),
                             inputFilter = { it.filter(Char::isDigit) },
                             inputValueRange = 16f..96f,
                             onInputConfirm = { input ->
                                 input.toIntOrNull()?.let {
                                     asBundle = asBundle.copy(
-                                        fullscreenFloatingButtonSizeDp =
+                                        tempFloatingButtonSizeDp =
                                             it.coerceIn(16, 96),
                                     )
                                 }
                             },
                         )
                         ArrowSlider(
-                            title = stringResource(R.string.pref_title_floating_button_bg_opacity),
-                            value = asBundle.fullscreenFloatingButtonBackgroundAlphaPercent.toFloat(),
+                            title = stringResource(R.string.pref_title_swipe_floating_ball_opacity),
+                            value = asBundle.swipeFloatingBallOpacityPercent.toFloat(),
                             onValueChange = {
                                 asBundle = asBundle.copy(
-                                    fullscreenFloatingButtonBackgroundAlphaPercent =
+                                    swipeFloatingBallOpacityPercent =
                                         it.roundToInt().coerceIn(10, 100),
                                 )
                             },
@@ -645,39 +719,15 @@ fun SettingsPage(
                             steps = 100 - 10 - 1,
                             unit = "%",
                             displayFormatter = { it.roundToInt().toString() },
-                            inputInitialValue = asBundle.fullscreenFloatingButtonBackgroundAlphaPercent.toString(),
+                            inputInitialValue =
+                                asBundle.swipeFloatingBallOpacityPercent.toString(),
                             inputFilter = { it.filter(Char::isDigit) },
                             inputValueRange = 10f..100f,
                             onInputConfirm = { input ->
                                 input.toIntOrNull()?.let {
                                     asBundle = asBundle.copy(
-                                        fullscreenFloatingButtonBackgroundAlphaPercent =
+                                        swipeFloatingBallOpacityPercent =
                                             it.coerceIn(10, 100),
-                                    )
-                                }
-                            },
-                        )
-                        ArrowSlider(
-                            title = stringResource(R.string.pref_title_floating_button_ring_opacity),
-                            value = asBundle.fullscreenFloatingButtonRingAlphaPercent.toFloat(),
-                            onValueChange = {
-                                asBundle = asBundle.copy(
-                                    fullscreenFloatingButtonRingAlphaPercent =
-                                        it.roundToInt().coerceIn(0, 100),
-                                )
-                            },
-                            valueRange = 0f..100f,
-                            steps = 100 - 0 - 1,
-                            unit = "%",
-                            displayFormatter = { it.roundToInt().toString() },
-                            inputInitialValue = asBundle.fullscreenFloatingButtonRingAlphaPercent.toString(),
-                            inputFilter = { it.filter(Char::isDigit) },
-                            inputValueRange = 0f..100f,
-                            onInputConfirm = { input ->
-                                input.toIntOrNull()?.let {
-                                    asBundle = asBundle.copy(
-                                        fullscreenFloatingButtonRingAlphaPercent =
-                                            it.coerceIn(0, 100),
                                     )
                                 }
                             },
@@ -852,6 +902,38 @@ fun SettingsPage(
                             .recoverCatching { context.startActivity(requestIntent) }
                             .recoverCatching { context.startActivity(fallbackIntent) }
                             .onFailure { AppRuntime.snackbar(R.string.pref_cannot_open_settings) }
+                    },
+                )
+                SwitchPreference(
+                    title = stringResource(R.string.pref_title_keep_alive),
+                    summary = stringResource(R.string.pref_summary_keep_alive),
+                    checked = asBundle.keepAlive,
+                    onCheckedChange = { checked ->
+                        // 与页面其它设置同源, 整包落盘
+                        val updated = asBundle.copy(keepAlive = checked)
+                        asBundle = updated
+                        taskScope.launch {
+                            appSettings.saveBundle(updated)
+                            if (checked) {
+                                if (AppRuntime.currentConnectionTarget != null) {
+                                    AdbKeepAliveService.start(
+                                        context,
+                                        AppRuntime.currentConnectedDevice?.model.orEmpty(),
+                                    )
+                                }
+                            } else {
+                                AdbKeepAliveService.stop(context)
+                            }
+                        }
+                        // 通知是否可见由系统通知权限决定, 开启保活时顺带申请
+                        if (checked &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            !notificationPermissionGranted(context)
+                        ) {
+                            notificationPermissionLauncher.launch(
+                                Manifest.permission.POST_NOTIFICATIONS,
+                            )
+                        }
                     },
                 )
                 Column(
@@ -1182,6 +1264,53 @@ fun SettingsPage(
                         asBundle = asBundle.copy(
                             hideDeviceLogs = it,
                         )
+                    },
+                )
+                ArrowSlider(
+                    title = stringResource(R.string.pref_title_snackbar_duration),
+                    summary = stringResource(R.string.pref_summary_snackbar_duration),
+                    value = asBundle.snackbarDurationMs.toFloat(),
+                    onValueChange = {
+                        asBundle = asBundle.copy(
+                            snackbarDurationMs = it.roundToInt().coerceIn(500, 5000),
+                        )
+                    },
+                    onValueChangeFinished = {
+                        val ms = asBundle.snackbarDurationMs
+                        AppRuntime.snackbar(
+                            message = AppRuntime.stringResource(
+                                R.string.pref_snackbar_duration_demo,
+                                ms,
+                            ),
+                            duration = SnackbarDuration.Custom(ms.toLong()),
+                        )
+                    },
+                    valueRange = 500f..5000f,
+                    steps = (5000 - 500) / 100 - 1,
+                    unit = "",
+                    // 默认值不显示数字, 直接标出这是默认; 其余取值给毫秒数
+                    displayText = if (asBundle.snackbarDurationMs == AppSettings.SNACKBAR_DURATION_MS.defaultValue) {
+                        stringResource(R.string.text_default)
+                    } else {
+                        "${asBundle.snackbarDurationMs} ms"
+                    },
+                    inputLabel = "ms",
+                    displayFormatter = { it.roundToInt().toString() },
+                    inputInitialValue = asBundle.snackbarDurationMs.toString(),
+                    inputFilter = { it.filter(Char::isDigit) },
+                    inputValueRange = 500f..5000f,
+                    onInputConfirm = { input ->
+                        input.toIntOrNull()?.let { ms ->
+                            val value = ms.coerceIn(500, 5000)
+                            asBundle = asBundle.copy(snackbarDurationMs = value)
+                            AppRuntime.snackbar(
+                                message = AppRuntime.stringResource(
+                                    R.string.pref_snackbar_duration_demo,
+                                    value,
+                                ),
+                                duration = SnackbarDuration.Custom(value.toLong()),
+                            )
+                        }
                     },
                 )
                 Column(

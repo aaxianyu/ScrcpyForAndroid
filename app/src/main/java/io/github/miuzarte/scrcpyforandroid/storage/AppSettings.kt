@@ -8,6 +8,8 @@ import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.scrcpy.GamepadHid
 import io.github.miuzarte.scrcpyforandroid.scrcpy.Scrcpy
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.parcelize.Parcelize
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 
@@ -89,6 +91,21 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         }
     }
 
+    // 三种控制方式：按钮条 / 悬浮球 / 全部隐藏。「关闭」与「显示全屏虚拟按钮」开关
+    // 曾并存导致双门控（两处状态都能收起按钮条），现统一由本枚举承担显隐职责。
+    enum class FullscreenControlMode(val rawValue: String) {
+        VIRTUAL_BUTTONS("VIRTUAL_BUTTONS"),
+        SWIPE_FLOATING_BALL("SWIPE_FLOATING_BALL"),
+        OFF("OFF");
+
+        fun toStoredValue(): String = rawValue
+
+        companion object {
+            fun fromStoredValue(value: String) =
+                entries.firstOrNull { it.rawValue == value } ?: VIRTUAL_BUTTONS
+        }
+    }
+
     companion object {
         // Theme
         val THEME_BASE_INDEX = Pair(
@@ -136,6 +153,16 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             false,
         )
 
+        // App manager
+        val APP_MANAGER_HIDE_VERSION = Pair(
+            booleanPreferencesKey("app_manager_hide_version"),
+            false,
+        )
+        val APP_MANAGER_HIDE_APK_SIZE = Pair(
+            booleanPreferencesKey("app_manager_hide_apk_size"),
+            false,
+        )
+
         // Scrcpy
         val LOW_LATENCY = Pair(
             booleanPreferencesKey("low_latency"),
@@ -161,6 +188,14 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             intPreferencesKey("device_preview_card_height_dp"),
             1080 / 3,
         )
+        val BOOKMARK_AUTO_ENTER = Pair(
+            booleanPreferencesKey("bookmark_auto_enter"),
+            false,
+        )
+        val DEVICE_PREVIEW_CARD_TAP_FULLSCREEN = Pair(
+            booleanPreferencesKey("device_preview_card_tap_fullscreen"),
+            false,
+        )
         val REALTIME_CLIPBOARD_SYNC_TO_DEVICE = Pair(
             booleanPreferencesKey("realtime_clipboard_sync_to_device"),
             true,
@@ -175,10 +210,6 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             booleanPreferencesKey("fullscreen_control_back_to_device"),
             false,
         )
-        val SHOW_FULLSCREEN_VIRTUAL_BUTTONS = Pair(
-            booleanPreferencesKey("show_fullscreen_virtual_buttons"),
-            true,
-        )
         val FULLSCREEN_VIRTUAL_BUTTON_HEIGHT_DP = Pair(
             intPreferencesKey("fullscreen_virtual_button_height_dp"),
             16,
@@ -189,11 +220,50 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         )
         val SHOW_FULLSCREEN_FLOATING_BUTTON = Pair(
             booleanPreferencesKey("show_fullscreen_floating_button"),
-            true,
+            false,
         )
         val FULLSCREEN_FLOATING_BUTTON_SIZE_DP = Pair(
             intPreferencesKey("fullscreen_floating_button_size_dp"),
             48,
+        )
+        val TEMP_FLOATING_BUTTON_SIZE_DP = Pair(
+            intPreferencesKey("temp_floating_button_size_dp"),
+            48,
+        )
+        val FULLSCREEN_CONTROL_MODE = Pair(
+            stringPreferencesKey("fullscreen_control_mode"),
+            FullscreenControlMode.VIRTUAL_BUTTONS.rawValue,
+        )
+        val SWIPE_FLOATING_BALL_OFFSET_X = Pair(
+            floatPreferencesKey("swipe_floating_ball_offset_x"),
+            1f,
+        )
+        val SWIPE_FLOATING_BALL_OFFSET_Y = Pair(
+            floatPreferencesKey("swipe_floating_ball_offset_y"),
+            0.5f,
+        )
+        // 悬浮球合并不透明度：单一滑块直读（100 = 完全不透明）。
+        // 取代旧的背景/圆环/滑出菜单三个透明度滑块（偏好键废弃不再读取）。
+        val SWIPE_FLOATING_BALL_OPACITY_PERCENT = Pair(
+            intPreferencesKey("swipe_floating_ball_opacity_percent"),
+            70,
+        )
+        // MIUI 悬浮球行为开关：边缘吸附 / 无操作渐隐 / 操作名提示 / 展开动画
+        val MIUI_SNAP_ENABLED = Pair(
+            booleanPreferencesKey("miui_snap_enabled"),
+            true,
+        )
+        val MIUI_IDLE_DIM_ENABLED = Pair(
+            booleanPreferencesKey("miui_idle_dim_enabled"),
+            true,
+        )
+        val MIUI_MENU_ACTION_HINT = Pair(
+            booleanPreferencesKey("miui_menu_action_hint"),
+            true,
+        )
+        val MIUI_EXPAND_ANIMATION_ENABLED = Pair(
+            booleanPreferencesKey("miui_expand_animation_enabled"),
+            false,
         )
         val FULLSCREEN_FLOATING_BUTTON_BACKGROUND_ALPHA_PERCENT = Pair(
             intPreferencesKey("fullscreen_floating_button_background_alpha_percent"),
@@ -220,11 +290,16 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             booleanPreferencesKey("preview_virtual_button_show_text"),
             false,
         )
+        // 虚拟按钮条（格式：id:showOutside,id:showOutside,...）
+        // showOutside=1 表示外显在按钮条上，=0 表示收进「更多」菜单
+        // 缺项由 parseStoredLayout 自动补全，因此新增按钮项无须迁移已有偏好
         val VIRTUAL_BUTTONS_LAYOUT = Pair(
             stringPreferencesKey("virtual_buttons_layout"),
             "more:1" +
 
-                    ",app_switch:1,home:0,back:1" +
+                    ",app_switch:1,home:1,back:1,exit_fullscreen:1" +
+
+                    ",show_swipe_floating_ball:0" +
 
                     ",password_input:0" +
                     ",all_apps:0" +
@@ -235,6 +310,28 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
                     ",menu:0,notification:0" +
                     ",volume_up:0,volume_down:0,volume_mute:0" +
                     ",power:0,screenshot:0" +
+                    ",expand_status_bar:0" +
+
+                    "",
+        )
+        // 滑动悬浮球滑出菜单的独立排序（格式：id:visible,id:visible,...）
+        // 不包含 MORE 与 SHOW_SWIPE_FLOATING_BALL：这两个在悬浮球语境下无意义
+        val SWIPE_FLOATING_BALL_ACTIONS_LAYOUT = Pair(
+            stringPreferencesKey("swipe_floating_ball_actions_layout"),
+            "power:1,app_switch:1,home:1,back:1,exit_fullscreen:1" +
+
+                    ",hide_swipe_floating_ball:0" +
+
+                    ",password_input:0" +
+                    ",all_apps:0" +
+                    ",recent_tasks:0" +
+                    ",toggle_ime:0" +
+                    ",paste_local_clipboard:0" +
+
+                    ",menu:0,notification:0" +
+                    ",volume_up:0,volume_down:0,volume_mute:0" +
+                    ",screenshot:0" +
+                    ",expand_status_bar:0" +
 
                     "",
         )
@@ -319,9 +416,23 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             booleanPreferencesKey("hide_device_logs"),
             false,
         )
+        val SNACKBAR_DURATION_MS = Pair(
+            intPreferencesKey("snackbar_duration_ms"),
+            4000,
+        )
+        val KEEP_ALIVE = Pair(
+            booleanPreferencesKey("keep_alive"),
+            false,
+        )
         val GAMEPAD_DEVICE_NAME = Pair(
             stringPreferencesKey("gamepad_device_name"),
             GamepadHid.NAME,
+        )
+
+        // 应用面板（最近任务 / 全部应用）：收藏的包名清单（逗号分隔，见 storage/FavoriteApps.kt）
+        val FAVORITE_APPS = Pair(
+            stringPreferencesKey("favorite_apps"),
+            "",
         )
     }
 
@@ -352,7 +463,6 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         // Fullscreen
         val fullscreenControlIgnoreSystemRotationLock: Boolean,
         val fullscreenControlBackToDevice: Boolean,
-        val showFullscreenVirtualButtons: Boolean,
         val fullscreenVirtualButtonHeightDp: Int,
         val fullscreenVirtualButtonDock: String,
         val showFullscreenFloatingButton: Boolean,
@@ -392,6 +502,25 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         val clearLogsOnExit: Boolean,
         val hideDeviceLogs: Boolean,
         val gamepadDeviceName: String,
+
+        // 位置参数构造：新字段只能追加在末尾
+        val tempFloatingButtonSizeDp: Int,
+        val fullscreenControlMode: String,
+        val swipeFloatingBallOffsetX: Float,
+        val swipeFloatingBallOffsetY: Float,
+        val swipeFloatingBallActionsLayout: String,
+        val swipeFloatingBallOpacityPercent: Int,
+        val miuiSnapEnabled: Boolean,
+        val miuiIdleDimEnabled: Boolean,
+        val miuiMenuActionHint: Boolean,
+        val appManagerHideVersion: Boolean = false,
+        val appManagerHideApkSize: Boolean = false,
+        val favoriteApps: String = "",
+        val miuiExpandAnimationEnabled: Boolean = false,
+        val devicePreviewCardTapFullscreen: Boolean = false,
+        val bookmarkAutoEnter: Boolean = false,
+        val snackbarDurationMs: Int = 4000,
+        val keepAlive: Boolean = false,
     ): Parcelable {
     }
 
@@ -416,12 +545,13 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         bundleField(HIDE_SIMPLE_CONFIG_ITEMS) { it.hideSimpleConfigItems },
         bundleField(PREVIEW_CARD_ON_TOP) { it.previewCardOnTop },
         bundleField(DEVICE_PREVIEW_CARD_HEIGHT_DP) { it.devicePreviewCardHeightDp },
+        bundleField(DEVICE_PREVIEW_CARD_TAP_FULLSCREEN) { it.devicePreviewCardTapFullscreen },
+        bundleField(BOOKMARK_AUTO_ENTER) { it.bookmarkAutoEnter },
         bundleField(REALTIME_CLIPBOARD_SYNC_TO_DEVICE) { it.realtimeClipboardSyncToDevice },
 
         // Fullscreen
         bundleField(FULLSCREEN_CONTROL_IGNORE_SYSTEM_ROTATION_LOCK) { it.fullscreenControlIgnoreSystemRotationLock },
         bundleField(FULLSCREEN_CONTROL_BACK_TO_DEVICE) { it.fullscreenControlBackToDevice },
-        bundleField(SHOW_FULLSCREEN_VIRTUAL_BUTTONS) { it.showFullscreenVirtualButtons },
         bundleField(FULLSCREEN_VIRTUAL_BUTTON_HEIGHT_DP) { it.fullscreenVirtualButtonHeightDp },
         bundleField(FULLSCREEN_VIRTUAL_BUTTON_DOCK) { it.fullscreenVirtualButtonDock },
         bundleField(SHOW_FULLSCREEN_FLOATING_BUTTON) { it.showFullscreenFloatingButton },
@@ -460,7 +590,24 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         bundleField(LAST_UPDATE_CHECK_AT) { it.lastUpdateCheckAt },
         bundleField(CLEAR_LOGS_ON_EXIT) { it.clearLogsOnExit },
         bundleField(HIDE_DEVICE_LOGS) { it.hideDeviceLogs },
+        bundleField(SNACKBAR_DURATION_MS) { it.snackbarDurationMs },
+        bundleField(KEEP_ALIVE) { it.keepAlive },
         bundleField(GAMEPAD_DEVICE_NAME) { it.gamepadDeviceName },
+
+        bundleField(TEMP_FLOATING_BUTTON_SIZE_DP) { it.tempFloatingButtonSizeDp },
+        bundleField(FULLSCREEN_CONTROL_MODE) { it.fullscreenControlMode },
+        bundleField(SWIPE_FLOATING_BALL_OFFSET_X) { it.swipeFloatingBallOffsetX },
+        bundleField(SWIPE_FLOATING_BALL_OFFSET_Y) { it.swipeFloatingBallOffsetY },
+        bundleField(SWIPE_FLOATING_BALL_ACTIONS_LAYOUT) { it.swipeFloatingBallActionsLayout },
+        bundleField(SWIPE_FLOATING_BALL_OPACITY_PERCENT) { it.swipeFloatingBallOpacityPercent },
+        bundleField(MIUI_SNAP_ENABLED) { it.miuiSnapEnabled },
+        bundleField(MIUI_IDLE_DIM_ENABLED) { it.miuiIdleDimEnabled },
+        bundleField(MIUI_MENU_ACTION_HINT) { it.miuiMenuActionHint },
+        bundleField(MIUI_EXPAND_ANIMATION_ENABLED) { it.miuiExpandAnimationEnabled },
+        bundleField(APP_MANAGER_HIDE_VERSION) { it.appManagerHideVersion },
+        bundleField(APP_MANAGER_HIDE_APK_SIZE) { it.appManagerHideApkSize },
+        // 收藏不放进整包字段：两个页面各持整包副本 + 防抖保存，一旦放进列表，旧副本在保存
+        // 别的设置时会把收藏回滚。收藏的写入只走 toggleFavoriteApp（DataStore 当前值读改写）
     )
 
     val bundleState: StateFlow<Bundle> = createBundleState(::bundleFromPreferences)
@@ -486,13 +633,14 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         hideSimpleConfigItems = preferences.read(HIDE_SIMPLE_CONFIG_ITEMS),
         previewCardOnTop = preferences.read(PREVIEW_CARD_ON_TOP),
         devicePreviewCardHeightDp = preferences.read(DEVICE_PREVIEW_CARD_HEIGHT_DP),
+        devicePreviewCardTapFullscreen = preferences.read(DEVICE_PREVIEW_CARD_TAP_FULLSCREEN),
+        bookmarkAutoEnter = preferences.read(BOOKMARK_AUTO_ENTER),
         realtimeClipboardSyncToDevice = preferences.read(REALTIME_CLIPBOARD_SYNC_TO_DEVICE),
 
         // Fullscreen
         fullscreenControlIgnoreSystemRotationLock =
             preferences.read(FULLSCREEN_CONTROL_IGNORE_SYSTEM_ROTATION_LOCK),
         fullscreenControlBackToDevice = preferences.read(FULLSCREEN_CONTROL_BACK_TO_DEVICE),
-        showFullscreenVirtualButtons = preferences.read(SHOW_FULLSCREEN_VIRTUAL_BUTTONS),
         fullscreenVirtualButtonHeightDp = preferences.read(FULLSCREEN_VIRTUAL_BUTTON_HEIGHT_DP),
         fullscreenVirtualButtonDock = preferences.read(FULLSCREEN_VIRTUAL_BUTTON_DOCK),
         showFullscreenFloatingButton = preferences.read(SHOW_FULLSCREEN_FLOATING_BUTTON),
@@ -533,7 +681,23 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         lastUpdateCheckAt = preferences.read(LAST_UPDATE_CHECK_AT),
         clearLogsOnExit = preferences.read(CLEAR_LOGS_ON_EXIT),
         hideDeviceLogs = preferences.read(HIDE_DEVICE_LOGS),
+        snackbarDurationMs = preferences.read(SNACKBAR_DURATION_MS),
+        keepAlive = preferences.read(KEEP_ALIVE),
         gamepadDeviceName = preferences.read(GAMEPAD_DEVICE_NAME),
+
+        tempFloatingButtonSizeDp = preferences.read(TEMP_FLOATING_BUTTON_SIZE_DP),
+        fullscreenControlMode = preferences.read(FULLSCREEN_CONTROL_MODE),
+        swipeFloatingBallOffsetX = preferences.read(SWIPE_FLOATING_BALL_OFFSET_X),
+        swipeFloatingBallOffsetY = preferences.read(SWIPE_FLOATING_BALL_OFFSET_Y),
+        swipeFloatingBallActionsLayout = preferences.read(SWIPE_FLOATING_BALL_ACTIONS_LAYOUT),
+        swipeFloatingBallOpacityPercent = preferences.read(SWIPE_FLOATING_BALL_OPACITY_PERCENT),
+        miuiSnapEnabled = preferences.read(MIUI_SNAP_ENABLED),
+        miuiIdleDimEnabled = preferences.read(MIUI_IDLE_DIM_ENABLED),
+        miuiMenuActionHint = preferences.read(MIUI_MENU_ACTION_HINT),
+        miuiExpandAnimationEnabled = preferences.read(MIUI_EXPAND_ANIMATION_ENABLED),
+        appManagerHideVersion = preferences.read(APP_MANAGER_HIDE_VERSION),
+        appManagerHideApkSize = preferences.read(APP_MANAGER_HIDE_APK_SIZE),
+        favoriteApps = preferences.read(FAVORITE_APPS),
     )
 
     suspend fun loadBundle() = loadBundle(::bundleFromPreferences)
@@ -542,6 +706,40 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
 
     suspend fun updateBundle(transform: (Bundle) -> Bundle) {
         saveBundle(transform(bundleState.value))
+    }
+
+    /** 收藏写的串行闸：读改写之间不让两次点击互相吞掉。 */
+    private val favoriteAppsMutex = Mutex()
+
+    /**
+     * 切换收藏（单点写）。收藏不经过任何页面的整包副本：直接基于 DataStore 当前值读改写，
+     * 页面切换 / 防抖窗口里的旧副本无从覆盖它。
+     */
+    suspend fun toggleFavoriteApp(packageName: String) {
+        favoriteAppsMutex.withLock {
+            setValue(FAVORITE_APPS, toggleFavorite(getValue(FAVORITE_APPS), packageName))
+        }
+    }
+
+    /**
+     * 按当前设备清单对账收藏。
+     *
+     * 清单里没有的包名先交给 [confirmMissing] 复核（逐个 `pm path`）：确认未安装才剔除；
+     * 复核失败 / 清单不完整时保留——收藏是用户数据，宁可这次不删也不误删。
+     */
+    suspend fun pruneFavoriteApps(
+        livePackages: Collection<String>,
+        confirmMissing: suspend (Collection<String>) -> Set<String>,
+    ) {
+        val live = livePackages.toSet()
+        // 复核逐个走 `pm path` 往返，放在锁外：持锁做会把收藏点击挡在后面
+        val candidates = parseFavoriteApps(getValue(FAVORITE_APPS)) - live
+        val confirmed = if (candidates.isEmpty()) emptySet() else confirmMissing(candidates)
+        favoriteAppsMutex.withLock {
+            val stored = getValue(FAVORITE_APPS)
+            val pruned = pruneFavorites(stored, live, confirmed)
+            if (pruned != stored) setValue(FAVORITE_APPS, pruned)
+        }
     }
 
     // TODO?
