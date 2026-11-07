@@ -9,7 +9,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
+import io.github.miuzarte.scrcpyforandroid.widgets.ScrcpyIcons
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
@@ -32,6 +34,7 @@ fun rememberPasswordPickerEntries(): List<DropdownItem> {
     val textAuthenticated = stringResource(R.string.password_status_authenticated)
     val textUnauthenticated = stringResource(R.string.password_status_unauthenticated)
     val textBurned = stringResource(R.string.password_status_burned)
+    val textAutoEnter = stringResource(R.string.password_status_auto_enter)
     val textNone = stringResource(R.string.password_no_available)
     val textCannotAuthHere = stringResource(R.string.password_cannot_auth_here)
     val statusTexts = remember(
@@ -39,6 +42,7 @@ fun rememberPasswordPickerEntries(): List<DropdownItem> {
         textAuthenticated,
         textUnauthenticated,
         textBurned,
+        textAutoEnter,
         textNone,
         textCannotAuthHere,
     ) {
@@ -47,6 +51,7 @@ fun rememberPasswordPickerEntries(): List<DropdownItem> {
             authenticated = textAuthenticated,
             unauthenticated = textUnauthenticated,
             burned = textBurned,
+            autoEnter = textAutoEnter,
             none = textNone,
             cannotAuthHere = textCannotAuthHere,
         )
@@ -68,7 +73,20 @@ fun rememberPasswordPickerEntries(): List<DropdownItem> {
                     globalRequiresAuth = requireAuth,
                     authTitle = textAuthFillTitle,
                 ).onSuccess { password ->
-                    InjectionController.inject(password)
+                    // InjectionController.inject 不 catch 任何异常（withControlWriter 只
+                    // 兜 IOException/IllegalStateException，未预期类型仍会抛）。这里
+                    // 补一层 runCatching：本 launch 无 CoroutineExceptionHandler，不接住
+                    // 异常会冒泡到顶层。失败提示与认证失败共用同一文案
+                    runCatching { InjectionController.inject(password, autoEnter = entry.autoEnter) }
+                        .onFailure { e ->
+                            // runCatching 无差别吞 Throwable，CancellationException 必须补抛，
+                            // 否则弹窗/页面退出时的协程取消信号被吞，协程停不下来
+                            if (e is CancellationException) throw e
+                            AppRuntime.snackbar(
+                                R.string.password_fill_failed,
+                                e.message ?: e.javaClass.simpleName,
+                            )
+                        }
                 }.onFailure { e ->
                     AppRuntime.snackbar(
                         R.string.password_fill_failed,
@@ -91,6 +109,9 @@ internal data class PasswordStatusTexts(
     val authenticated: String,
     val unauthenticated: String,
     val burned: String,
+    // 有默认值: 上游 v0.7.2 的 PasswordPickerEntriesTest 用具名参数构造本类,
+    // 漏掉新字段会直接编译不过; 生产代码唯一的调用点本来就显式传全部字段
+    val autoEnter: String = "",
     val none: String,
     val cannotAuthHere: String,
 )
@@ -119,8 +140,13 @@ internal fun passwordDropdownItems(
             onClick = if (usable) ({ onFill(index) }) else null,
             icon = { iconModifier ->
                 Icon(
-                    imageVector = if (usable) Icons.Rounded.Password else Icons.Rounded.Block,
-                    contentDescription = entry.name,
+                    imageVector =
+                        if (!usable) Icons.Rounded.Block
+                        else if (entry.autoEnter) ScrcpyIcons.PasswordEnterGlyph
+                        else Icons.Rounded.Password,
+                    contentDescription =
+                        if (usable && entry.autoEnter) "${entry.name} \u00b7 ${texts.autoEnter}"
+                        else entry.name,
                     modifier = iconModifier,
                     tint = colorScheme.onSurfaceVariantSummary,
                 )

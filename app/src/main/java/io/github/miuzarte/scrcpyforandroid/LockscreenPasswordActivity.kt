@@ -39,6 +39,7 @@ import io.github.miuzarte.scrcpyforandroid.services.SnackbarController
 import io.github.miuzarte.scrcpyforandroid.storage.AppSettings
 import io.github.miuzarte.scrcpyforandroid.storage.Settings
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
+import io.github.miuzarte.scrcpyforandroid.widgets.ScrcpyIcons
 import io.github.miuzarte.scrcpyforandroid.ui.*
 import kotlinx.coroutines.*
 import top.yukonga.miuix.kmp.basic.*
@@ -154,6 +155,7 @@ private fun LockscreenPasswordScreen(
     var dialogMode by rememberSaveable { mutableStateOf<PasswordDialogMode?>(null) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var editorInitialName by rememberSaveable { mutableStateOf("") }
+    var editorInitialAutoEnter by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val observer = LifecycleEventObserver { _, event ->
@@ -162,6 +164,7 @@ private fun LockscreenPasswordScreen(
                 event == Lifecycle.Event.ON_STOP
             ) {
                 editorInitialName = ""
+                editorInitialAutoEnter = false
             }
         }
         activity.lifecycle.addObserver(observer)
@@ -187,6 +190,7 @@ private fun LockscreenPasswordScreen(
         dialogMode = PasswordDialogMode.Create
         editingId = null
         editorInitialName = ""
+        editorInitialAutoEnter = false
         pendingCreate = false
     }
 
@@ -269,6 +273,7 @@ private fun LockscreenPasswordScreen(
                     dialogMode = PasswordDialogMode.Rename
                     editingId = entry.id
                     editorInitialName = entry.name
+                    editorInitialAutoEnter = entry.autoEnter
                 },
                 onDelete = { entry ->
                     pendingDeleteId = entry.id
@@ -404,12 +409,14 @@ private fun LockscreenPasswordScreen(
             show = dialogMode != null,
             mode = dialogMode ?: PasswordDialogMode.Create,
             initialName = editorInitialName,
+            initialAutoEnter = editorInitialAutoEnter,
             onDismissRequest = {
                 dialogMode = null
                 editingId = null
                 editorInitialName = ""
+                editorInitialAutoEnter = false
             },
-            onConfirm = { nameInput, passwordInput ->
+            onConfirm = { nameInput, passwordInput, autoEnter ->
                 val sanitizedName = PasswordSanitizer.filterName(nameInput)
                 val resolvedName = sanitizedName.ifBlank { textDefaultName }
                 when (dialogMode) {
@@ -426,12 +433,13 @@ private fun LockscreenPasswordScreen(
                             createdWithAuth =
                                 if (asBundle.passwordRequireAuth) PasswordCreatedState.AuthenticatedCreated
                                 else PasswordCreatedState.UnauthenticatedCreated,
+                            autoEnter = autoEnter,
                         )
                     }
 
                     PasswordDialogMode.Rename -> {
                         val targetId = editingId ?: return@PasswordEditorSheet
-                        PasswordRepository.rename(targetId, resolvedName)
+                        PasswordRepository.rename(targetId, resolvedName, autoEnter)
                     }
 
                     null -> return@PasswordEditorSheet
@@ -440,6 +448,7 @@ private fun LockscreenPasswordScreen(
                 dialogMode = null
                 editingId = null
                 editorInitialName = ""
+                editorInitialAutoEnter = false
             },
         )
 
@@ -505,19 +514,21 @@ private fun LockscreenPasswordPage(
             ReorderableList(
                 itemsProvider = {
                     entries.map { entry ->
+                        val statusText =
+                            if (entry.cipherText == null) textInvalidated
+                            else when (entry.createdWithAuth) {
+                                PasswordCreatedState.AuthenticatedCreated -> textAuthenticated
+                                PasswordCreatedState.UnauthenticatedCreated -> textUnauthenticated
+                                PasswordCreatedState.AuthenticatedCreatedModified -> textBurned
+                            }
                         ReorderableList.Item(
                             id = entry.id,
                             icon =
                                 if (entry.cipherText == null) Icons.Rounded.Block
+                                else if (entry.autoEnter) ScrcpyIcons.PasswordEnterGlyph
                                 else Icons.Rounded.Password,
                             title = entry.name,
-                            subtitle =
-                                if (entry.cipherText == null) textInvalidated
-                                else when (entry.createdWithAuth) {
-                                    PasswordCreatedState.AuthenticatedCreated -> textAuthenticated
-                                    PasswordCreatedState.UnauthenticatedCreated -> textUnauthenticated
-                                    PasswordCreatedState.AuthenticatedCreatedModified -> textBurned
-                                },
+                            subtitle = statusText,
                             onClick = {
                                 haptic.contextClick()
                                 if (entry.cipherText != null) onRename(entry)
@@ -566,20 +577,24 @@ private fun PasswordEditorSheet(
     show: Boolean,
     mode: PasswordDialogMode,
     initialName: String,
+    initialAutoEnter: Boolean,
     onDismissRequest: () -> Unit,
-    onConfirm: (String, String) -> Unit,
+    onConfirm: (String, String, Boolean) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
 
     val focusManager = LocalFocusManager.current
     var nameBuffer by rememberSaveable(mode, show, initialName) { mutableStateOf(initialName) }
     var passwordBuffer by rememberSaveable(mode, show) { mutableStateOf("") }
+    var autoEnterChecked by rememberSaveable(mode, show, initialAutoEnter) {
+        mutableStateOf(initialAutoEnter)
+    }
 
     OverlayBottomSheet(
         show = show,
         title = stringResource(
             if (mode == PasswordDialogMode.Create) R.string.password_create_new
-            else R.string.password_rename,
+            else R.string.password_edit,
         ),
         defaultWindowInsetsPadding = false,
         onDismissRequest = onDismissRequest,
@@ -600,7 +615,7 @@ private fun PasswordEditorSheet(
             IconButton(
                 onClick = {
                     haptic.contextClick()
-                    onConfirm(nameBuffer, passwordBuffer)
+                    onConfirm(nameBuffer, passwordBuffer, autoEnterChecked)
                 },
             ) {
                 Icon(
@@ -614,6 +629,18 @@ private fun PasswordEditorSheet(
             modifier = Modifier.padding(vertical = UiSpacing.Large),
             verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical),
         ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = UiSpacing.Large),
+                colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.secondaryContainer),
+            ) {
+                SwitchPreference(
+                    title = stringResource(R.string.password_auto_enter),
+                    checked = autoEnterChecked,
+                    onCheckedChange = { autoEnterChecked = it },
+                )
+            }
             TextField(
                 value = nameBuffer,
                 onValueChange = { nameBuffer = it },
