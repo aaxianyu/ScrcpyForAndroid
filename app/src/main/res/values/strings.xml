@@ -667,5 +667,13 @@
     <string name="tools_app_manager">App manager</string>
     <string name="tools_not_implemented">Not implemented yet</string>
     <string name="tools_not_connected">No device connected</string>
+    <string name="tools_screenshot">Screenshot</string>
+    <string name="tools_screenshot_desc">Capture the device screen to a PNG file</string>
+    <string name="tools_screenshot_executing">Capturing screenshot…</string>
+    <string name="tools_screenshot_saved">Screenshot saved: %1$s</string>
+    <string name="tools_screenshot_failed">Screenshot failed: %1$s</string>
+    <string name="tools_screenshot_failed_no_storage">Cannot open the selected location</string>
+    <string name="tools_screenshot_save">Save</string>
+    <string name="tools_screenshot_open">Open</string>
 
 </resources>

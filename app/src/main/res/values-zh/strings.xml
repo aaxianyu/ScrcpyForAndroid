@@ -666,5 +666,13 @@
     <string name="tools_app_manager">应用管理</string>
     <string name="tools_not_implemented">尚未实现</string>
     <string name="tools_not_connected">未连接设备</string>
+    <string name="tools_screenshot">截图</string>
+    <string name="tools_screenshot_desc">截取设备屏幕为 PNG 文件</string>
+    <string name="tools_screenshot_executing">正在截图…</string>
+    <string name="tools_screenshot_saved">截图已保存：%1$s</string>
+    <string name="tools_screenshot_failed">截图失败：%1$s</string>
+    <string name="tools_screenshot_failed_no_storage">无法打开所选的保存位置</string>
+    <string name="tools_screenshot_save">保存</string>
+    <string name="tools_screenshot_open">打开</string>
 
 </resources>
