@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
@@ -43,7 +42,6 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -51,16 +49,20 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.models.isWmRestored
+import io.github.miuzarte.scrcpyforandroid.models.parseWmSetting
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
+import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
+import io.github.miuzarte.scrcpyforandroid.services.PublicDirs
 import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
-import io.github.miuzarte.scrcpyforandroid.ui.SheetActionRow
+import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetDialog
+import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetItem
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
-import io.github.miuzarte.scrcpyforandroid.ui.dialogTitleColor
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -71,6 +73,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -85,6 +88,7 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Close
+import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -93,6 +97,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
 import java.io.File
 import java.io.IOException
+import android.content.Context
+import android.util.Log
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.PaddingValues
@@ -113,14 +119,28 @@ import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.RefreshState
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.icon.extended.Tune
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import top.yukonga.miuix.kmp.squircle.squircleClip
-import androidx.compose.foundation.background
 import kotlinx.coroutines.Job
+import androidx.compose.material.icons.rounded.Bedtime
 
 private const val REMOTE_SHOT_DIR = "/data/local/tmp"
 private const val SCREENSHOT_DIR = "screenshots"
+
+/** 截图缓存只服务刚截的那张：超过这个年龄的旧图在写新图时顺手清掉，不让它无限堆。 */
+private const val SCREENSHOT_CACHE_MAX_AGE_MILLIS = 7L * 24 * 60 * 60 * 1000
+
+private fun deleteScreenshotCache(file: File) {
+    // 删不掉只会让快照在 cache 里多留一阵，但静默吞掉就没人知道它在漏
+    if (!file.delete() && file.exists()) Log.w("UtilityTools", "delete screenshot cache failed: ${file.name}")
+}
+
+private fun pruneScreenshotCache(dir: File) {
+    val cutoff = System.currentTimeMillis() - SCREENSHOT_CACHE_MAX_AGE_MILLIS
+    dir.listFiles()?.forEach { file ->
+        if (file.isFile && file.lastModified() < cutoff) deleteScreenshotCache(file)
+    }
+}
+private const val SCREENSHOT_MIME_TYPE = "image/png"
 private const val DENSITY_MIN = 80
 private const val DENSITY_MAX = 640
 private const val RES_MIN = 320
@@ -153,7 +173,7 @@ private val KNOWN_ACTIVATABLES = listOf(
     ),
     ActivatableApp("冰箱", "com.catchingnow.icebox",
         listOf("sh /sdcard/Android/data/com.catchingnow.icebox/files/start.sh")),
-    ActivatableApp("黑域", "me.piebridge.brevent",
+    ActivatableApp("黑阈", "me.piebridge.brevent",
         listOf("sh /data/data/me.piebridge.brevent/brevent.sh")),
     ActivatableApp("小黑屋", "web1n.stopapp",
         listOf("sh /storage/emulated/0/Android/data/web1n.stopapp/files/starter.sh")),
@@ -173,6 +193,14 @@ private fun extractDisplaySize(shellOutput: String, kind: String): String {
         ?.removePrefix(target)?.trim().orEmpty()
 }
 
+
+// 设备信息行按约定只报出厂值, 被改写过时才把当前值一并给出
+private fun withCurrentValue(physical: String, current: String?): String =
+    if (current.isNullOrBlank() || current == physical || physical.isBlank()) {
+        physical
+    } else {
+        "$physical · ${AppRuntime.stringResource(R.string.tools_value_now)} $current"
+    }
 // 从 shell 输出中取以「key:」开头的那一行的值
 private fun lineValue(shellOutput: String, key: String): String {
     val target = "$key:"
@@ -236,11 +264,17 @@ private suspend fun collectDeviceSpecs(
             },
             async {
                 val size = NativeAdbService.shell("wm size")
-                DeviceSpec(R.string.tools_info_screen, extractDisplaySize(size, "Physical"))
+                DeviceSpec(
+                    R.string.tools_info_screen,
+                    withCurrentValue(extractDisplaySize(size, "Physical"), parseWmSetting(size, "size")?.override),
+                )
             },
             async {
                 val density = NativeAdbService.shell("wm density")
-                DeviceSpec(R.string.tools_info_density, extractDensity(density, "Physical"))
+                DeviceSpec(
+                    R.string.tools_info_density,
+                    withCurrentValue(extractDensity(density, "Physical"), parseWmSetting(density, "density")?.override),
+                )
             },
             async { DeviceSpec(R.string.tools_info_serial, props.getOrElse(6) { "" }) },
             async {
@@ -252,7 +286,15 @@ private suspend fun collectDeviceSpecs(
                     else -> discharging
                 }
                 val tenths = lineValue(battery, "temperature").toIntOrNull() ?: 0
-                DeviceSpec(R.string.tools_info_battery, "$level% ($status) ${tenths / 10}.${tenths % 10}°C")
+                DeviceSpec(
+                    R.string.tools_info_battery,
+                    AppRuntime.stringResource(
+                        R.string.tools_info_battery_value,
+                        level,
+                        status,
+                        "${tenths / 10}.${tenths % 10}",
+                    ),
+                )
             },
             async {
                 val df = NativeAdbService.shell("df -h /data")
@@ -270,6 +312,14 @@ private suspend fun collectDeviceSpecs(
 private fun readableSize(kilobytes: Long): String =
     if (kilobytes >= 1048576L) "%.1f GB".format(kilobytes / 1048576.0)
     else "%.1f MB".format(kilobytes / 1024.0)
+
+private fun saveShotToDownloads(context: Context, shot: File): Boolean {
+    val sink = PublicDirs.openDownloadsSink(context, shot.name, SCREENSHOT_MIME_TYPE) ?: return false
+    val complete = runCatching {
+        sink.stream.use { output -> shot.inputStream().use { it.copyTo(output) } }
+    }.isSuccess
+    return sink.finish(complete)
+}
 
 @Composable
 internal fun UtilityToolsScreen(
@@ -340,6 +390,9 @@ internal fun UtilityToolsScreen(
     var stoppingPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     // 系统应用默认展示：进程管理器本就该看得见它们占了多少内存
     var hideSystemProcesses by rememberSaveable { mutableStateOf(false) }
+    var screenStandbyDialogOpen by remember { mutableStateOf(false) }
+    // 熄屏 / 点亮一轮要推 dex 再跑 app_process，约几秒；期间不允许再次发起
+    var screenStandbyBusy by remember { mutableStateOf(false) }
 
     val saveShotLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png"),
@@ -348,7 +401,7 @@ internal fun UtilityToolsScreen(
         pendingShot = null
         if (uri == null || local == null) {
             // 用户放弃保存或没有待处理截图：清理缓存
-            local?.delete()
+            local?.let { deleteScreenshotCache(it) }
             return@rememberLauncherForActivityResult
         }
         scope.launch(Dispatchers.IO) {
@@ -357,11 +410,12 @@ internal fun UtilityToolsScreen(
                 resolver.openOutputStream(uri)?.use { os ->
                     local.inputStream().use { input -> input.copyTo(os) }
                 } ?: throw IOException(resolver.toString())
-                local.delete()
+                deleteScreenshotCache(local)
             }
                 .onSuccess { AppRuntime.snackbar(R.string.tools_screenshot_saved, local.name) }
                 .onFailure {
-                    local.delete()
+                    // 写入失败：图和弹窗都恢复，用户可再保存或直接打开
+                    pendingShot = local
                     AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "")
                 }
         }
@@ -601,6 +655,43 @@ internal fun UtilityToolsScreen(
         }
     }
 
+    fun performScreenStandby(action: ScreenStandbyAction) {
+        if (screenStandbyBusy) return
+        screenStandbyBusy = true
+        screenStandbyDialogOpen = false
+        scope.launch {
+            try {
+                // 结果出来再提示：成功报对应动作，失败带原因——不做乐观提示
+                when (val outcome = runScreenStandby(action)) {
+                    ScreenStandbyOutcome.NotConnected ->
+                        AppRuntime.snackbar(R.string.tools_not_connected)
+
+                    ScreenStandbyOutcome.TimedOut ->
+                        AppRuntime.snackbar(R.string.tools_screen_standby_timeout)
+
+                    is ScreenStandbyOutcome.Failed ->
+                        AppRuntime.snackbar(R.string.tools_screen_standby_failed, outcome.reason)
+
+                    ScreenStandbyOutcome.Done ->
+                        AppRuntime.snackbar(action.successResId)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                // 执行器已把预期失败转成结果；这里只兜住漏网异常，避免它冒出发射作用域。
+                // 原因同样走 limitReason：兜底路径与执行器共用同一截断口径。
+                AppRuntime.snackbar(
+                    R.string.tools_screen_standby_failed,
+                    limitReason(error.message.orEmpty().ifBlank { error.javaClass.simpleName }),
+                )
+            } finally {
+                // 无论成败都解锁：异常或协程取消的路径也会走到这里，否则条目会永久不响应
+                screenStandbyBusy = false
+            }
+        }
+    }
+
+
 
     fun openActivationSheet() {
         if (activationBusy) return
@@ -662,20 +753,6 @@ internal fun UtilityToolsScreen(
 
     val tools = listOf(
             ToolItem(
-                icon = Icons.Rounded.Apps,
-                titleResId = R.string.tools_app_manager,
-                descResId = R.string.tools_app_manager_desc,
-                onClick = {
-                    scope.launch {
-                        if (!NativeAdbService.isConnected()) {
-                            AppRuntime.snackbar(R.string.tools_not_connected)
-                            return@launch
-                        }
-                        navigator.push(RootScreen.AppManager)
-                    }
-                },
-            ),
-            ToolItem(
                 icon = Icons.Rounded.CameraAlt,
                 titleResId = R.string.tools_screenshot,
                 descResId = R.string.tools_screenshot_desc,
@@ -695,7 +772,9 @@ internal fun UtilityToolsScreen(
                                 // 写进专用子目录：file_paths.xml 只声明该目录，
                                 // FileProvider 的可共享范围不扩大到整个 cache
                                 val shotDir = File(context.cacheDir, SCREENSHOT_DIR).apply { mkdirs() }
-                                File(shotDir, "$stamp.png").apply { writeBytes(bytes) }
+                                val saved = File(shotDir, "$stamp.png").apply { writeBytes(bytes) }
+                                pruneScreenshotCache(shotDir)
+                                saved
                             }
                         }
                         // 无论成功失败都清理设备端临时文件
@@ -729,6 +808,23 @@ internal fun UtilityToolsScreen(
                             }.getOrNull()
                         }
                         showRebootDialog = true
+                    }
+                },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.Bedtime,
+                titleResId = R.string.tools_screen_standby,
+                descResId = R.string.tools_screen_standby_desc,
+                onClick = {
+                    // 目标设备不可用时先提示，不让用户对着一个点了没反应的弹窗
+                    if (!screenStandbyBusy) {
+                        scope.launch {
+                            if (!NativeAdbService.isConnected()) {
+                                AppRuntime.snackbar(R.string.tools_not_connected)
+                            } else {
+                                screenStandbyDialogOpen = true
+                            }
+                        }
                     }
                 },
             ),
@@ -780,32 +876,10 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.Wifi,
-                titleResId = R.string.tools_wireless_adb,
-                descResId = R.string.tools_wireless_adb_desc,
-                onClick = {
-                    if (!adbOverTcpBusy) {
-                        scope.launch {
-                            if (!NativeAdbService.isConnected()) {
-                                AppRuntime.snackbar(R.string.tools_not_connected)
-                                return@launch
-                            }
-                            portSheetOpen = true
-                        }
-                    }
-                },
-            ),
-            ToolItem(
                 icon = Icons.Rounded.Verified,
                 titleResId = R.string.tools_activate_app,
                 descResId = R.string.tools_activate_app_desc,
                 onClick = { openActivationSheet() },
-            ),
-            ToolItem(
-                icon = Icons.Rounded.PhoneAndroid,
-                titleResId = R.string.tools_device_info,
-                descResId = R.string.tools_device_info_desc,
-                onClick = { openSpecsSheet() },
             ),
             ToolItem(
                 icon = Icons.Rounded.Memory,
@@ -821,6 +895,43 @@ internal fun UtilityToolsScreen(
                         loadProcesses()
                     }
                 },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.Apps,
+                titleResId = R.string.tools_app_manager,
+                descResId = R.string.tools_app_manager_desc,
+                onClick = {
+                    scope.launch {
+                        if (!NativeAdbService.isConnected()) {
+                            AppRuntime.snackbar(R.string.tools_not_connected)
+                            return@launch
+                        }
+                        navigator.push(RootScreen.AppManager)
+                    }
+                },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.Wifi,
+                titleResId = R.string.tools_wireless_adb,
+                descResId = R.string.tools_wireless_adb_desc,
+                onClick = {
+                    // 切换进行中不打开弹窗：端口弹窗的确定按钮只看端口合法性
+                    if (!adbOverTcpBusy) {
+                        scope.launch {
+                            if (!NativeAdbService.isConnected()) {
+                                AppRuntime.snackbar(R.string.tools_not_connected)
+                                return@launch
+                            }
+                            portSheetOpen = true
+                        }
+                    }
+                },
+            ),
+            ToolItem(
+                icon = Icons.Rounded.PhoneAndroid,
+                titleResId = R.string.tools_device_info,
+                descResId = R.string.tools_device_info_desc,
+                onClick = { openSpecsSheet() },
             ),
         )
 
@@ -921,8 +1032,9 @@ internal fun UtilityToolsScreen(
         }
     }
 
+    // 顶栏折叠只由下方列表那条连接驱动（列表的 scrollBehavior 参数）；Scaffold 上不挂这条
+    // 连接，否则进程管理浮层里的滚动会顺着它冒泡到 ScrollBehavior，把本页标题顶起来
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = { SnackbarHost(snackHostState) },
         topBar = {
             BlurredBar(backdrop = blurBackdrop) {
@@ -997,24 +1109,47 @@ internal fun UtilityToolsScreen(
         ScreenshotResultDialog(
             fileName = shot.name,
             onCancel = {
-                shot.delete()
+                deleteScreenshotCache(shot)
                 pendingShot = null
             },
-            onSave = { saveShotLauncher.launch(shot.name) },
-            onOpen = {
-                val uri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    shot,
-                )
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "image/png")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            onSave = {
+                scope.launch {
+                    val saved = withContext(Dispatchers.IO) {
+                        runCatching { saveShotToDownloads(context, shot) }.getOrDefault(false)
+                    }
+                    if (saved) {
+                        deleteScreenshotCache(shot)
+                        pendingShot = null
+                        AppRuntime.snackbar(R.string.tools_screenshot_saved_downloads)
+                    } else {
+                        saveShotLauncher.launch(shot.name)
+                    }
                 }
-                runCatching { context.startActivity(intent) }
-                    .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
-                pendingShot = null
+            },
+            onOpen = {
+                // 交给外部查看器的是复制件：缓存里的原文件随后就删，外部进程读不到已删文件
+                val openCopy = File(shot.parentFile, "open-${shot.name}")
+                val opened = runCatching {
+                    shot.copyTo(openCopy, overwrite = true)
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        openCopy,
+                    )
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "image/png")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                }
+                if (opened.isSuccess) {
+                    deleteScreenshotCache(shot)
+                    pendingShot = null
+                } else {
+                    deleteScreenshotCache(openCopy)
+                    AppRuntime.snackbar(R.string.tools_screenshot_failed, opened.exceptionOrNull()?.message ?: "")
+                }
             },
         )
     }
@@ -1043,6 +1178,14 @@ internal fun UtilityToolsScreen(
         )
     }
 
+
+    if (screenStandbyDialogOpen) {
+        ScreenStandbyDialog(
+            onDismiss = { screenStandbyDialogOpen = false },
+            onAction = ::performScreenStandby,
+        )
+    }
+
     if (densitySheetOpen) {
         DensitySheet(
             stockDensity = stockDensity,
@@ -1066,7 +1209,6 @@ internal fun UtilityToolsScreen(
     if (portSheetOpen) {
         PortSheet(
             activePort = activeTcpPort,
-            busy = adbOverTcpBusy,
             onDismiss = { portSheetOpen = false },
             onApply = {
                 portSheetOpen = false
@@ -1148,7 +1290,6 @@ internal fun UtilityToolsScreen(
 @Composable
 private fun PortSheet(
     activePort: String,
-    busy: Boolean,
     onDismiss: () -> Unit,
     onApply: (Int) -> Unit,
 ) {
@@ -1163,23 +1304,17 @@ private fun PortSheet(
         title = stringResource(R.string.tools_wireless_adb),
         onDismissRequest = onDismiss,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
-            if (activePort.isNotBlank()) {
-                Text(
-                    text = stringResource(R.string.tools_wireless_adb_active, activePort),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            }
-            Text(
-                text = stringResource(R.string.tools_wireless_adb_port_hint, ADB_TCP_PORT_MIN, ADB_TCP_PORT_MAX),
-                fontSize = 12.sp,
-                color = colorScheme.onSurfaceVariantSummary,
+        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical)) {
+            ToolInfoPanel(
+                firstValue = ADB_TCP_DEFAULT_PORT.toString(),
+                secondValue = activePort.ifBlank { stringResource(R.string.tools_wireless_adb_port_off) },
+                firstLabel = stringResource(R.string.tools_wireless_adb_port_default),
+                secondLabel = stringResource(R.string.tools_wireless_adb_port_now),
             )
             SuperTextField(
                 value = input,
                 onValueChange = { input = it.filter(Char::isDigit) },
-                label = stringResource(R.string.tools_wireless_adb_port_label, ADB_TCP_DEFAULT_PORT),
+                label = stringResource(R.string.tools_wireless_adb_port_label, ADB_TCP_PORT_MIN, ADB_TCP_PORT_MAX),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
@@ -1198,7 +1333,7 @@ private fun PortSheet(
                     onClick = { onApply(resolvedPort.toInt()) },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.textButtonColorsPrimary(),
-                    enabled = portValid && !busy,
+                    enabled = portValid,
                 )
             }
         }
@@ -1215,10 +1350,16 @@ private fun ActivationSheet(
 ) {
     val selection = remember { mutableStateListOf<ActivatableApp>() }
     val haptic = LocalHapticFeedback.current
+    val activateHint = if (!loading && !detectFailed && apps.isNotEmpty()) {
+        stringResource(R.string.tools_activate_hint)
+    } else {
+        null
+    }
 
     OverlayDialog(
         show = true,
         title = stringResource(R.string.tools_activate_app),
+        summary = activateHint,
         onDismissRequest = onDismiss,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
@@ -1248,15 +1389,11 @@ private fun ActivationSheet(
                 }
 
                 else -> {
-                    Text(
-                        text = stringResource(R.string.tools_activate_hint),
-                        fontSize = 12.sp,
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
                     apps.forEach { app ->
                         // 整行可点 + Sink 按压反馈；复选框只显示状态，避免行与框各切一次
                         Card(
                             modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.defaultColors(color = colorScheme.secondaryContainer),
                             pressFeedbackType = PressFeedbackType.Sink,
                         ) {
                             Row(
@@ -1325,21 +1462,8 @@ private fun DensitySheet(
         title = stringResource(R.string.tools_screen_density),
         onDismissRequest = onDismiss,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
-            if (stockDensity.isNotBlank()) {
-                Text(
-                    text = stringResource(R.string.tools_density_factory, stockDensity),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            }
-            if (activeDensity.isNotBlank()) {
-                Text(
-                    text = stringResource(R.string.tools_density_now, activeDensity),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical)) {
+            ToolInfoPanel(firstValue = stockDensity, secondValue = activeDensity)
             SuperTextField(
                 value = input,
                 onValueChange = { input = it.filter(Char::isDigit) },
@@ -1348,29 +1472,13 @@ private fun DensitySheet(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
-            ) {
-                TextButton(
-                    text = stringResource(R.string.button_cancel),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    text = stringResource(R.string.tools_density_restore),
-                    onClick = onRestore,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    text = stringResource(R.string.button_confirm),
-                    // 统一走规范化值，避免前导零输入与回读不一致
-                    onClick = { onApply(normalizeToolValue(input, DENSITY_MIN..DENSITY_MAX) ?: return@TextButton) },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    enabled = inSafeRange,
-                )
-            }
+            ToolActionRow(
+                confirmEnabled = inSafeRange,
+                onDismiss = onDismiss,
+                onRestore = onRestore,
+                // 统一走规范化值，避免前导零输入与回读不一致
+                onConfirm = { normalizeToolValue(input, DENSITY_MIN..DENSITY_MAX)?.let(onApply) },
+            )
         }
     }
 }
@@ -1396,21 +1504,8 @@ private fun ResolutionSheet(
         title = stringResource(R.string.tools_screen_resolution),
         onDismissRequest = onDismiss,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
-            if (stockResolution.isNotBlank()) {
-                Text(
-                    text = stringResource(R.string.tools_resolution_factory, stockResolution),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            }
-            if (activeResolution.isNotBlank()) {
-                Text(
-                    text = stringResource(R.string.tools_resolution_now, activeResolution),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical)) {
+            ToolInfoPanel(firstValue = stockResolution, secondValue = activeResolution)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
@@ -1418,11 +1513,7 @@ private fun ResolutionSheet(
                 SuperTextField(
                     value = widthInput,
                     onValueChange = { widthInput = it.filter(Char::isDigit) },
-                    label = stringResource(
-                        R.string.tools_resolution_width,
-                        stockResolution.substringBefore('x')
-                            .ifBlank { stringResource(R.string.tools_value_unknown) },
-                    ),
+                    label = stringResource(R.string.tools_resolution_width),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
@@ -1430,44 +1521,87 @@ private fun ResolutionSheet(
                 SuperTextField(
                     value = heightInput,
                     onValueChange = { heightInput = it.filter(Char::isDigit) },
-                    label = stringResource(
-                        R.string.tools_resolution_height,
-                        stockResolution.substringAfter('x')
-                            .ifBlank { stringResource(R.string.tools_value_unknown) },
-                    ),
+                    label = stringResource(R.string.tools_resolution_height),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
-            ) {
-                TextButton(
-                    text = stringResource(R.string.button_cancel),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    text = stringResource(R.string.tools_resolution_restore),
-                    onClick = onRestore,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    text = stringResource(R.string.button_confirm),
-                    // 统一走规范化值，避免前导零输入与回读不一致
-                    onClick = {
-                        val w = normalizeToolValue(widthInput, RES_MIN..RES_MAX) ?: return@TextButton
-                        val h = normalizeToolValue(heightInput, RES_MIN..RES_MAX) ?: return@TextButton
-                        onApply(w, h)
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    enabled = submittable,
-                )
-            }
+            ToolActionRow(
+                confirmEnabled = submittable,
+                onDismiss = onDismiss,
+                onRestore = onRestore,
+                onConfirm = {
+                    val width = normalizeToolValue(widthInput, RES_MIN..RES_MAX)
+                    val height = normalizeToolValue(heightInput, RES_MIN..RES_MAX)
+                    if (width != null && height != null) onApply(width, height)
+                },
+            )
         }
+    }
+}
+
+@Composable
+private fun ToolInfoPanel(
+    firstValue: String,
+    secondValue: String,
+    firstLabel: String = stringResource(R.string.tools_value_factory),
+    secondLabel: String = stringResource(R.string.tools_value_now),
+) {
+    val first = firstValue.takeIf { it.isNotBlank() }
+    val second = secondValue.takeIf { it.isNotBlank() }
+    if (first == null && second == null) return
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        insideMargin = PaddingValues(UiSpacing.Large, UiSpacing.ContentVertical),
+        colors = CardDefaults.defaultColors(color = colorScheme.secondaryContainer),
+    ) {
+        if (first != null) {
+            SpecRow(
+                label = firstLabel,
+                value = first,
+                valueColor = colorScheme.onSurfaceSecondary,
+            )
+        }
+        if (second != null) {
+            SpecRow(
+                label = secondLabel,
+                value = second,
+                valueColor = colorScheme.onSurfaceSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolActionRow(
+    confirmEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onRestore: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+    ) {
+        TextButton(
+            text = stringResource(R.string.button_cancel),
+            onClick = onDismiss,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(
+            text = stringResource(R.string.tools_value_restore),
+            onClick = onRestore,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(
+            text = stringResource(R.string.button_confirm),
+            onClick = onConfirm,
+            modifier = Modifier.weight(1f),
+            colors = ButtonDefaults.textButtonColorsPrimary(),
+            enabled = confirmEnabled,
+        )
     }
 }
 
@@ -1480,7 +1614,7 @@ private fun ScreenshotResultDialog(
 ) {
     OverlayDialog(
         show = true,
-        title = stringResource(R.string.tools_screenshot),
+        title = stringResource(R.string.tools_screenshot_done),
         summary = fileName,
         onDismissRequest = onCancel,
     ) {
@@ -1530,38 +1664,25 @@ private fun RebootDialog(
     onDismiss: () -> Unit,
     onReboot: (RebootMode) -> Unit,
 ) {
-    OverlayDialog(
-        show = true,
-        title = stringResource(R.string.tools_advanced_reboot),
-        titleColor = dialogTitleColor(),
-        insideMargin = DpSize(0.dp, 24.dp),
-        onDismissRequest = onDismiss,
-        onDismissFinished = onDismiss,
-    ) {
-        Column(
-            modifier = Modifier,
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-        ) {
+    val actions = buildList {
+        RebootMode.entries.forEach { mode ->
             // 软重启由调用方按目标设备版本决定，其余选项所有设备都支持
-            RebootMode.entries.filter { it != RebootMode.Soft || showSoftReboot }.forEach { mode ->
-                SheetActionRow(
-                    label = stringResource(mode.titleResId),
-                    enabled = true,
-                    onClick = { onReboot(mode) },
+            if (mode != RebootMode.Soft || showSoftReboot) {
+                add(
+                    ActionSheetItem(
+                        label = stringResource(mode.titleResId),
+                        onClick = { onReboot(mode) },
+                    ),
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            TextButton(
-                text = stringResource(R.string.button_cancel),
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-                textStyle = textStyles.button.copy(fontWeight = FontWeight.Medium),
-            )
-            // 面板底部留白由 dialog 的垂直 insideMargin（24dp）给出
         }
     }
+    ActionSheetDialog(
+        title = stringResource(R.string.tools_advanced_reboot),
+        actions = actions,
+        onDismissRequest = onDismiss,
+        titleStyle = textStyles.footnote1.copy(fontSize = 14.sp),
+    )
 }
 
 // 高级重启的每一步都会立即生效，列表里点完直接执行没有反悔机会，所以再加一道确认
@@ -1573,29 +1694,25 @@ private fun RebootConfirmDialog(
 ) {
     OverlayDialog(
         show = true,
-        title = stringResource(R.string.tools_reboot_confirm_title),
+        title = stringResource(mode.confirmTitleResId),
+        summary = stringResource(mode.confirmDescResId),
         onDismissRequest = onDismiss,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.Medium)) {
-            Text(
-                text = stringResource(R.string.tools_reboot_confirm, stringResource(mode.titleResId)),
-                color = colorScheme.onSurfaceVariantSummary,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+        ) {
+            TextButton(
+                text = stringResource(R.string.button_cancel),
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
-            ) {
-                TextButton(
-                    text = stringResource(R.string.button_cancel),
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    text = stringResource(R.string.button_confirm),
-                    onClick = onConfirm,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            TextButton(
+                text = stringResource(R.string.button_confirm),
+                onClick = onConfirm,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+            )
         }
     }
 }
@@ -1609,6 +1726,61 @@ private val RebootMode.titleResId: Int
         RebootMode.Fastboot -> R.string.tools_reboot_fastboot
     }
 
+private val RebootMode.confirmTitleResId: Int
+    get() = when (this) {
+        RebootMode.Normal -> R.string.tools_reboot_confirm_normal_title
+        RebootMode.Soft -> R.string.tools_reboot_confirm_soft_title
+        RebootMode.Shutdown -> R.string.tools_reboot_confirm_shutdown_title
+        RebootMode.Recovery -> R.string.tools_reboot_confirm_recovery_title
+        RebootMode.Fastboot -> R.string.tools_reboot_confirm_fastboot_title
+    }
+
+private val RebootMode.confirmDescResId: Int
+    get() = when (this) {
+        RebootMode.Normal -> R.string.tools_reboot_confirm_normal_desc
+        RebootMode.Soft -> R.string.tools_reboot_confirm_soft_desc
+        RebootMode.Shutdown -> R.string.tools_reboot_confirm_shutdown_desc
+        RebootMode.Recovery -> R.string.tools_reboot_confirm_recovery_desc
+        RebootMode.Fastboot -> R.string.tools_reboot_confirm_fastboot_desc
+    }
+
+
+@Composable
+private fun ScreenStandbyDialog(
+    onDismiss: () -> Unit,
+    onAction: (ScreenStandbyAction) -> Unit,
+) {
+    OverlayDialog(
+        show = true,
+        title = stringResource(R.string.tools_screen_standby),
+        summary = stringResource(R.string.tools_screen_standby_dialog_desc),
+        onDismissRequest = onDismiss,
+    ) {
+        // 两个动作都只翻显示面板电源、不经过系统睡眠流程，随时可以反向操作
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+        ) {
+            TextButton(
+                text = stringResource(R.string.tools_screen_standby_wake_up),
+                onClick = { onAction(ScreenStandbyAction.TurnOn) },
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                text = stringResource(R.string.tools_screen_standby_turn_off),
+                onClick = { onAction(ScreenStandbyAction.TurnOff) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+private val ScreenStandbyAction.successResId: Int
+    get() = when (this) {
+        ScreenStandbyAction.TurnOff -> R.string.tools_screen_standby_success_off
+        ScreenStandbyAction.TurnOn -> R.string.tools_screen_standby_success_on
+    }
+
 @Composable
 private fun DeviceSpecsSheet(
     show: Boolean,
@@ -1616,6 +1788,7 @@ private fun DeviceSpecsSheet(
 ) {
     var state by remember(show) { mutableStateOf<SpecsState>(SpecsState.Loading) }
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
 
     val charging = stringResource(R.string.tools_info_battery_charging)
     val full = stringResource(R.string.tools_info_battery_full)
@@ -1650,55 +1823,106 @@ private fun DeviceSpecsSheet(
                 )
             }
         },
+        endAction = {
+            // 仅 Ready 状态提供复制入口：Loading/Failed 没有可复制的行
+            val ready = state as? SpecsState.Ready
+            if (ready != null) {
+                // 行文本在组合期拼好：onClick 里不能再调 stringResource
+                val lines = ready.specs.map {
+                    stringResource(
+                        R.string.tools_device_info_copy_line,
+                        stringResource(it.labelRes),
+                        it.value,
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        haptic.contextClick()
+                        LocalInputService.setClipboardText(
+                            context,
+                            lines.joinToString("\n"),
+                        )
+                        AppRuntime.snackbar(R.string.tools_device_info_copied)
+                    },
+                    modifier = Modifier.offset(y = UiSpacing.SheetHeaderIconOpticalOffset),
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Copy,
+                        contentDescription = stringResource(R.string.tools_device_info_copy_all),
+                    )
+                }
+            }
+        },
         onDismissRequest = onDismissRequest,
         defaultWindowInsetsPadding = false,
     ) {
-        when (val current = state) {
-            SpecsState.Loading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = UiSpacing.PageBottom * 2),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = stringResource(R.string.tools_info_loading),
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-            }
+        // 提示条宿主：浮层由 miuix 根对话框层绘制，提示条须由浮层内的宿主渲染
+        // 才叠在规格卡片之上；宿主随本 lambda 组合，收起后随 onDispose 注销
+        // （宿主为何不能写在函数体里，见下文 ProcessSheet 的注释）
+        val sheetSnackHostState = remember { SnackbarHostState() }
+        DisposableEffect(sheetSnackHostState) {
+            val unregister = AppRuntime.registerSnackbarHostState(sheetSnackHostState)
+            onDispose(unregister)
+        }
 
-            is SpecsState.Failed -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = UiSpacing.PageBottom),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = stringResource(R.string.tools_info_failed, current.reason),
-                        color = colorScheme.error,
-                        fontSize = 14.sp,
-                    )
-                }
-            }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                when (val current = state) {
+                    SpecsState.Loading -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = UiSpacing.PageBottom * 2),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.tools_info_loading),
+                                color = colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
 
-            is SpecsState.Ready -> {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(UiSpacing.ContentVertical)) {
-                        current.specs.forEach { spec ->
-                            SpecRow(label = stringResource(spec.labelRes), value = spec.value)
+                    is SpecsState.Failed -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = UiSpacing.PageBottom),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.tools_info_failed, current.reason),
+                                color = colorScheme.error,
+                                fontSize = 14.sp,
+                            )
+                        }
+                    }
+
+                    is SpecsState.Ready -> {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.defaultColors(color = colorScheme.secondaryContainer),
+                        ) {
+                            Column(modifier = Modifier.padding(UiSpacing.ContentVertical)) {
+                                current.specs.forEach { spec ->
+                                    SpecRow(label = stringResource(spec.labelRes), value = spec.value)
+                                }
+                            }
                         }
                     }
                 }
+                Spacer(Modifier.height(UiSpacing.SheetBottom))
             }
+            // 提示条贴在浮层内容底部，盖在规格卡片之上
+            SnackbarHost(
+                state = sheetSnackHostState,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
-        Spacer(Modifier.height(UiSpacing.SheetBottom))
     }
 }
 
 @Composable
-private fun SpecRow(label: String, value: String) {
+private fun SpecRow(label: String, value: String, valueColor: Color = Color.Unspecified) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1714,6 +1938,7 @@ private fun SpecRow(label: String, value: String) {
         Text(
             text = value,
             fontSize = 13.sp,
+            color = valueColor,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1817,9 +2042,8 @@ private fun ProcessSheet(
                 .collect { currentOnPullStateChanged(it) }
         }
 
-        // 不额外挂手势消费器：浮层列表挂在自己的 LazyColumn 上，没有连回本页 Scaffold 的
-        // nestedScroll 连接（那个连接已被摘掉），所以列表怎么滚都碰不到本页的 scrollBehavior，
-        // 标题不会跟着折叠
+        // 不额外挂手势消费器：浮层列表用 androidx 原生 LazyColumn，本页 Scaffold 上也不挂
+        // scrollBehavior 的连接，浮层里的下拉冒泡不到本页顶栏
         Box(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
@@ -1918,15 +2142,13 @@ private fun ProcessRow(
     stopping: Boolean,
     onStop: () -> Unit,
 ) {
-    // 行布局与「从本机应用安装」同款：Row + clip 自己画底色，不套 Card。
-    // Card 自带按压层，在浮层列表里实测会把手势漏给后面的页面
-    val rowColor = colorScheme.surfaceContainer
+    // 行骨架与「从本机应用安装」同款：Row，不套 Card（Card 自带按压层，在浮层列表里实测会把手势漏给后面的页面）。
+    // 但那边保留行底色——它用底色承载「已选中 / 按下」两个状态；这里没有选中态，整段列表直接平铺，
+    // 靠行间空隙分行，不靠底色。别照搬那边的 surfaceContainer 行底色：静态配色下它等于弹层底，只在莫奈下才显形
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 3.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(rowColor),
+            .padding(horizontal = 4.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
     ) {
