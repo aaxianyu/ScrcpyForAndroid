@@ -464,12 +464,14 @@ private fun LocalAppList(
                 Column(
                     // 行高稳定：内容几行在「切换第三行显隐」时
                     // 会伸缩，直接导致整块 Row / 列表头跳变。把内容最小高度撑到三行状态的水平，两行
-                    // 模式也占同样的高度，视觉上只切换字号 / 可见性
+                    // 模式也占同样的高度，视觉上只切换字号 / 可见性。
+                    // 对齐必须垂直居中：两行内容撑不满这个最小高度，默认顶部对齐会让整块文字贴着
+                    // 盒顶（图标却是居中的），看起来就是「没居中」；与设备侧列表 AppRow 的写法一致
                     modifier = Modifier
                         .weight(1f)
                         .padding(end = 8.dp)
                         .heightIn(min = LocalPickerRowMinHeight),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
                 ) {
                     if (!showVersionLine && !showSizeLine) {
                         // 两项信息全被隐藏：保留两行排版，行高不变
