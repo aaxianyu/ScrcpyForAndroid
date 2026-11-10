@@ -68,6 +68,7 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.data.LocalApkInstall
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.TransferProgress
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.currentDeviceKey
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.exportFileName
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.runningOrNull
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppAction
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppOrdering
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
@@ -100,6 +101,7 @@ import io.github.miuzarte.scrcpyforandroid.ui.longPress
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
 import io.github.miuzarte.scrcpyforandroid.ui.rememberPageScrollBehavior
 import io.github.miuzarte.scrcpyforandroid.ui.rememberPressInRootModifier
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -326,6 +328,11 @@ internal fun AppManagerScreen(
     var actionSheetApp by remember { mutableStateOf<DeviceApp?>(null) }
     var actionSheetVisible by remember { mutableStateOf(false) }
     var pendingSheetAction by remember { mutableStateOf<AppAction?>(null) }
+    // 面板按包名回读最新行：点开面板时那次状态校准是异步的，读回来要能刷到面板上——
+    // 「打开」「强制停止」是否置灰看的正是这一行的启用态与运行态。行已不在列表时退回快照。
+    val actionSheetLiveApp = actionSheetApp?.let { snapshot ->
+        uiState.apps.firstOrNull { it.packageName == snapshot.packageName } ?: snapshot
+    }
     var installSheetOpen by remember { mutableStateOf(false) }
     var localPickerOpen by remember { mutableStateOf(false) }
     var displayOptionsOpen by remember { mutableStateOf(false) }
@@ -600,6 +607,21 @@ internal fun AppManagerScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 运行态定时刷新：只有停在本页且处于前台时才每 30 秒重拉一次 `ps -A`。
+    // 被控设备上的应用随时会被用户自己打开 / 退出，一次快照放到几十分钟后必然过时，
+    // 角标和「强制停止」的置灰就会说谎。只拉进程表、不拉应用清单，代价很小。
+    val refreshRunningTick by rememberUpdatedState<() -> Unit>({
+        if (!uiState.notConnected) DeviceAppRepository.refreshRunningState()
+    })
+    LaunchedEffect(lifecycleOwner) {
+        while (true) {
+            delay(RUNNING_REFRESH_INTERVAL_MS)
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                refreshRunningTick()
+            }
+        }
     }
 
     /**
@@ -948,16 +970,29 @@ internal fun AppManagerScreen(
                                     // 取消勾选不退出多选态：空选后标题转「请选择项目」、
                                     // 底栏图标置灰，用户不用重新长按就能继续勾。
                                     // 退出只认 Close / 返回键（见 BackHandler）
-                                    if (!selected.remove(app.packageName)) selected.add(app.packageName)
+                                    if (!selected.remove(app.packageName)) {
+                                        selected.add(app.packageName)
+                                        // 勾上时校准一次：勾选之后马上要按状态挑动作
+                                        // （启用/停用互斥、强制停止要看是否在跑）
+                                        DeviceAppRepository.refreshAppState(app.packageName)
+                                    }
                                 } else {
+                                    // 菜单先弹出来，再校准这一个应用的状态：用户可能刚在被控
+                                    // 设备上打开、退出或停用过它，上一次快照未必还成立。校准是
+                                    // 异步的，读回来会经 actionSheetLiveApp 刷到已打开的面板上；
+                                    // 读不到也照样弹菜单——展开菜单的优先级高于状态准确。
                                     actionSheetApp = app
                                     actionSheetVisible = true
+                                    DeviceAppRepository.refreshAppState(app.packageName)
                                 }
                             },
                             onAppLongClick = { app ->
                                 haptic.longPress()
                                 batchMode = true
-                                if (!selected.contains(app.packageName)) selected.add(app.packageName)
+                                if (!selected.contains(app.packageName)) {
+                                    selected.add(app.packageName)
+                                    DeviceAppRepository.refreshAppState(app.packageName)
+                                }
                             },
                             onBackToDevices = onBackToDevices,
                         )
@@ -1240,8 +1275,10 @@ internal fun AppManagerScreen(
                     // 先收起输入法再弹操作菜单
                     focusManager.clearFocus()
                     keyboardController?.hide()
+                    // 同列表行：先弹菜单，再校准这一个应用的状态（不阻塞展开）
                     actionSheetApp = app
                     actionSheetVisible = true
+                    DeviceAppRepository.refreshAppState(app.packageName)
                 },
                 // 背景与圆形揭示铺满全屏；状态栏、输入法、导航条的间距由浮层内容自行内衬
                 modifier = Modifier.fillMaxSize(),
@@ -1255,7 +1292,7 @@ internal fun AppManagerScreen(
         // visible 翻 false 立即执行下一步
         AppActionSheet(
             visible = actionSheetVisible,
-            app = actionSheetApp,
+            app = actionSheetLiveApp,
             onDismissRequest = {
                 actionSheetVisible = false
             },
@@ -1263,11 +1300,15 @@ internal fun AppManagerScreen(
                 pendingSheetAction = action
                 actionSheetVisible = false
             },
+            // 运行态未知（null）时传 null：面板内部据此不置灰强制停止
+            running = actionSheetLiveApp?.let { app ->
+                uiState.runningPackages.runningOrNull(app.packageName)
+            },
         )
         LaunchedEffect(actionSheetVisible, actionSheetApp) {
             if (!actionSheetVisible) {
                 val action = pendingSheetAction
-                val app = actionSheetApp
+                val app = actionSheetLiveApp
                 pendingSheetAction = null
                 actionSheetApp = null
                 if (action == null || app == null) return@LaunchedEffect
@@ -1531,6 +1572,9 @@ private val DocumentsUiPackages = listOf(
 )
 
 private const val AppManagerGroupCount = 2
+
+/** 运行态定时刷新的间隔：只在应用管理页处于前台时生效 */
+private const val RUNNING_REFRESH_INTERVAL_MS = 30_000L
 
 /**
  * 错误文案。

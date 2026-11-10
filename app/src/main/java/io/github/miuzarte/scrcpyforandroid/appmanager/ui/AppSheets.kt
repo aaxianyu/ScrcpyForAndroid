@@ -33,8 +33,14 @@ fun AppActionSheet(
     app: DeviceApp?,
     onDismissRequest: () -> Unit,
     onActionPicked: (AppAction) -> Unit,
+    /** 该应用此刻有进程在跑；null = 运行态未知 */
+    running: Boolean? = null,
 ) {
     if (app == null) return
+    // 强制停止只在「确实有进程在跑」时可用：已停用一律置灰（停用优先）；
+    // 运行态未知时不置灰——拿不到运行状态就没依据禁用，否则一次 ps -A 读失败
+    // 会让全列表的强制停止都点不动。置灰而不隐藏，菜单位置保持稳定
+    val forceStopEnabled = app.isEnabled && running != false
     ActionSheetDialog(
         visible = visible,
         title = app.displayLabel,
@@ -43,7 +49,7 @@ fun AppActionSheet(
             ActionSheetItem(stringResource(R.string.app_manager_open), app.isEnabled) {
                 onActionPicked(AppAction.OPEN)
             },
-            ActionSheetItem(stringResource(R.string.app_manager_force_stop)) {
+            ActionSheetItem(stringResource(R.string.app_manager_force_stop), forceStopEnabled) {
                 onActionPicked(AppAction.FORCE_STOP)
             },
             ActionSheetItem(

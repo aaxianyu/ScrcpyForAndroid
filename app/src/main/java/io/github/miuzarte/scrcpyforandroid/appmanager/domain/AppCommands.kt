@@ -28,14 +28,32 @@ enum class AppAction {
     val listEffect: ListEffect
         get() = when (this) {
             UNINSTALL -> ListEffect.REMOVE_ROW
-            DISABLE, ENABLE -> ListEffect.FLIP_ENABLED
+            // 停用后应用仍在设备上，只是不可用：行留在列表里翻成「已停用」，
+            // 列表与设备上的安装状态才对得上（摘行会让人以为应用被移除了）。
+            DISABLE -> ListEffect.FLIP_ENABLED
+            ENABLE -> ListEffect.FLIP_ENABLED
+            // 强制停止没有回显可判，只能重拉一次运行集合来定标签（不做 PID 回读验证）
+            FORCE_STOP -> ListEffect.REFRESH_RUNNING
+            // 打开不走 shell 命令（`am start` 在 executeSingle 里单独处理），
+            // 它自己的运行态重拉也在那里做，见 DeviceAppRepository.executeSingle
             else -> ListEffect.NONE
         }
 }
 
 enum class PendingRelease { ON_REFRESH, ON_COMMAND }
 
-enum class ListEffect { NONE, REMOVE_ROW, FLIP_ENABLED }
+enum class ListEffect {
+    NONE,
+
+    /** 卸载：从列表与缓存里都摘掉 */
+    REMOVE_ROW,
+
+    /** 启用 / 停用：就地翻成相反的启用态，行留在原处 */
+    FLIP_ENABLED,
+
+    /** 强制停止：重拉运行集合，「运行中」标签与强制停止的可用性按重拉结果走 */
+    REFRESH_RUNNING,
+}
 
 /** shell 参数单引号包裹（包名不含单引号，双写转义兜底）。 */
 internal fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"

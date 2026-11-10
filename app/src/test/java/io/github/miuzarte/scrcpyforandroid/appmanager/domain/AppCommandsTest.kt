@@ -73,10 +73,14 @@ class AppCommandsTest {
     @Test
     fun `list effects match the spec table`() {
         assertEquals(ListEffect.REMOVE_ROW, AppAction.UNINSTALL.listEffect)
+        // 停用后应用仍在设备上，只是不可用：行留在列表里翻成「已停用」，不摘行
         assertEquals(ListEffect.FLIP_ENABLED, AppAction.DISABLE.listEffect)
         assertEquals(ListEffect.FLIP_ENABLED, AppAction.ENABLE.listEffect)
-        assertEquals(ListEffect.NONE, AppAction.FORCE_STOP.listEffect)
+        // 强制停止没有回显可判：重拉一次运行集合来定「运行中」标签
+        assertEquals(ListEffect.REFRESH_RUNNING, AppAction.FORCE_STOP.listEffect)
         assertEquals(ListEffect.NONE, AppAction.CLEAR_DATA.listEffect)
+        // 打开不走 shell 命令，运行态重拉在 executeSingle 的 OPEN 分支里做
         assertEquals(ListEffect.NONE, AppAction.OPEN.listEffect)
+        assertEquals(ListEffect.NONE, AppAction.EXPORT_APK.listEffect)
     }
 }

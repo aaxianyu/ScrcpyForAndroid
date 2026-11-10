@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -79,6 +81,17 @@ object DeviceAppRepository {
     private val _runningPackages = MutableStateFlow<Set<String>?>(null)
 
     /**
+     * 运行态查询的在途守卫。
+     *
+     * 同一时刻只让一条 `ps -A` / `pm list packages -d` 在路上：轮询、点行校准、动作后重拉
+     * 会反复触发这类查询，叠起来会在弱网下把 ADB 通道排满，拖慢紧随其后的列表加载。
+     * 后来的请求直接跳过——在途那条写回的是同源结果。
+     *
+     * 列表加载自带的那次查询不经过这里：它跟着一次完整加载走，有自己的代次守卫与看门狗。
+     */
+    private val runningQueryMutex = Mutex()
+
+    /**
      * 上一次已经提示过的运行态读取失败原因。
      *
      * 读不出进程表的 ROM 每次进入页面 / 下拉刷新都会走到「未知」分支，逐次弹提示只会把界面
@@ -87,6 +100,28 @@ object DeviceAppRepository {
      */
     @Volatile
     private var warnedRunningFailure: AppProbeClient.RunningFailure? = null
+
+    /**
+     * 单包校准的在途去重与排队上限。
+     *
+     * 点开一行、勾选一行都会校准一个包，每条校准要两条 ADB 命令。连续勾选十几个应用时若
+     * 照单全收，【强制停止】那条定向重拉就会排在它们后面，「运行中」标签要等几十秒才消失。
+     * 所以同一个包在途时不再重复排队，排队数到 [MAX_PENDING_CALIBRATIONS] 就丢掉新的——
+     * 被丢掉的那一行，用户下次点它或 30 秒轮询会重新校准。
+     */
+    private val calibrationLock = Any()
+    private val calibratingPackages = mutableSetOf<String>()
+    private var pendingCalibrations = 0
+
+    /**
+     * 校准请求的时代编号：每次「刚下发完停止命令、要定向重拉」时 +1。
+     *
+     * 排队中的校准读的是动作生效**之前**的状态，等它跑完只会把过时结果写回去，还会把
+     * 【运行中】标签的正确刷新挤到后面。所以在入队时记下编号，真正执行前对不上就丢弃——
+     * 被丢的那一行由下一次点击或 30 秒轮询重新校准，代价远小于标签停在错误状态。
+     */
+    @Volatile
+    private var calibrationGeneration = 0
 
     /** 安装 / 提取的传输进度（进度弹窗唯一数据源；空闲时为 inactive）。 */
     private val _transfer = MutableStateFlow(TransferProgress())
@@ -482,7 +517,7 @@ object DeviceAppRepository {
 
     private suspend fun executeSingle(action: AppAction, app: DeviceApp): ActionResult {
         if (action == AppAction.OPEN) {
-            return runCatching { NativeAdbService.startApp(app.packageName) }
+            val opened = runCatching { NativeAdbService.startApp(app.packageName) }
                 .fold(
                     onSuccess = { ActionResult.Success(action, app) },
                     onFailure = { error ->
@@ -497,6 +532,16 @@ object DeviceAppRepository {
                         )
                     },
                 )
+            // 打开成功后运行集合立刻变了：不重拉的话菜单里「强制停止」还是灰的、
+            // 行上也没有「运行中」，用户会以为刚打开的应用停不掉。
+            // 等一小会儿再拉：`am start` 返回时进程可能还没起来，立刻查会查到「没在跑」
+            if (opened is ActionResult.Success) {
+                scope.launch {
+                    delay(OPEN_RUNNING_REFRESH_DELAY_MS)
+                    refreshRunningNow(awaitLock = true)
+                }
+            }
+            return opened
         }
         val command = AppCommands.command(action, app.packageName)
             ?: return ActionResult.Failure(action, app, AppManagerError.Device("unsupported action"))
@@ -528,15 +573,27 @@ object DeviceAppRepository {
             ListEffect.REMOVE_ROW -> {
                 removeApp(app.packageName)
                 cache.removePackage(deviceKey ?: UNKNOWN_DEVICE, app.packageName)
+                _runningPackages.value = _runningPackages.value?.minus(app.packageName)
                 removePending(app.packageName)
             }
 
             ListEffect.FLIP_ENABLED -> {
                 flipEnabled(app.packageName)
-                // 停用/启用：本地即时翻状态，再由一次列表刷新对齐设备真值。
+                // 启用 / 停用：本地即时翻状态，再由一次列表刷新对齐设备真值。
+                // 停用后行必须留在列表里显示「已停用」——摘行会让应用凭空消失，
+                // 用户以为被卸载了（真卸载是 REMOVE_ROW，走的是另一条路）。
                 // 在途标记必须在这里就摘掉：否则行尾转圈永不消失，该行也无法点击/长按
                 removePending(app.packageName)
                 refresh()
+            }
+
+            ListEffect.REFRESH_RUNNING -> {
+                removePending(app.packageName)
+                // 只重拉运行集合（一次 ps -A），不动整份应用清单：
+                // 标签按重拉结果走，重拉失败则沿用旧集合。
+                // 只有强制停止才把该包从旧集合里摘掉：打开应用时重拉失败说明「不知道」，
+                // 不能顺手把它标成「没在跑」
+                refreshRunning(app.packageName.takeIf { action == AppAction.FORCE_STOP })
             }
 
             ListEffect.NONE -> {
@@ -1686,8 +1743,210 @@ object DeviceAppRepository {
         }
     }
 
+    /**
+     * 只重拉运行集合（一次 `ps -A`），不动整份应用清单。
+     *
+     * 强制停止后用它定标签：命令没有回显可判，只能以重拉结果为准。
+     * - 重拉成功：完全按重拉结果走。系统可能立刻把应用拉回来，那就继续显示「运行中」——
+     *   谎报「已停止」比看起来没生效更糟。
+     * - 重拉失败：沿用旧集合，只把 [stoppedPackage] 摘掉。命令确实下发成功了，标签还挂着
+     *   「运行中」是明确的错；其余包的状态没有新信息，不动。
+     */
+    private fun refreshRunning(stoppedPackage: String? = null) {
+        scope.launch {
+            // 强制停止与打开是同一机理的两端：`am force-stop` 返回时进程未必已经退出，
+            // 立刻查会查到「还在跑」，标签看起来没生效。等一小会儿再拉，两个方向都用同一个
+            // 常量；不带 stoppedPackage 的调用（定时刷新）不需要等待，直接查。
+            if (stoppedPackage != null) {
+                // 先作废排队中的校准：它们读的是停止之前的状态，跑完也只会写回过时结果
+                calibrationGeneration++
+                delay(OPEN_RUNNING_REFRESH_DELAY_MS)
+            }
+            refreshRunningNow(stoppedPackage, awaitLock = stoppedPackage != null)
+        }
+    }
+
+    /**
+     * 重拉一次运行集合并写回，供强制停止 / 打开 / 定时刷新共用。
+     *
+     * [stoppedPackage] 只在「刚下发了停止命令」时传：重拉失败时把该包从旧集合里摘掉。
+     * 打开应用与定时刷新没有这层信息，读不到就只能维持「未知」。
+     *
+     * 读不出来时**保留上一次快照**，与 [loadInner] 的「退回 null」是两个方向，取舍在此：
+     * 轮询每 30 秒就会再来一次，偶尔一次读不到不该让整表角标消失、把全部强制停止重新点亮
+     * （用户会以为应用都没在跑了）；而一次完整加载读不到，说明这台设备此刻确实说不清，
+     * 退回「未知」比沿用一份可能已经过时很久的快照更诚实。代价是 `ps -A` 长期失败的 ROM
+     * 上，轮询路径的角标会停在最后一次成功的快照上——它至少是这台设备真实读到过的结果。
+     */
+    private suspend fun refreshRunningNow(
+        stoppedPackage: String? = null,
+        awaitLock: Boolean = false,
+    ) {
+        // 在途守卫：轮询每 30 秒会再来一次，点行校准又会各来一次；没有守卫时前一次还没
+        // 返回就又压一条 `ps -A`，弱网下会一路排队拖住后面的列表加载。
+        // 已有在途请求时直接跳过——它的结果与这次要的结果同源，等它写回即可。
+        // 例外是刚下发完动作的这一次（awaitLock）：在途那条读的可能正是动作生效之前的状态，
+        // 丢掉它会让「运行中」标签一直挂到下一次轮询，所以这里排队等它跑完再读。
+        if (awaitLock) {
+            runningQueryMutex.withLock { queryAndCommitRunning(stoppedPackage) }
+            return
+        }
+        if (!runningQueryMutex.tryLock()) {
+            Log.d(TAG, "refreshRunning: a running-state query is already in flight")
+            return
+        }
+        try {
+            queryAndCommitRunning(stoppedPackage)
+        } finally {
+            runningQueryMutex.unlock()
+        }
+    }
+
+    /** [refreshRunningNow] 的实际读 + 写；调用方负责持有 [runningQueryMutex]。 */
+    private suspend fun queryAndCommitRunning(stoppedPackage: String?) {
+        val key = deviceKey
+        when (val snapshot = probeClient.runningPackages()) {
+            is AppProbeClient.RunningSnapshot.Known -> {
+                if (key == deviceKey) _runningPackages.value = snapshot.packages
+            }
+
+            is AppProbeClient.RunningSnapshot.Unknown -> {
+                Log.w(
+                    TAG,
+                    "refreshRunning: unavailable (${snapshot.failure}): ${snapshot.detail}",
+                )
+                if (key == deviceKey && stoppedPackage != null) {
+                    _runningPackages.value = _runningPackages.value?.minus(stoppedPackage)
+                }
+            }
+        }
+    }
+
+    /**
+     * 重拉运行状态（公开入口，供页面定时刷新用）。
+     *
+     * 与 [refresh] 不同：只跑一次 `ps -A`，不碰应用清单，代价小到可以每 30 秒跑一次。
+     */
+    fun refreshRunningState() {
+        scope.launch { refreshRunningNow() }
+    }
+
+    /**
+     * 只校准**一个**应用的状态（运行态 + 启用态），供「点开某个应用 / 多选勾上某个应用」时用。
+     *
+     * 三点约定：
+     * - 不阻塞调用方：菜单、勾选立刻生效，读到结果再就地更新那一行与菜单里的可用性；
+     * - 只改这一个包：其余行的角标保持原样，列表不会因为一次点击整体闪一遍；
+     * - 运行集合原本未知（null）时整份采用新结果：只塞一个包会让其余包从「不知道」变成
+     *   「没在跑」，把全列表的强制停止一起置灰。
+     */
+    fun refreshAppState(packageName: String) {
+        val generation = calibrationGeneration
+        val accepted = synchronized(calibrationLock) {
+            when {
+                // 同一个包已经在校准中：再排一次只会拿到同一份结果
+                packageName in calibratingPackages -> false
+                pendingCalibrations >= MAX_PENDING_CALIBRATIONS -> false
+                else -> {
+                    calibratingPackages += packageName
+                    pendingCalibrations++
+                    true
+                }
+            }
+        }
+        if (!accepted) {
+            Log.d(TAG, "refreshAppState: skip $packageName (already queued or queue full)")
+            return
+        }
+        scope.launch {
+            try {
+                refreshAppStateNow(packageName, generation)
+            } finally {
+                synchronized(calibrationLock) {
+                    calibratingPackages -= packageName
+                    pendingCalibrations--
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshAppStateNow(packageName: String, generation: Int) {
+        // 排队期间刚下发过停止命令：这次校准读的是停止之前的状态，跑完只会写回过时结果
+        if (generation != calibrationGeneration) {
+            Log.d(TAG, "refreshAppState: drop $packageName (superseded by a stop refresh)")
+            return
+        }
+        // 这里是用户明确要求「点哪个刷哪个」：在途的查询可能是动作生效前发出的，跳过就等于
+        // 这次点击没生效。排队等它跑完再查一次——调用方是独立协程，等锁不会卡住菜单与勾选。
+        runningQueryMutex.withLock {
+            // 等锁期间时代可能又变了，持锁后再判一次
+            if (generation != calibrationGeneration) {
+                Log.d(TAG, "refreshAppState: drop $packageName after wait (superseded)")
+                return
+            }
+            refreshAppStateLocked(packageName)
+        }
+    }
+
+    /** [refreshAppStateNow] 的实际读 + 写；调用方负责持有 [runningQueryMutex]。 */
+    private suspend fun refreshAppStateLocked(packageName: String) {
+        val key = deviceKey
+        val running = probeClient.runningPackages()
+        val disabled = probeClient.disabledPackagesOrNull()
+        // 两次 ADB 调用之间可能切了设备：旧设备的结果不能写进新设备的列表
+        if (key != deviceKey) return
+        when (running) {
+            is AppProbeClient.RunningSnapshot.Known -> {
+                val known = running.packages
+                _runningPackages.value = when (val current = _runningPackages.value) {
+                    null -> known
+                    else -> if (packageName in known) current + packageName else current - packageName
+                }
+            }
+
+            is AppProbeClient.RunningSnapshot.Unknown -> {
+                Log.w(
+                    TAG,
+                    "refreshAppState: running unavailable (${running.failure}): ${running.detail}",
+                )
+            }
+        }
+        if (disabled == null) {
+            // 读不到就维持原样：把读失败当成「没被停用」会让已停用的应用显示成可打开
+            Log.w(TAG, "refreshAppState: disabled state unavailable")
+            return
+        }
+        val enabled = packageName !in disabled
+        _apps.value = _apps.value.map { app ->
+            if (app.packageName == packageName && app.isEnabled != enabled) {
+                app.copy(isEnabled = enabled)
+            } else {
+                app
+            }
+        }
+    }
+
     private const val UNKNOWN_DEVICE = "unknown"
     private const val TAG = "DeviceAppRepository"
+
+    /**
+     * 打开应用后等多久再重拉运行集合。
+     *
+     * `am start` 返回只代表 ActivityManager 收下了启动请求，进程起来还要几十到几百毫秒；
+     * 立刻查 `ps -A` 往往查不到，标签会「闪一下没有」。800ms 覆盖冷启动的常规情况，
+     * 又短到用户点完菜单回头看一眼时标签已经在。
+     */
+    private const val OPEN_RUNNING_REFRESH_DELAY_MS = 800L
+
+    /**
+     * 单包校准允许排队的条数上限。
+     *
+     * 每条校准两条 ADB 命令，弱网下单条最多 8 秒；三个在排队足以覆盖正常的多选节奏，
+     * 再多就会把【强制停止】之后的定向重拉挤到后面，标签迟迟不消失。
+     * 停止后排队中的校准还会被 [calibrationGeneration] 作废，所以定向重拉实际最多只等
+     * 一条已经在跑的校准，而不是整条队列。
+     */
+    private const val MAX_PENDING_CALIBRATIONS = 3
 
     /**
      * 加载看门狗时长。
