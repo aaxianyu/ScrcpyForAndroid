@@ -201,4 +201,64 @@ class AppOrderingTest {
     fun `empty list produces no sections`() {
         assertEquals(emptyList<AppSection>(), AppOrdering.groupBySection(emptyList()))
     }
+
+    @Test
+    fun `visible apps filter by group only when hidden disabled is off`() {
+        val input = listOf(
+            app("u.on", "User On"),
+            app("u.off", "User Off", isEnabled = false),
+            app("s.on", "System On", isSystem = true),
+            app("s.off", "System Off", isSystem = true, isEnabled = false),
+        )
+        assertEquals(
+            listOf("u.on", "u.off"),
+            AppOrdering.visibleApps(input, systemGroup = false, hideDisabled = false)
+                .map { it.packageName },
+        )
+        assertEquals(
+            listOf("s.on", "s.off"),
+            AppOrdering.visibleApps(input, systemGroup = true, hideDisabled = false)
+                .map { it.packageName },
+        )
+    }
+
+    @Test
+    fun `visible apps drop disabled entries when hidden disabled is on`() {
+        val input = listOf(
+            app("u.on", "User On"),
+            app("u.off", "User Off", isEnabled = false),
+            app("s.on", "System On", isSystem = true),
+            app("s.off", "System Off", isSystem = true, isEnabled = false),
+        )
+        assertEquals(
+            listOf("u.on"),
+            AppOrdering.visibleApps(input, systemGroup = false, hideDisabled = true)
+                .map { it.packageName },
+        )
+        assertEquals(
+            listOf("s.on"),
+            AppOrdering.visibleApps(input, systemGroup = true, hideDisabled = true)
+                .map { it.packageName },
+        )
+    }
+
+    @Test
+    fun `visible apps section table shrinks with the filtered list`() {
+        // 隐藏已停用后整节被清空时，节表必须跟着变短：列表与快速滚动滑块
+        // 都从 visibleApps 派生，两边下标才能对齐
+        val input = listOf(
+            app("a.only", "Apple", isEnabled = false),
+            app("b.one", "Bravo"),
+        )
+        val shown = AppOrdering.visibleApps(input, systemGroup = false, hideDisabled = true)
+        val sections = AppOrdering.groupBySection(shown)
+        assertEquals(listOf("B"), sections.map { it.letter })
+        // 单节单行 = 字母头 1 + 行 1 + 节末间隔 1
+        assertEquals(3, AppOrdering.layoutOf(sections).last().endIndex)
+        // 未过滤时是两节，endIndex 更大：两边不同源就会让滑块按更长的表换算
+        val all = AppOrdering.groupBySection(
+            AppOrdering.visibleApps(input, systemGroup = false, hideDisabled = false),
+        )
+        assertEquals(6, AppOrdering.layoutOf(all).last().endIndex)
+    }
 }

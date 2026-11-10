@@ -68,4 +68,4 @@ internal fun Set<String>?.isRunning(packageName: String): Boolean =
 internal fun Set<String>?.runningOrNull(packageName: String): Boolean? =
     this?.contains(packageName)
 
-enum class AppListContent { List, Loading, NotConnected, Error, Empty }
+enum class AppListContent { List, Loading, NotConnected, Error, Empty, FilteredEmpty }

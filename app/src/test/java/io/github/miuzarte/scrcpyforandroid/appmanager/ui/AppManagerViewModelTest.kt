@@ -8,7 +8,11 @@ import org.junit.Test
 class AppManagerViewModelTest {
 
     private fun newVm(): AppManagerViewModel =
-        AppManagerViewModel(initialHideVersion = false, initialHideApkSize = false)
+        AppManagerViewModel(
+            initialHideVersion = false,
+            initialHideApkSize = false,
+            initialHideDisabled = false,
+        )
 
     @Test
     fun clearLocalSelection_onlyClearsSelection_keepsQueryAndBatch() {

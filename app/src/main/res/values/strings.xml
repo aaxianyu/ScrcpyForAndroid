@@ -857,6 +857,9 @@
     <string name="app_manager_version_format">v%s</string>
     <string name="app_manager_disabled">Disabled</string>
     <string name="app_manager_running">Running</string>
+    <string name="app_manager_hide_disabled">Hide disabled apps</string>
+    <string name="app_manager_no_visible_apps">No apps to show</string>
+    <string name="app_manager_no_visible_apps_subtitle">Check the filters, or pull down to refresh</string>
     <string name="app_manager_running_state_unavailable">Cannot read the running state</string>
     <string name="app_manager_load_failed">Failed to load. Pull down to retry</string>
     <string name="app_manager_search_hint">Search apps</string>

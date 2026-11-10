@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.isRunning
+import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppOrdering
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppSearch
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
@@ -88,6 +89,8 @@ fun SearchOverlay(
     onExitFinished: () -> Unit,
     onAppClick: (DeviceApp) -> Unit,
     modifier: Modifier = Modifier,
+    /** 隐藏已停用应用：与列表口径一致，被隐藏的应用也不该被搜到 */
+    hideDisabled: Boolean = false,
     /** 运行中包名集合；null = 运行态未知（不显示「运行中」角标） */
     runningPackages: Set<String>? = null,
 ) {
@@ -118,7 +121,10 @@ fun SearchOverlay(
 
     if (!rendered) return
 
-    val results = remember(apps, query) { AppSearch.filter(apps, query) }
+    // 过滤口径与列表页一致：隐藏已停用时，被隐藏的应用也搜不到
+    val results = remember(apps, query, hideDisabled) {
+        AppSearch.filter(apps.filter { AppOrdering.isVisible(it, hideDisabled) }, query)
+    }
     Box(
         modifier = modifier
             .fillMaxSize()

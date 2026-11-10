@@ -64,6 +64,8 @@ fun AppManagerListPage(
     selectedPackages: Set<String>,
     showVersion: Boolean,
     showApkSize: Boolean,
+    /** 隐藏已停用应用：过滤掉 `isEnabled = false` 的行 */
+    hideDisabled: Boolean,
     animationsDisabled: Boolean,
     scrollBehavior: ScrollBehavior,
     listState: LazyListState,
@@ -77,17 +79,33 @@ fun AppManagerListPage(
     onListTouch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val groupApps by remember(apps, isSystemGroup) {
+    // 本分组里的全部应用（只按用户/系统分组），用于区分「真的没有应用」与「被筛选隐藏光了」
+    val groupAll by remember(apps, isSystemGroup) {
         derivedStateOf { apps.filter { it.isSystem == isSystemGroup } }
     }
+    // 可见行必须与快速滚动滑块同源（都走 AppOrdering.visibleApps）：两张节表一旦不同长，
+    // item 下标就整体错位，拖过字母头时列表会来回跳。
+    val groupApps by remember(apps, isSystemGroup, hideDisabled) {
+        derivedStateOf { AppOrdering.visibleApps(apps, isSystemGroup, hideDisabled) }
+    }
     val sections = remember(groupApps) { AppOrdering.groupBySection(groupApps) }
-    val content by remember(groupApps, uiState.isLoading, uiState.notConnected, uiState.error) {
+    val content by remember(
+        groupApps,
+        groupAll,
+        hideDisabled,
+        uiState.isLoading,
+        uiState.notConnected,
+        uiState.error,
+    ) {
         derivedStateOf {
             when {
                 groupApps.isNotEmpty() -> AppListContent.List
                 uiState.notConnected -> AppListContent.NotConnected
                 uiState.isLoading -> AppListContent.Loading
                 uiState.error != null -> AppListContent.Error
+                // 本分组本来有应用、只是全被「隐藏已停用」滤掉了：空态要说清是筛选的结果，
+                // 否则用户会以为应用列表丢了
+                groupAll.isNotEmpty() && hideDisabled -> AppListContent.FilteredEmpty
                 else -> AppListContent.Empty
             }
         }
@@ -151,6 +169,15 @@ fun AppManagerListPage(
                     EmptyState(
                         title = stringResource(R.string.app_manager_no_apps),
                         subtitle = stringResource(R.string.app_manager_no_apps_subtitle),
+                        actionLabel = null,
+                        onAction = null,
+                    )
+                }
+
+                AppListContent.FilteredEmpty -> CenteredState {
+                    EmptyState(
+                        title = stringResource(R.string.app_manager_no_visible_apps),
+                        subtitle = stringResource(R.string.app_manager_no_visible_apps_subtitle),
                         actionLabel = null,
                         onAction = null,
                     )

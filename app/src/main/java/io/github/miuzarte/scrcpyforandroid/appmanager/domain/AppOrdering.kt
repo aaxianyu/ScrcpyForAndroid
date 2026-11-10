@@ -95,6 +95,27 @@ object AppOrdering {
         return key.primary.uppercaseChar().toString()
     }
 
+    /**
+     * 某一页要显示的可见应用：先按用户/系统分页，再按「隐藏已停用应用」过滤。
+     *
+     * **列表与快速滚动滑块必须都从这里取**：滑块把滚动位置换算成 item 下标，靠的是一张
+     * 由节表算出来的前缀和；两边喂进不同的列表就会得到两张长度不同的节表，下标整体错位，
+     * 拖过字母头时列表来回跳。筛选口径只写这一份，两处调用才不会各算各的。
+     */
+    fun visibleApps(
+        apps: List<DeviceApp>,
+        systemGroup: Boolean,
+        hideDisabled: Boolean,
+    ): List<DeviceApp> = apps.filter { isVisible(it, hideDisabled) && it.isSystem == systemGroup }
+
+    /**
+     * 单个应用是否该出现在「隐藏已停用应用」生效时的列表里。
+     *
+     * 不含分页判断：调用方自己要按用户/系统分页的，就把分页条件和它组合起来
+     * （见 [visibleApps] 与批量全选）。谓词只写这一份，免得几处各写一遍、改的时候漏掉一处。
+     */
+    fun isVisible(app: DeviceApp, hideDisabled: Boolean): Boolean = !hideDisabled || app.isEnabled
+
     fun groupBySection(apps: List<DeviceApp>): List<AppSection> {
         val sortedApps = sorted(apps)
         if (sortedApps.isEmpty()) return emptyList()

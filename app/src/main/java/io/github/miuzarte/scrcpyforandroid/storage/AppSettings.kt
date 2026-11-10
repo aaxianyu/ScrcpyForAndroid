@@ -162,6 +162,10 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
             booleanPreferencesKey("app_manager_hide_apk_size"),
             false,
         )
+        val APP_MANAGER_HIDE_DISABLED = Pair(
+            booleanPreferencesKey("app_manager_hide_disabled"),
+            false,
+        )
 
         // Scrcpy
         val LOW_LATENCY = Pair(
@@ -521,6 +525,8 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         val bookmarkAutoEnter: Boolean = false,
         val snackbarDurationMs: Int = 4000,
         val keepAlive: Boolean = false,
+        /** 应用管理：隐藏已停用应用（默认关闭，只在应用管理页生效） */
+        val appManagerHideDisabled: Boolean = false,
     ): Parcelable {
     }
 
@@ -606,6 +612,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         bundleField(MIUI_EXPAND_ANIMATION_ENABLED) { it.miuiExpandAnimationEnabled },
         bundleField(APP_MANAGER_HIDE_VERSION) { it.appManagerHideVersion },
         bundleField(APP_MANAGER_HIDE_APK_SIZE) { it.appManagerHideApkSize },
+        bundleField(APP_MANAGER_HIDE_DISABLED) { it.appManagerHideDisabled },
         // 收藏不放进整包字段：两个页面各持整包副本 + 防抖保存，一旦放进列表，旧副本在保存
         // 别的设置时会把收藏回滚。收藏的写入只走 toggleFavoriteApp（DataStore 当前值读改写）
     )
@@ -697,6 +704,7 @@ class AppSettings(context: Context): Settings(context, "AppSettings") {
         miuiExpandAnimationEnabled = preferences.read(MIUI_EXPAND_ANIMATION_ENABLED),
         appManagerHideVersion = preferences.read(APP_MANAGER_HIDE_VERSION),
         appManagerHideApkSize = preferences.read(APP_MANAGER_HIDE_APK_SIZE),
+        appManagerHideDisabled = preferences.read(APP_MANAGER_HIDE_DISABLED),
         favoriteApps = preferences.read(FAVORITE_APPS),
     )
 

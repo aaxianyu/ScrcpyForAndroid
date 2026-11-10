@@ -176,6 +176,7 @@ internal fun AppManagerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val hideVersion by viewModel.hideVersion.collectAsState()
     val hideApkSize by viewModel.hideApkSize.collectAsState()
+    val hideDisabled by viewModel.hideDisabled.collectAsState()
 
     // 顶栏按钮的可用性跟列表可见性对齐：缓存里已有清单时即使探针报未连接，用户看得见
     // 列表就应该能搜索 / 筛选 / 安装。
@@ -957,6 +958,7 @@ internal fun AppManagerScreen(
                             selectedPackages = selected.toSet(),
                             showVersion = !hideVersion,
                             showApkSize = !hideApkSize,
+                            hideDisabled = hideDisabled,
                             animationsDisabled = animationsDisabled,
                             scrollBehavior = scrollBehavior,
                             listState = if (page == 0) userListState else systemListState,
@@ -1076,8 +1078,12 @@ internal fun AppManagerScreen(
                                 if (batchMode) {
                                     // 多选态：搜索 / 显示选项 / 安装三个动作整体退场，只留「全选 / 取消全选」。
                                     // 之前是 enabled = false 置灰——按钮仍占位，看起来像坏掉的控件。
-                                    // 作用域取当前分页组（用户 / 系统）的可见项，不会波及另一页。
-                                    val groupApps = uiState.apps.filter { it.isSystem == (pagerState.currentPage == 1) }
+                                    // 作用域取当前分页组（用户 / 系统）的**可见项**，不会波及另一页。
+                                    // 隐藏已停用时被滤掉的行不在屏幕上，全选不能把它们也勾上（所见即所选）
+                                    val groupApps = uiState.apps.filter {
+                                        it.isSystem == (pagerState.currentPage == 1) &&
+                                            AppOrdering.isVisible(it, hideDisabled)
+                                    }
                                     val allGroupSelected =
                                         groupApps.isNotEmpty() && groupApps.all { it.packageName in selected }
                                     MaskedTopBarAction(
@@ -1144,6 +1150,9 @@ internal fun AppManagerScreen(
                                             onToggleHideVersion = viewModel::toggleHideVersion,
                                             onToggleHideApkSize = viewModel::toggleHideApkSize,
                                             onDismissRequest = { displayOptionsOpen = false },
+                                            hideDisabled = hideDisabled,
+                                            onToggleHideDisabled = viewModel::toggleHideDisabled,
+                                            showHideDisabled = true,
                                         )
                                     }
                                     MaskedTopBarAction(
@@ -1174,7 +1183,11 @@ internal fun AppManagerScreen(
                 // 活动范围由本处 padding 给出（顶栏之下 8dp、底栏之上）；组件自身不叠加安全区，以避免双重偏移。
                 // 映射表随节表走：节下标 ↔ item 下标由 AppOrdering 的约定精确换算，
                 // 不从布局反推（见 FastScroller 位置模型注释）
-                val currentGroupApps = uiState.apps.filter { it.isSystem == (pagerState.currentPage == 1) }
+                val currentGroupApps = AppOrdering.visibleApps(
+                    apps = uiState.apps,
+                    systemGroup = pagerState.currentPage == 1,
+                    hideDisabled = hideDisabled,
+                )
                 val sections = remember(currentGroupApps) { AppOrdering.groupBySection(currentGroupApps) }
                 // 滑块底距 = 底栏高度 + 8dp（与顶栏距离一致，不贴底）
                 val scrollerBottomInset = (if (floatingForm) 92.dp else 64.dp) + 8.dp
@@ -1264,6 +1277,7 @@ internal fun AppManagerScreen(
                 apps = uiState.apps,
                 showVersion = !hideVersion,
                 showApkSize = !hideApkSize,
+                hideDisabled = hideDisabled,
                 runningPackages = uiState.runningPackages,
                 pendingPackages = actionUiState.pendingPackages,
                 iconProvider = { packageName -> DeviceAppRepository.icon(packageName) },

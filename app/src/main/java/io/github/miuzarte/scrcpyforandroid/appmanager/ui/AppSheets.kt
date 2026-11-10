@@ -108,9 +108,12 @@ fun InstallSourceSheet(
 }
 
 /**
- * 显示选项：下拉偏好浮层，两个可勾选项。
+ * 显示选项：下拉偏好浮层，可勾选项。
  *
  * `collapseOnSelection = false`：点击不收起、可连续勾选。
+ *
+ * 第三项「隐藏已停用应用」只对应用管理页有意义（本机应用选择器没有启用/停用概念），
+ * 由 [showHideDisabled] 控制；默认关闭，本机选择器不传即不受影响。
  */
 @Composable
 fun DisplayOptionsMenu(
@@ -122,6 +125,9 @@ fun DisplayOptionsMenu(
     onDismissRequest: () -> Unit,
     hideVersionLabelResId: Int = R.string.app_manager_hide_version,
     showHideApkSize: Boolean = true,
+    hideDisabled: Boolean = false,
+    onToggleHideDisabled: () -> Unit = {},
+    showHideDisabled: Boolean = false,
 ) {
     val entry = DropdownEntry(
         items = buildList {
@@ -138,6 +144,15 @@ fun DisplayOptionsMenu(
                         text = stringResource(R.string.app_manager_hide_apk_size),
                         selected = hideApkSize,
                         onClick = onToggleHideApkSize,
+                    ),
+                )
+            }
+            if (showHideDisabled) {
+                add(
+                    DropdownItem(
+                        text = stringResource(R.string.app_manager_hide_disabled),
+                        selected = hideDisabled,
+                        onClick = onToggleHideDisabled,
                     ),
                 )
             }

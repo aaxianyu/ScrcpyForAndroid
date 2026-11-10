@@ -856,6 +856,9 @@
     <string name="app_manager_version_format">v%s</string>
     <string name="app_manager_disabled">已停用</string>
     <string name="app_manager_running">运行中</string>
+    <string name="app_manager_hide_disabled">隐藏已停用应用</string>
+    <string name="app_manager_no_visible_apps">没有可显示的应用</string>
+    <string name="app_manager_no_visible_apps_subtitle">检查筛选条件，或下拉刷新</string>
     <string name="app_manager_running_state_unavailable">无法获取运行状态</string>
     <string name="app_manager_load_failed">加载失败，请下拉刷新重试</string>
     <string name="app_manager_search_hint">搜索应用</string>

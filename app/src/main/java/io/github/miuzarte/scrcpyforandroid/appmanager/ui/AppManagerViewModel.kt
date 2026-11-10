@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
 class AppManagerViewModel(
     private val initialHideVersion: Boolean = Storage.appSettings.bundleState.value.appManagerHideVersion,
     private val initialHideApkSize: Boolean = Storage.appSettings.bundleState.value.appManagerHideApkSize,
+    private val initialHideDisabled: Boolean = Storage.appSettings.bundleState.value.appManagerHideDisabled,
 ) : ViewModel() {
 
     val uiState: StateFlow<AppListUiState> = DeviceAppRepository.uiState
@@ -45,11 +46,16 @@ class AppManagerViewModel(
     private val _hideApkSize = MutableStateFlow(false)
     val hideApkSize: StateFlow<Boolean> = _hideApkSize.asStateFlow()
 
+    /** 隐藏已停用应用：只影响应用管理页列表与搜索结果，本机选择器不显示该开关。 */
+    private val _hideDisabled = MutableStateFlow(false)
+    val hideDisabled: StateFlow<Boolean> = _hideDisabled.asStateFlow()
+
     private var prefsSaveJob: Job? = null
 
     init {
         _hideVersion.value = initialHideVersion
         _hideApkSize.value = initialHideApkSize
+        _hideDisabled.value = initialHideDisabled
     }
 
     fun toggleHideVersion() {
@@ -62,6 +68,11 @@ class AppManagerViewModel(
         schedulePrefsSave()
     }
 
+    fun toggleHideDisabled() {
+        _hideDisabled.value = !_hideDisabled.value
+        schedulePrefsSave()
+    }
+
     private fun schedulePrefsSave() {
         prefsSaveJob?.cancel()
         prefsSaveJob = viewModelScope.launch {
@@ -70,6 +81,7 @@ class AppManagerViewModel(
                 it.copy(
                     appManagerHideVersion = _hideVersion.value,
                     appManagerHideApkSize = _hideApkSize.value,
+                    appManagerHideDisabled = _hideDisabled.value,
                 )
             }
         }
