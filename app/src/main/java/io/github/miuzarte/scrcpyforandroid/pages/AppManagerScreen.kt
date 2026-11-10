@@ -1229,6 +1229,7 @@ internal fun AppManagerScreen(
                 apps = uiState.apps,
                 showVersion = !hideVersion,
                 showApkSize = !hideApkSize,
+                runningPackages = uiState.runningPackages,
                 pendingPackages = actionUiState.pendingPackages,
                 iconProvider = { packageName -> DeviceAppRepository.icon(packageName) },
                 iconEpoch = uiState.iconEpoch,

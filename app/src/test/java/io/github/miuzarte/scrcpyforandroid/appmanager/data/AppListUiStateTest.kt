@@ -44,4 +44,34 @@ class AppListUiStateTest {
         assertTrue(state.isPending("com.a"))
         assertEquals(true, state.busy)
     }
+
+    @Test
+    fun `running state unknown means nothing is running`() {
+        // runningPackages 默认 null = 这次没读到 ps -A：不显示「运行中」
+        val state = AppListUiState(apps = listOf(app))
+        assertEquals(null, state.runningPackages)
+        assertEquals(false, state.runningPackages.isRunning("com.a"))
+    }
+
+    @Test
+    fun `empty running set is not the same as unknown`() {
+        // 空集合 = 确实没有应用在跑（强制停止全部置灰），与 null 语义不同
+        val state = AppListUiState(apps = listOf(app), runningPackages = emptySet())
+        assertEquals(emptySet<String>(), state.runningPackages)
+        assertEquals(false, state.runningPackages.isRunning("com.a"))
+    }
+
+    @Test
+    fun `running package is reported`() {
+        val state = AppListUiState(apps = listOf(app), runningPackages = setOf("com.a"))
+        assertEquals(true, state.runningPackages.isRunning("com.a"))
+        assertEquals(false, state.runningPackages.isRunning("com.b"))
+    }
+
+    @Test
+    fun `filtered empty is decided by the list page not by content`() {
+        // content 只看数据层状态；「本组有应用但被隐藏已停用滤光」由列表页自己判定
+        val state = AppListUiState(apps = listOf(app.copy(isEnabled = false)))
+        assertEquals(AppListContent.List, state.content)
+    }
 }

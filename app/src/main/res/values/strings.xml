@@ -856,6 +856,9 @@
     <string name="app_manager_long_press_multi_select">Long press to enter multi-select</string>
     <string name="app_manager_version_format">v%s</string>
     <string name="app_manager_disabled">Disabled</string>
+    <string name="app_manager_running">Running</string>
+    <string name="app_manager_running_state_unavailable">Cannot read the running state</string>
+    <string name="app_manager_load_failed">Failed to load. Pull down to retry</string>
     <string name="app_manager_search_hint">Search apps</string>
     <string name="app_manager_search_empty_hint">Type an app name or package to search</string>
     <string name="app_manager_loading">Loading apps…</string>

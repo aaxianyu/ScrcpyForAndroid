@@ -33,6 +33,7 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppListContent
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppListUiState
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppManagerError
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.ProbePayloadParser
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.isRunning
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppOrdering
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppSection
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
@@ -160,6 +161,7 @@ fun AppManagerListPage(
                     batchMode = batchMode,
                     selectedPackages = selectedPackages,
                     pendingPackages = uiState.pendingPackages,
+                    runningPackages = uiState.runningPackages,
                     showVersion = showVersion,
                     showApkSize = showApkSize,
                     iconProvider = iconProvider,
@@ -183,6 +185,7 @@ private fun AppList(
     batchMode: Boolean,
     selectedPackages: Set<String>,
     pendingPackages: Set<String>,
+    runningPackages: Set<String>?,
     showVersion: Boolean,
     showApkSize: Boolean,
     iconProvider: (String) -> ImageBitmap?,
@@ -252,6 +255,8 @@ private fun AppList(
                         pending = app.packageName in pendingPackages,
                         iconProvider = iconProvider,
                         iconEpoch = iconEpoch,
+                        // 运行态未知（null）时一律 false：未知不当作运行中
+                        running = runningPackages.isRunning(app.packageName),
                         onClick = { onAppClick(app) },
                         onLongClick = { onAppLongClick(app) },
                         modifier = rowSurface(isFirst, isLast, colorScheme.surfaceContainer),

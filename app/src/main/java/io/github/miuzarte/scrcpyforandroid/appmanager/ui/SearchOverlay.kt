@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.isRunning
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppSearch
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
@@ -87,6 +88,8 @@ fun SearchOverlay(
     onExitFinished: () -> Unit,
     onAppClick: (DeviceApp) -> Unit,
     modifier: Modifier = Modifier,
+    /** 运行中包名集合；null = 运行态未知（不显示「运行中」角标） */
+    runningPackages: Set<String>? = null,
 ) {
     var rendered by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
@@ -180,6 +183,7 @@ fun SearchOverlay(
                     showVersion = showVersion,
                     showApkSize = showApkSize,
                     pendingPackages = pendingPackages,
+                    runningPackages = runningPackages,
                     iconProvider = iconProvider,
                     iconEpoch = iconEpoch,
                     onAppClick = onAppClick,
@@ -244,6 +248,7 @@ private fun SearchResults(
     showVersion: Boolean,
     showApkSize: Boolean,
     pendingPackages: Set<String>,
+    runningPackages: Set<String>?,
     iconProvider: (String) -> ImageBitmap?,
     iconEpoch: Int,
     onAppClick: (DeviceApp) -> Unit,
@@ -265,6 +270,8 @@ private fun SearchResults(
                     pending = app.packageName in pendingPackages,
                     iconProvider = iconProvider,
                     iconEpoch = iconEpoch,
+                    // 运行态未知（null）时一律 false：未知不当作运行中
+                    running = runningPackages.isRunning(app.packageName),
                     allowLongPress = false,
                     onClick = { onAppClick(app) },
                     onLongClick = {},

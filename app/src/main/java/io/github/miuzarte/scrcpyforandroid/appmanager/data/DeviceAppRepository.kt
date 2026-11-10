@@ -67,6 +67,27 @@ object DeviceAppRepository {
     /** 图标版本号：图标落盘后 +1，用于在列表内容没变时也推一次 UI 重组 */
     private val _iconEpoch = MutableStateFlow(0)
 
+    /**
+     * 有进程在跑的应用包名集合；null = 运行态未知（这次没读到 `ps -A`）。
+     *
+     * 与 [AppListUiState.runningPackages] 同义。四个写入来源：
+     * - 列表加载 / 下拉刷新（[loadInner]）；
+     * - 应用管理页停在前台时的 30 秒轮询（[refreshRunningState]）；
+     * - 点开某个应用 / 多选勾上某个应用时的单包校准（[refreshAppState]）；
+     * - 强制停止、打开之后的定向重拉（[refreshRunning]）。
+     */
+    private val _runningPackages = MutableStateFlow<Set<String>?>(null)
+
+    /**
+     * 上一次已经提示过的运行态读取失败原因。
+     *
+     * 读不出进程表的 ROM 每次进入页面 / 下拉刷新都会走到「未知」分支，逐次弹提示只会把界面
+     * 刷成噪声。同一原因在一次会话里只提示一次，换成别的原因（比如从「未连接」变成「输出
+     * 无法识别」）才再提示；读到一次正常结果后清空，下次失败重新提示。
+     */
+    @Volatile
+    private var warnedRunningFailure: AppProbeClient.RunningFailure? = null
+
     /** 安装 / 提取的传输进度（进度弹窗唯一数据源；空闲时为 inactive）。 */
     private val _transfer = MutableStateFlow(TransferProgress())
     val transfer: StateFlow<TransferProgress> = _transfer.asStateFlow()
@@ -119,9 +140,14 @@ object DeviceAppRepository {
         }
 
     val uiState: StateFlow<AppListUiState> =
-        combine(baseStateWithPending, _installing, _loadingLocalApps, _iconEpoch) {
-            state, installing, loadingLocal, iconEpoch ->
-            state.copy(installing = installing, loadingLocalApps = loadingLocal, iconEpoch = iconEpoch)
+        combine(baseStateWithPending, _installing, _loadingLocalApps, _iconEpoch, _runningPackages) {
+            state, installing, loadingLocal, iconEpoch, running ->
+            state.copy(
+                installing = installing,
+                loadingLocalApps = loadingLocal,
+                iconEpoch = iconEpoch,
+                runningPackages = running,
+            )
         }.stateIn(scope, SharingStarted.Eagerly, AppListUiState())
 
     // ---------------------------------------------------------------- 读取
@@ -153,6 +179,11 @@ object DeviceAppRepository {
             _error.value = null
             _notConnected.value = false
             _pendingPackages.value = emptySet()
+            // 运行集合是上一台设备的快照，切设备必须作废：留着会让新设备的列表按旧设备的
+            // 包名命中标签
+            _runningPackages.value = null
+            // 提示去重也跟着设备走：新设备第一次失败若与上一台原因相同，也该让用户看见
+            warnedRunningFailure = null
             // 切设备同时作废在途刷新：它拉的是上一台设备的清单，标志得立刻收掉——
             // 光等它跑完会让新设备的页面顶上上一台设备的刷新进度，而 ADB 通道排队时
             // 那可能是一整轮加载的时间。作废代次后它回来时不会碰这个标志
@@ -221,8 +252,12 @@ object DeviceAppRepository {
         val generation = ++refreshGeneration
         _refreshing.value = true
         scope.launch {
-            load(withCache = false)
-            if (generation == refreshGeneration) _refreshing.value = false
+            try {
+                load(withCache = false)
+            } finally {
+                // 加载无论正常收尾还是抛出，转圈都得停：代次判定保证只有最后一次刷新收标志
+                if (generation == refreshGeneration) _refreshing.value = false
+            }
         }
     }
 
@@ -266,8 +301,22 @@ object DeviceAppRepository {
         }
         try {
             loadInner(withCache, generation, key)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Throwable) {
+            // 加载链路上没料到的异常不能静默吞掉：吞掉之后界面永远停在「正在加载」，
+            // 下拉刷新也停在转圈，而且没有任何提示
+            Log.w(TAG, "load: unexpected failure", error)
+            if (commitKey(generation, loadGeneration, key, deviceKey) != null) {
+                _error.value = AppManagerError.Device(
+                    AppRuntime.stringResource(R.string.app_manager_load_failed),
+                )
+            }
         } finally {
             watchdog.cancel()
+            // 正常路径在 [loadInner] 末尾收标志，异常与提前返回时由这里兜底；
+            // 仍然只让最新代次收，免得抢走后来那次加载的转圈
+            if (generation == loadGeneration) _loading.value = false
         }
     }
 
@@ -306,6 +355,13 @@ object DeviceAppRepository {
                     Log.d(TAG, "load: drop stale result before commit gen=$generation")
                     return
                 }
+                // 运行集合与已停用集合同一个位置取：都是「列表之外的一次附加查询」，
+                // 失败不影响列表本身。读不出来时置 null（未知），由界面决定「强制停止仍可点」
+                val running = probeClient.runningPackages()
+                if (commitKey(generation, loadGeneration, key, deviceKey) == null) {
+                    Log.d(TAG, "load: drop stale result before running commit gen=$generation")
+                    return
+                }
                 val merged = result.apps.map { app ->
                     if (app.packageName in disabled) app.copy(isEnabled = false) else app
                 }
@@ -320,6 +376,26 @@ object DeviceAppRepository {
                     return
                 }
                 _apps.value = sorted
+                when (running) {
+                    is AppProbeClient.RunningSnapshot.Known -> {
+                        _runningPackages.value = running.packages
+                        warnedRunningFailure = null
+                    }
+
+                    is AppProbeClient.RunningSnapshot.Unknown -> {
+                        // 未知就退回 null：界面据此不显示「运行中」标签、也不据此置灰强制停止
+                        _runningPackages.value = null
+                        // 命令原文与英文异常名只进日志：提示里给固定措辞，用户看到的始终是中文
+                        Log.w(
+                            TAG,
+                            "load: running state unavailable (${running.failure}): ${running.detail}",
+                        )
+                        if (warnedRunningFailure != running.failure) {
+                            warnedRunningFailure = running.failure
+                            AppRuntime.snackbar(R.string.app_manager_running_state_unavailable)
+                        }
+                    }
+                }
                 // 图标预热：滑动中新入视口的行不必在主线程解码（只预热磁盘上已有的）
                 warmIcons(key, sorted.map { it.packageName })
                 // 图标后台补齐：分块拉、逐块落盘 + 版本号刷新，四五百个应用也能逐块见到图标

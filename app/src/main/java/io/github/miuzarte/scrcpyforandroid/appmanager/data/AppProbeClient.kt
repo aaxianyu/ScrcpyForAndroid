@@ -4,9 +4,11 @@ import android.content.Context
 import android.util.Log
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.InstallCommands
+import io.github.miuzarte.scrcpyforandroid.appmanager.domain.runningPackagesFromPs
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -131,7 +133,10 @@ class AppProbeClient(context: Context) {
                         }
                     },
                     onFailure = { error ->
-                        if (error is CancellationException) throw error
+                        // 探测自身的 30 秒超时也是 CancellationException 的子类，但它说明的是
+                        // 「这条命令没回来」，不是「这次加载被取消」：当成取消抛出去，调用方
+                        // 会把整次加载丢弃，界面落到「没有应用」而不是「加载失败」
+                        if (error is CancellationException && error !is TimeoutCancellationException) throw error
                         Log.w(TAG, "loadApps: channel error: ${error.javaClass.simpleName}: ${error.message}")
                         ProbeResult.Failed(
                             AdbErrors.classify(
@@ -148,18 +153,97 @@ class AppProbeClient(context: Context) {
         }
     }
 
-    /** 已停用应用集合：`pm list packages -d`。 */
-    suspend fun disabledPackages(): Set<String> = withContext(Dispatchers.IO) {
-        if (!NativeAdbService.isConnected()) return@withContext emptySet()
-        runCatching {
-            NativeAdbService.shell("pm list packages -d")
-                .lineSequence()
-                .map { it.trim() }
-                .filter { it.startsWith("package:") }
-                .map { it.removePrefix("package:") }
-                .filter { it.isNotEmpty() }
-                .toSet()
-        }.getOrElse { emptySet() }
+    /** 已停用应用集合：`pm list packages -d`；读不出来按「没有应用被停用」处理。 */
+    suspend fun disabledPackages(): Set<String> = disabledPackagesOrNull() ?: emptySet()
+
+    /**
+     * 已停用应用集合；读不出来时返回 **null**。
+     *
+     * 与 [disabledPackages] 的差别只在失败语义：加载整份清单时顺手覆盖启用态，读失败按空集
+     * 处理问题不大（下一次刷新会纠正）；而「点开某一个应用时校准它自己的状态」必须分清
+     * 「确实没被停用」和「这次没读到」——把读失败当成空集，会把已停用的应用显示成可用，
+     * 用户点下去才发现打不开。
+     */
+    suspend fun disabledPackagesOrNull(): Set<String>? = withContext(Dispatchers.IO) {
+        if (!NativeAdbService.isConnected()) return@withContext null
+        val output = runCatching {
+            NativeAdbService.shell("pm list packages -d", RUNNING_QUERY_TIMEOUT_MS)
+        }
+        val error = output.exceptionOrNull()
+        if (error != null) {
+            // 与 [runningPackages] 同一条规矩：超时算「这次没读到」，真正的取消继续上抛
+            if (error is CancellationException && error !is TimeoutCancellationException) throw error
+            Log.w(TAG, "disabledPackages: command failed: ${error.javaClass.simpleName}: ${error.message}")
+            return@withContext null
+        }
+        output.getOrThrow()
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("package:") }
+            .map { it.removePrefix("package:") }
+            .filter { it.isNotEmpty() }
+            .toSet()
+    }
+
+    /**
+     * 有进程在跑的应用包名集合；**读不出进程表时返回 [RunningSnapshot.Unknown]**（与
+     * [disabledPackages] 的「失败即空集」不同：这里空集代表「确实没应用在跑」，会把全部应用的
+     * 强制停止置灰）。
+     *
+     * 只跑一次 `ps -A`：进程表本身就带包名，不必再查 `pm list packages`——应用清单已经在
+     * 手上，这里只要「这些包里哪些有进程」。
+     *
+     * 带 [RUNNING_QUERY_TIMEOUT_MS] 上限：这条查询由页面轮询与点行校准反复触发，对端断流时
+     * 卡在阻塞读上唤不醒，没有上限就会一直占着 ADB 通道。
+     */
+    suspend fun runningPackages(): RunningSnapshot = withContext(Dispatchers.IO) {
+        if (!NativeAdbService.isConnected()) {
+            return@withContext RunningSnapshot.Unknown(RunningFailure.NotConnected)
+        }
+        val output = runCatching { NativeAdbService.shell("ps -A", RUNNING_QUERY_TIMEOUT_MS) }
+        val error = output.exceptionOrNull()
+        if (error != null) {
+            // 超时也是 CancellationException 的子类，但它说明的是「这条命令没回来」，不是
+            // 「调用方被取消」：当作取消抛出去会把整次加载连带作废，清单明明已经在手上。
+            // 只有真正的取消才继续上抛，让结构化并发照常收摊。
+            if (error is CancellationException && error !is TimeoutCancellationException) throw error
+            Log.w(TAG, "runningPackages: command failed: ${error.javaClass.simpleName}: ${error.message}")
+            return@withContext RunningSnapshot.Unknown(
+                RunningFailure.CommandFailed,
+                error.message ?: error.javaClass.simpleName,
+            )
+        }
+        val packages = runningPackagesFromPs(output.getOrThrow())
+            ?: return@withContext RunningSnapshot.Unknown(RunningFailure.UnrecognizedOutput)
+        RunningSnapshot.Known(packages)
+    }
+
+    /** 运行集合的一次读取结果；[Unknown] 与「空集合」语义不同，见 [runningPackages]。 */
+    sealed interface RunningSnapshot {
+        data class Known(val packages: Set<String>) : RunningSnapshot
+
+        /**
+         * 这次没读到。
+         *
+         * [failure] 决定界面上的固定措辞，[detail] 只进日志：命令原文与英文异常名不该出现在
+         * 用户看的中文提示里。
+         */
+        data class Unknown(
+            val failure: RunningFailure,
+            val detail: String? = null,
+        ) : RunningSnapshot
+    }
+
+    /** 运行集合读不出来的原因；界面据此给固定措辞，不含命令与异常原文。 */
+    enum class RunningFailure {
+        /** ADB 未连接 */
+        NotConnected,
+
+        /** `ps -A` 执行失败或超时 */
+        CommandFailed,
+
+        /** 输出不像进程表（表头缺 PID / NAME 列） */
+        UnrecognizedOutput,
     }
 
     private fun ensureLocalDex(): File {
@@ -189,6 +273,13 @@ class AppProbeClient(context: Context) {
         const val REMOTE_DIR = "/data/local/tmp"
         const val REMOTE_DEX_PATH = "$REMOTE_DIR/scrcpy_app_probe.dex"
         const val PROBE_TIMEOUT_MS = 30_000L
+
+        /**
+         * 运行态查询（`ps -A` / `pm list packages -d`）的单次时长上限。
+         *
+         * 正常几十毫秒；设上限是为了让断流时不至于把后续命令一起堵在通道里。
+         */
+        const val RUNNING_QUERY_TIMEOUT_MS = 8_000L
     }
 }
 

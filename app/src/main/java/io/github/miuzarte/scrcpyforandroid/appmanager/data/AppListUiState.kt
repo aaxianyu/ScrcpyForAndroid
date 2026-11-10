@@ -24,6 +24,13 @@ data class AppListUiState(
      * 不重组就永远读不到，界面一直停在占位图标。靠这个字段强制推一次状态变化。
      */
     val iconEpoch: Int = 0,
+    /**
+     * 有进程在跑的应用包名集合；**null = 运行态未知**（这次没读到 `ps -A`）。
+     *
+     * 未知与空集合必须分开：空集合表示「确实没有应用在跑」，此时所有应用的强制停止都该置灰；
+     * 未知只是这次没读到，按产品约定强制停止仍然可点、也不显示「运行中」标签。
+     */
+    val runningPackages: Set<String>? = null,
 ) {
     /**
      * 有任意操作 / 安装 / 拉取本机列表在进行中：
@@ -43,5 +50,22 @@ data class AppListUiState(
 
     fun isPending(packageName: String): Boolean = packageName in pendingPackages
 }
+
+/**
+ * 运行集合里某包是否在跑；集合为 null（未知）时一律 false——未知不当作运行中。
+ *
+ * 界面层拿到的往往只是 [AppListUiState.runningPackages] 本身（列表行、搜索结果），
+ * 语义判定收在这一个函数里，免得每处各写一遍 `?.contains(...) == true`。
+ */
+internal fun Set<String>?.isRunning(packageName: String): Boolean =
+    this?.contains(packageName) == true
+
+/**
+ * 三态版本：null = 运行态未知，true / false 才是确定的结论。
+ *
+ * 「强制停止」是否置灰需要这个区别：未知时不置灰（仍可点），确定没在跑才置灰。
+ */
+internal fun Set<String>?.runningOrNull(packageName: String): Boolean? =
+    this?.contains(packageName)
 
 enum class AppListContent { List, Loading, NotConnected, Error, Empty }

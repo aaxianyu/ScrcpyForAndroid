@@ -49,8 +49,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.miuzarte.scrcpyforandroid.R
+import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppBadge
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.SizeFormat
+import io.github.miuzarte.scrcpyforandroid.appmanager.domain.appBadge
 import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -90,10 +92,13 @@ fun AppRow(
     modifier: Modifier = Modifier,
     /** 搜索结果为单选态：不挂长按语义、不长按进多选。 */
     allowLongPress: Boolean = true,
+    /** 该应用此刻有进程在跑；运行态未知时传 false（未知不当作运行中）。 */
+    running: Boolean = false,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val longPressLabel = stringResource(R.string.app_manager_long_press_multi_select)
     val longPressEnabled = allowLongPress && !pending && !batchMode
+    val badge = appBadge(isEnabled = app.isEnabled, isRunning = running)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -135,7 +140,7 @@ fun AppRow(
                 // 两个信息全被隐藏：保留两行排版，行高不变
                 AppNameVersionRow(
                     name = app.displayLabel,
-                    disabled = !app.isEnabled,
+                    badge = badge,
                 )
                 PackageNameSizeRow(
                     leadingText = app.packageName,
@@ -145,7 +150,7 @@ fun AppRow(
                 // 版本+大小迁至第三行；「三行」下每行字号适当缩小
                 AppNameVersionRow(
                     name = app.displayLabel,
-                    disabled = !app.isEnabled,
+                    badge = badge,
                     compact = true,
                 )
                 PackageNameSizeRow(
@@ -179,11 +184,13 @@ fun AppRow(
 }
 
 /**
- * 第一行：app 名 + 版本号 + 「已停用」标签。
+ * 第一行：app 名 + 角标（「已停用」/「运行中」）。
  *
- * 优先级：**版本号 ≈ 标签 > app 名**。放不下时优先压缩 app 名（省略号截断）——
- * 版本号与「已停用」标签按自身宽度占位，是硬宽度。用户要求「先保证版本号与
- * APK 大小的显示，再到应用名和应用包名」，两行都照这个来。
+ * 优先级：**角标 > app 名**。放不下时优先压缩 app 名（省略号截断）——
+ * 角标按自身宽度占位，是硬宽度。版本号与 APK 大小在第二、三行（见 [VersionSizeLine]），
+ * 与这一行互不挤占。
+ *
+ * 两种角标互斥，判定见 [appBadge]（已停用优先），这里只按结果渲染。
  *
  * 用自定义 Layout 是因为 Row 的测量顺序（非加权子项先按缩约束测量）无法表达
  * 「按后半部分固定宽度反推前半部分可用宽度」。
@@ -191,7 +198,7 @@ fun AppRow(
 @Composable
 internal fun AppNameVersionRow(
     name: String,
-    disabled: Boolean,
+    badge: AppBadge,
     compact: Boolean = false,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -204,9 +211,9 @@ internal fun AppNameVersionRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
-        if (disabled) {
+        if (badge != AppBadge.None) {
             Spacer(Modifier.width(6.dp))
-            DisabledBadge()
+            StateBadge(badge)
         }
     }
 }
@@ -329,10 +336,22 @@ private fun AppIcon(
     }
 }
 
+/**
+ * 状态角标：已停用 / 运行中。
+ *
+ * 两者共用同一套视觉（底色、字号、圆角、内距都一致），只换文字：两者都表示「这个应用
+ * 当前不是普通可用状态」，同款让同一行里的角标宽度与位置保持一致。
+ */
 @Composable
-private fun DisabledBadge() {
+private fun StateBadge(badge: AppBadge) {
+    // 逐项写全而不是留 else：新增 [AppBadge] 时编译器会在这里报错，提醒补文案
+    val textRes = when (badge) {
+        AppBadge.Disabled -> R.string.app_manager_disabled
+        AppBadge.Running -> R.string.app_manager_running
+        AppBadge.None -> null
+    } ?: return
     Text(
-        text = stringResource(R.string.app_manager_disabled),
+        text = stringResource(textRes),
         color = colorScheme.onSurfaceVariantSummary,
         fontSize = 9.sp,
         fontWeight = FontWeight.Medium,
