@@ -76,6 +76,8 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.domain.LocalApp
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppActionSheet
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppConfirmDialog
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerBottomSlot
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerCollapsedTitle
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerRefreshIconSize
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerListPage
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerMotion
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerViewModel
@@ -1017,161 +1019,187 @@ internal fun AppManagerScreen(
                                 }
                             }
                         }
-                        TopAppBar(
-                            title = when {
-                                // 刷新中直接占用标题位：进度提示不经由会吞滑动的下拉刷新指示器
-                                uiState.isRefreshing -> stringResource(R.string.app_manager_refreshing)
-                                // 多选态三态：有选中报数 / 空选提示选择 / 平时显示页标题
-                                batchMode && batchHasSelection ->
-                                    stringResource(R.string.app_manager_selected, selected.size)
+                        // 标题三态：刷新中 / 多选态报数或提示 / 平时页标题
+                        val titleText = when {
+                            // 刷新中直接占用标题位：进度提示不经由会吞滑动的下拉刷新指示器
+                            uiState.isRefreshing -> stringResource(R.string.app_manager_refreshing)
+                            batchMode && batchHasSelection ->
+                                stringResource(R.string.app_manager_selected, selected.size)
 
-                                batchMode -> stringResource(R.string.app_manager_select_prompt)
-                                else -> stringResource(R.string.app_manager_title)
-                            },
-                            color = if (blurBackdrop != null) Color.Transparent else surfaceColor,
-                            navigationIcon = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    // 返回钮与右侧三钮同一组件：玻璃 / 高斯遮罩 + 常驻按压反馈
-                                    // 多选态用 Close 而不是 Back：此时它的语义是「退出多选」而非「返回上级」
-                                    MaskedTopBarAction(
-                                        icon = if (batchMode) MiuixIcons.Basic.Close else MiuixIcons.Back,
-                                        contentDescription = stringResource(
-                                            if (batchMode) {
-                                                R.string.cd_close
-                                            } else {
-                                                R.string.cd_back
-                                            },
-                                        ),
-                                        onClick = {
-                                            haptic.contextClick()
-                                            if (batchMode) {
-                                                batchMode = false
-                                                selected.clear()
-                                            } else {
-                                                navigator.pop()
-                                            }
-                                        },
-                                        maskAlpha = { maskAlpha.value },
-                                        glassActive = topBarGlass,
-                                        backdrop = topBarBackdrop,
-                                        highlight = topBarHighlight,
-                                    )
-                                    // 刷新中：返回钮右侧一个旋转的刷新图标。
-                                    // 放导航侧而不是 actions 行首——actions 行会挤占标题宽度，
-                                    // 把「正在刷新」挤成 3 个字加省略号；导航侧只有返回钮，空间充裕。
-                                    // 间距给 12dp：既和返回钮分开，也朝标题方向靠近
-                                    // （miuix TopAppBar 标题位只收 String，图标无法真正贴住文字）
-                                    if (uiState.isRefreshing) {
-                                        Spacer(Modifier.width(12.dp))
-                                        Icon(
-                                            imageVector = MiuixIcons.Refresh,
-                                            contentDescription = stringResource(R.string.app_manager_refreshing),
-                                            tint = colorScheme.onSurface,
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .graphicsLayer { rotationZ = refreshRotation.value },
-                                        )
-                                    }
-                                }
-                            },
-                            actions = {
-                                if (batchMode) {
-                                    // 多选态：搜索 / 显示选项 / 安装三个动作整体退场，只留「全选 / 取消全选」。
-                                    // 之前是 enabled = false 置灰——按钮仍占位，看起来像坏掉的控件。
-                                    // 作用域取当前分页组（用户 / 系统）的**可见项**，不会波及另一页。
-                                    // 隐藏已停用时被滤掉的行不在屏幕上，全选不能把它们也勾上（所见即所选）
-                                    val groupApps = uiState.apps.filter {
-                                        it.isSystem == (pagerState.currentPage == 1) &&
-                                            AppOrdering.isVisible(it, hideDisabled)
-                                    }
-                                    val allGroupSelected =
-                                        groupApps.isNotEmpty() && groupApps.all { it.packageName in selected }
-                                    MaskedTopBarAction(
-                                        icon = MiuixIcons.SelectAll,
-                                        contentDescription = stringResource(
-                                            if (allGroupSelected) R.string.cd_clear_selection else R.string.cd_select_all,
-                                        ),
-                                        onClick = {
-                                            haptic.contextClick()
-                                            if (allGroupSelected) {
-                                                groupApps.forEach {
-                                                    if (it.packageName in selected) selected.remove(it.packageName)
-                                                }
-                                            } else {
-                                                groupApps.forEach {
-                                                    if (it.packageName !in selected) selected.add(it.packageName)
-                                                }
-                                            }
-                                        },
-                                        enabled = actionsEnabled && groupApps.isNotEmpty(),
-                                        maskAlpha = { maskAlpha.value },
-                                        glassActive = topBarGlass,
-                                        backdrop = topBarBackdrop,
-                                        highlight = topBarHighlight,
-                                    )
-                                } else {
-                                    if (!floatingForm) {
+                            batchMode -> stringResource(R.string.app_manager_select_prompt)
+                            else -> stringResource(R.string.app_manager_title)
+                        }
+                        // 折叠态标题统一由下方叠加层绘制（两种形态共用字号与图标尺寸）：
+                        // TopAppBar 这里只留大标题；largeTitle 默认取 title，必须显式传，否则
+                        // 展开态大标题会一起变空
+                        Box {
+                            TopAppBar(
+                                title = "",
+                                largeTitle = titleText,
+                                color = if (blurBackdrop != null) Color.Transparent else surfaceColor,
+                                navigationIcon = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        // 返回钮与右侧三钮同一组件：玻璃 / 高斯遮罩 + 常驻按压反馈
+                                        // 多选态用 Close 而不是 Back：此时它的语义是「退出多选」而非「返回上级」
                                         MaskedTopBarAction(
-                                            icon = MiuixIcons.Basic.Search,
-                                            contentDescription = stringResource(R.string.app_manager_search),
+                                            icon = if (batchMode) MiuixIcons.Basic.Close else MiuixIcons.Back,
+                                            contentDescription = stringResource(
+                                                if (batchMode) {
+                                                    R.string.cd_close
+                                                } else {
+                                                    R.string.cd_back
+                                                },
+                                            ),
                                             onClick = {
                                                 haptic.contextClick()
-                                                searchOpen = true
+                                                if (batchMode) {
+                                                    batchMode = false
+                                                    selected.clear()
+                                                } else {
+                                                    navigator.pop()
+                                                }
                                             },
-                                            enabled = actionsEnabled,
-                                            maskAlpha = { maskAlpha.value },
-                                            glassActive = topBarGlass,
-                                            backdrop = topBarBackdrop,
-                                            highlight = topBarHighlight,
-                                            // 揭示圆心 = 手指落点（pressInRoot）
-                                            anchorModifier = rememberPressInRootModifier(onSearchAnchor),
-                                        )
-                                    }
-                                    // 显示选项菜单与 tune 钮包在同一个 Box 里：弹出层以该 Box
-                                    // 为锚点。
-                                    Box {
-                                        MaskedTopBarAction(
-                                            icon = MiuixIcons.Tune,
-                                            contentDescription = stringResource(R.string.app_manager_display_options),
-                                            onClick = {
-                                                haptic.contextClick()
-                                                displayOptionsOpen = true
-                                            },
-                                            enabled = actionsEnabled,
                                             maskAlpha = { maskAlpha.value },
                                             glassActive = topBarGlass,
                                             backdrop = topBarBackdrop,
                                             highlight = topBarHighlight,
                                         )
-                                        DisplayOptionsMenu(
-                                            visible = displayOptionsOpen,
-                                            hideVersion = hideVersion,
-                                            hideApkSize = hideApkSize,
-                                            onToggleHideVersion = viewModel::toggleHideVersion,
-                                            onToggleHideApkSize = viewModel::toggleHideApkSize,
-                                            onDismissRequest = { displayOptionsOpen = false },
-                                            hideDisabled = hideDisabled,
-                                            onToggleHideDisabled = viewModel::toggleHideDisabled,
-                                            showHideDisabled = true,
+                                        // 刷新图标：展开态始终在返回钮右侧。标准形态折叠后图标交到标题旁，
+                                        // 这里在折叠的前三分之一内淡出归零——标题文字到 1/3 才出现，
+                                        // 且文字起点 56dp 正好压在这枚图标的位置上，退场必须先于它。
+                                        // 悬浮形态折叠后标题居中、不能带图标，图标一直留在这里。
+                                        if (uiState.isRefreshing) {
+                                            Spacer(Modifier.width(12.dp))
+                                            Icon(
+                                                imageVector = MiuixIcons.Refresh,
+                                                contentDescription = stringResource(R.string.app_manager_refreshing),
+                                                tint = colorScheme.onSurface,
+                                                modifier = Modifier
+                                                    .size(AppManagerRefreshIconSize)
+                                                    .graphicsLayer {
+                                                        rotationZ = refreshRotation.value
+                                                        // 折叠进度越 1/3 时归零，与标题叠加层的出现阈值同源，
+                                                        // 两枚图标不会同时可见，也不会在标题文字处重叠
+                                                        alpha = if (floatingForm) {
+                                                            1f
+                                                        } else {
+                                                            (1f - scrollBehavior.state.collapsedFraction * 3f)
+                                                                .coerceIn(0f, 1f)
+                                                        }
+                                                    },
+                                            )
+                                        }
+                                    }
+                                },
+                                actions = {
+                                    if (batchMode) {
+                                        // 多选态：搜索 / 显示选项 / 安装三个动作整体退场，只留「全选 / 取消全选」。
+                                        // 之前是 enabled = false 置灰——按钮仍占位，看起来像坏掉的控件。
+                                        // 作用域取当前分页组（用户 / 系统）的**可见项**，不会波及另一页。
+                                        // 隐藏已停用时被滤掉的行不在屏幕上，全选不能把它们也勾上（所见即所选）
+                                        val groupApps = uiState.apps.filter {
+                                            it.isSystem == (pagerState.currentPage == 1) &&
+                                                AppOrdering.isVisible(it, hideDisabled)
+                                        }
+                                        val allGroupSelected =
+                                            groupApps.isNotEmpty() && groupApps.all { it.packageName in selected }
+                                        MaskedTopBarAction(
+                                            icon = MiuixIcons.SelectAll,
+                                            contentDescription = stringResource(
+                                                if (allGroupSelected) R.string.cd_clear_selection else R.string.cd_select_all,
+                                            ),
+                                            onClick = {
+                                                haptic.contextClick()
+                                                if (allGroupSelected) {
+                                                    groupApps.forEach {
+                                                        if (it.packageName in selected) selected.remove(it.packageName)
+                                                    }
+                                                } else {
+                                                    groupApps.forEach {
+                                                        if (it.packageName !in selected) selected.add(it.packageName)
+                                                    }
+                                                }
+                                            },
+                                            enabled = actionsEnabled && groupApps.isNotEmpty(),
+                                            maskAlpha = { maskAlpha.value },
+                                            glassActive = topBarGlass,
+                                            backdrop = topBarBackdrop,
+                                            highlight = topBarHighlight,
+                                        )
+                                    } else {
+                                        if (!floatingForm) {
+                                            MaskedTopBarAction(
+                                                icon = MiuixIcons.Basic.Search,
+                                                contentDescription = stringResource(R.string.app_manager_search),
+                                                onClick = {
+                                                    haptic.contextClick()
+                                                    searchOpen = true
+                                                },
+                                                enabled = actionsEnabled,
+                                                maskAlpha = { maskAlpha.value },
+                                                glassActive = topBarGlass,
+                                                backdrop = topBarBackdrop,
+                                                highlight = topBarHighlight,
+                                                // 揭示圆心 = 手指落点（pressInRoot）
+                                                anchorModifier = rememberPressInRootModifier(onSearchAnchor),
+                                            )
+                                        }
+                                        // 显示选项菜单与 tune 钮包在同一个 Box 里：弹出层以该 Box
+                                        // 为锚点。
+                                        Box {
+                                            MaskedTopBarAction(
+                                                icon = MiuixIcons.Tune,
+                                                contentDescription = stringResource(R.string.app_manager_display_options),
+                                                onClick = {
+                                                    haptic.contextClick()
+                                                    displayOptionsOpen = true
+                                                },
+                                                enabled = actionsEnabled,
+                                                maskAlpha = { maskAlpha.value },
+                                                glassActive = topBarGlass,
+                                                backdrop = topBarBackdrop,
+                                                highlight = topBarHighlight,
+                                            )
+                                            DisplayOptionsMenu(
+                                                visible = displayOptionsOpen,
+                                                hideVersion = hideVersion,
+                                                hideApkSize = hideApkSize,
+                                                onToggleHideVersion = viewModel::toggleHideVersion,
+                                                onToggleHideApkSize = viewModel::toggleHideApkSize,
+                                                onDismissRequest = { displayOptionsOpen = false },
+                                                hideDisabled = hideDisabled,
+                                                onToggleHideDisabled = viewModel::toggleHideDisabled,
+                                                showHideDisabled = true,
+                                            )
+                                        }
+                                        MaskedTopBarAction(
+                                            icon = MiuixIcons.Share,
+                                            contentDescription = stringResource(R.string.app_manager_install_apk),
+                                            onClick = {
+                                                haptic.contextClick()
+                                                installSheetOpen = true
+                                            },
+                                            maskAlpha = { maskAlpha.value },
+                                            glassActive = topBarGlass,
+                                            backdrop = topBarBackdrop,
+                                            enabled = !uiState.busy && actionsEnabled,
+                                            highlight = topBarHighlight,
                                         )
                                     }
-                                    MaskedTopBarAction(
-                                        icon = MiuixIcons.Share,
-                                        contentDescription = stringResource(R.string.app_manager_install_apk),
-                                        onClick = {
-                                            haptic.contextClick()
-                                            installSheetOpen = true
-                                        },
-                                        maskAlpha = { maskAlpha.value },
-                                        glassActive = topBarGlass,
-                                        backdrop = topBarBackdrop,
-                                        enabled = !uiState.busy && actionsEnabled,
-                                        highlight = topBarHighlight,
-                                    )
-                                }
-                            },
-                            scrollBehavior = scrollBehavior,
-                        )
+                                },
+                                scrollBehavior = scrollBehavior,
+                            )
+                            // 折叠态标题：标准形态靠左固定在返回钮右缘，悬浮形态保持居中
+                            AppManagerCollapsedTitle(
+                                title = titleText,
+                                centered = floatingForm,
+                                // 仅靠左形态用到：动作区宽度随多选态切换（三钮 / 单钮）
+                                actionsWidth = if (batchMode) TopBarSingleActionWidth else TopBarActionStripWidth,
+                                collapsedFraction = { scrollBehavior.state.collapsedFraction },
+                                refreshing = uiState.isRefreshing,
+                                refreshRotation = { refreshRotation.value },
+                            )
+                        }
                     }
                 }
             }
@@ -1586,6 +1614,14 @@ private val DocumentsUiPackages = listOf(
 )
 
 private const val AppManagerGroupCount = 2
+
+/** 顶栏动作区宽度：右缘 padding 16dp + 三个 40dp 动作钮（搜索 / 显示选项 / 安装 APK）。
+ *  40dp 取自 `MaskedTopBarAction.TouchSize`，16dp 取自 `TopAppBarDefaults.ActionIconPadding`；
+ *  动作钮增减时必须同步，否则折叠态标题会压到按钮下。 */
+private val TopBarActionStripWidth = 136.dp
+
+/** 多选态动作区宽度：右缘 padding 16dp + 单个 40dp 动作钮（全选 / 取消全选）。 */
+private val TopBarSingleActionWidth = 56.dp
 
 /** 运行态定时刷新的间隔：只在应用管理页处于前台时生效 */
 private const val RUNNING_REFRESH_INTERVAL_MS = 30_000L
