@@ -520,6 +520,7 @@
     <string name="terminal_snack_input_failed">Terminal input failed: %1$s</string>
     <string name="terminal_snack_session_failed">Terminal session creation failed: %1$s</string>
     <string name="terminal_snack_output_failed">Terminal output failed: %1$s</string>
+    <string name="terminal_snack_not_connected">Terminal not connected, reconnecting</string>
     <string name="terminal_menu_command_bookmarks">Shell bookmarks</string>
     <string name="bookmark_title">Shell Bookmarks</string>
     <string name="bookmark_section_auto_enter">Auto-run</string>

@@ -519,6 +519,7 @@
     <string name="terminal_snack_input_failed">终端输入失败：%1$s</string>
     <string name="terminal_snack_session_failed">终端会话创建失败：%1$s</string>
     <string name="terminal_snack_output_failed">终端输出失败：%1$s</string>
+    <string name="terminal_snack_not_connected">终端未连接，正在重连</string>
     <string name="terminal_menu_command_bookmarks">命令书签</string>
     <string name="bookmark_title">命令书签</string>
     <string name="bookmark_section_auto_enter">自动执行</string>

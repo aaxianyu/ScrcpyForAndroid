@@ -51,6 +51,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import androidx.compose.material.icons.rounded.Bookmarks
 import io.github.miuzarte.scrcpyforandroid.widgets.CommandBookmarkSheet
+import kotlinx.coroutines.delay
 
 private const val FONT_SCALE_STEP_THRESHOLD = 1.08f
 private const val LOG_TAG = "TerminalScreen"
@@ -406,7 +407,20 @@ private fun TerminalPage(
             return@LaunchedEffect
         }
         customTypeface = loadTerminalTypeface(context)
-        viewModel.autoConnectIfNeeded(::requestTerminalFocus)
+        viewModel.autoConnectIfNeeded(::requestTerminalFocus, reportFailure = false)
+    }
+
+    // 页面激活或回到前台时 shell 若未就绪：按 1 秒间隔最多尝试 10 次，就绪后停止；
+    // 此后输入仍会再触发一次连接尝试。以就绪状态为键，断流后重新开一轮尝试。
+    val appForeground by AppRuntime.isAppForeground.collectAsState()
+    val shellReadyState by viewModel.shellReady.collectAsState()
+    LaunchedEffect(isActive, appForeground, shellReadyState) {
+        if (!isActive || !appForeground) return@LaunchedEffect
+        repeat(10) {
+            if (viewModel.shellReady.value) return@LaunchedEffect
+            viewModel.autoConnectIfNeeded(::requestTerminalFocus, reportFailure = false)
+            delay(1_000)
+        }
     }
 
     // theme changes
