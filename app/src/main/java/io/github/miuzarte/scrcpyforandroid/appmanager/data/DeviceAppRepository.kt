@@ -1079,11 +1079,14 @@ object DeviceAppRepository {
     private fun openDownloadsSink(fileName: String, mimeType: String): ExportSink? {
         if (!canPublishToDownloads()) return null
         val resolver = AppRuntime.context.contentResolver
+        // 落点重名会让系统在收尾时自己再算一次唯一名（`Failed to build unique file`），
+        // 已存在同名产物时先按 `(n)` 自己定名，收尾的重命名就不会与既有文件撞车
+        val displayName = uniqueDownloadName(fileName)
         val entryUri = runCatching {
             resolver.insert(
                 android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                 android.content.ContentValues().apply {
-                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, displayName)
                     put(android.provider.MediaStore.Downloads.MIME_TYPE, mimeType)
                     put(android.provider.MediaStore.Downloads.RELATIVE_PATH, EXPORT_RELATIVE_PATH)
                     // 传输期间对其它应用不可见，内容完整了再撤下
@@ -1180,6 +1183,45 @@ object DeviceAppRepository {
 
     /** 系统「文件」页面的 provider authority（Download 目录挂在它的卷下）。 */
     private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
+
+    /**
+     * `Download/Scrcpy` 下不与既有产物撞名的文件名：有重名时按系统习惯补 `(n)`。
+     *
+     * 交由 MediaStore 自行去重时，收尾撤下 `IS_PENDING` 会再算一次唯一名；目录里同名产物
+     * 积累后这一步会抛 `Failed to build unique file`，条目连同已写完的产物一起判失败。
+     * 这里用查询结果定好名字，收尾就不再需要重命名。
+     */
+    private fun uniqueDownloadName(fileName: String): String {
+        val resolver = AppRuntime.context.contentResolver
+        val taken = runCatching {
+            resolver.query(
+                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(android.provider.MediaStore.Downloads.DISPLAY_NAME),
+                "${android.provider.MediaStore.Downloads.RELATIVE_PATH} = ?",
+                arrayOf("$EXPORT_RELATIVE_PATH/"),
+                null,
+            )?.use { cursor ->
+                // 部分 ROM 会在投影之外多返回列，固定下标取到的可能不是 DISPLAY_NAME
+                val nameIndex = cursor.getColumnIndex(android.provider.MediaStore.Downloads.DISPLAY_NAME)
+                buildSet<String> {
+                    if (nameIndex < 0) return@buildSet
+                    while (cursor.moveToNext()) {
+                        cursor.getString(nameIndex)?.let { name -> add(name) }
+                    }
+                }.takeIf { nameIndex >= 0 }
+            }
+        }.getOrNull() ?: return fileName
+        if (fileName !in taken) return fileName
+        val dot = fileName.lastIndexOf('.')
+        val stem = if (dot > 0) fileName.substring(0, dot) else fileName
+        val suffix = if (dot > 0) fileName.substring(dot) else ""
+        for (index in 1 until 10_000) {
+            val candidate = "$stem ($index)$suffix"
+            if (candidate !in taken) return candidate
+        }
+        // 极端的 `(n)` 用尽（一万个同名文件）时交回原名，由系统自己去重。
+        return fileName
+    }
 
     /**
      * 条目所在存储卷在文件页面里的卷名。

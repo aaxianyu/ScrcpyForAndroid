@@ -1511,7 +1511,7 @@ internal fun AppManagerScreen(
             }
 
             // 批量导出：只选一个时按单包导出（文件名 = 包名.apk），多个才打 ZIP
-            request.action == AppAction.EXPORT_APK && request.app == null && !request.isInstall -> {
+            request.action == AppAction.EXPORT_APK -> {
                 val appsToExport = currentSelection()
                 when (appsToExport.size) {
                     0 -> batchMode = false
