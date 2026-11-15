@@ -434,7 +434,14 @@ fun FullscreenControlScreen(
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snackbarController.hostState) },
+        snackbarHost = {
+            SnackbarHost(
+                snackbarController.hostState,
+                modifier = Modifier.onGloballyPositioned {
+                    AppRuntime.markSnackbarHostStateLaidOut(snackbarController.hostState)
+                },
+            )
+        },
     ) { contentPadding ->
         Box(
             modifier = Modifier

@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Collections
+import java.util.IdentityHashMap
 import top.yukonga.miuix.kmp.basic.SnackbarDuration
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.SnackbarResult
@@ -147,14 +149,21 @@ object AppRuntime {
 
     private val snackbarHostStateLock = Any()
     private val snackbarHostStateStack = mutableListOf<SnackbarHostState>()
+    // 导航切页时可能同时存在同一页的两份组合（其中一份不参与绘制），栈顶不一定是屏幕上那份。
+    // 记下哪些宿主真正完成了布局，取「栈中最后一个已布局的宿主」：切页后旧组合不再布局，
+    // 屏幕上那份仍会持续布局，而新进入的页面登记得更晚。
+    private val snackbarHostStateLaidOut =
+        Collections.newSetFromMap(IdentityHashMap<SnackbarHostState, Boolean>())
 
     var snackbarHostState: SnackbarHostState?
         get() = synchronized(snackbarHostStateLock) {
-            snackbarHostStateStack.lastOrNull()
+            snackbarHostStateStack.lastOrNull { snackbarHostStateLaidOut.contains(it) }
+                ?: snackbarHostStateStack.lastOrNull()
         }
         set(value) {
             synchronized(snackbarHostStateLock) {
                 snackbarHostStateStack.clear()
+                snackbarHostStateLaidOut.clear()
                 if (value != null) snackbarHostStateStack.add(value)
             }
         }
@@ -168,9 +177,22 @@ object AppRuntime {
         return {
             synchronized(snackbarHostStateLock) {
                 snackbarHostStateStack.remove(hostState)
+                snackbarHostStateLaidOut.remove(hostState)
             }
         }
     }
+
+    /** 宿主每次完成布局时调用：记下它已经在绘制。 */
+    fun markSnackbarHostStateLaidOut(hostState: SnackbarHostState) {
+        synchronized(snackbarHostStateLock) {
+            if (snackbarHostStateStack.contains(hostState)) {
+                snackbarHostStateLaidOut.add(hostState)
+            }
+        }
+    }
+
+    internal fun isHostRegistered(hostState: SnackbarHostState): Boolean =
+        synchronized(snackbarHostStateLock) { snackbarHostStateStack.contains(hostState) }
 
     suspend fun snackbarDismissNewest() = snackbarHostState?.newestSnackbarData()?.dismiss()
 
@@ -187,17 +209,22 @@ object AppRuntime {
         duration: SnackbarDuration? = null,
         onResult: ((SnackbarResult) -> Unit)? = null,
         dismissNewest: Boolean = false,
-    ) = snackbarHostState?.let {
-        snackbarScope.launch {
-            if (dismissNewest) snackbarDismissNewest()
-            it.showSnackbar(
-                message = message,
-                actionLabel = actionLabel,
-                withDismissAction = withDismissAction,
-                duration = duration ?: snackbarDuration,
-            ).let { result -> onResult?.invoke(result) }
-        }
+    ) = snackbarHostState?.let { host ->
+        showOnHost(host, message, actionLabel, withDismissAction, duration, onResult, dismissNewest)
     }
+
+    /**
+     * 指定宿主发送：页面自己持有 [SnackbarHostState] 时用它，省去从宿主栈里猜哪份组合在绘制。
+     */
+    fun snackbar(
+        host: SnackbarHostState,
+        message: String,
+        actionLabel: String? = null,
+        withDismissAction: Boolean = true,
+        duration: SnackbarDuration? = null,
+        onResult: ((SnackbarResult) -> Unit)? = null,
+        dismissNewest: Boolean = false,
+    ) = showOnHost(host, message, actionLabel, withDismissAction, duration, onResult, dismissNewest)
 
     fun snackbar(
         @StringRes messageResId: Int,
@@ -207,6 +234,24 @@ object AppRuntime {
         onResult: ((SnackbarResult) -> Unit)? = null,
         dismissNewest: Boolean = false,
     ) = snackbar(
+        message = stringResource(messageResId),
+        actionLabel = actionLabelResId?.let(::stringResource),
+        withDismissAction = withDismissAction,
+        duration = duration,
+        onResult = onResult,
+        dismissNewest = dismissNewest,
+    )
+
+    fun snackbar(
+        host: SnackbarHostState,
+        @StringRes messageResId: Int,
+        @StringRes actionLabelResId: Int? = null,
+        withDismissAction: Boolean = true,
+        duration: SnackbarDuration? = null,
+        onResult: ((SnackbarResult) -> Unit)? = null,
+        dismissNewest: Boolean = false,
+    ) = snackbar(
+        host = host,
         message = stringResource(messageResId),
         actionLabel = actionLabelResId?.let(::stringResource),
         withDismissAction = withDismissAction,
@@ -231,6 +276,52 @@ object AppRuntime {
         onResult = onResult,
         dismissNewest = dismissNewest,
     )
+
+    fun snackbar(
+        host: SnackbarHostState,
+        @StringRes messageResId: Int,
+        vararg args: Any,
+        @StringRes actionLabelResId: Int? = null,
+        withDismissAction: Boolean = true,
+        duration: SnackbarDuration? = null,
+        onResult: ((SnackbarResult) -> Unit)? = null,
+        dismissNewest: Boolean = false,
+    ) = snackbar(
+        host = host,
+        message = stringResource(messageResId, *args),
+        actionLabel = actionLabelResId?.let(::stringResource),
+        withDismissAction = withDismissAction,
+        duration = duration,
+        onResult = onResult,
+        dismissNewest = dismissNewest,
+    )
+
+    private fun showOnHost(
+        host: SnackbarHostState,
+        message: String,
+        actionLabel: String?,
+        withDismissAction: Boolean,
+        duration: SnackbarDuration?,
+        onResult: ((SnackbarResult) -> Unit)?,
+        dismissNewest: Boolean,
+    ) {
+        snackbarScope.launch {
+            // 宿主已随页面退场注销：此时 showSnackbar 会一直等一个不会出现的消费方，
+            // 回调与动作都拿不到，所以先确认宿主仍在使用
+            if (!isHostRegistered(host)) {
+                onResult?.invoke(SnackbarResult.Dismissed)
+                return@launch
+            }
+            if (dismissNewest) host.newestSnackbarData()?.dismiss()
+            val result = host.showSnackbar(
+                message = message,
+                actionLabel = actionLabel,
+                withDismissAction = withDismissAction,
+                duration = duration ?: snackbarDuration,
+            )
+            onResult?.invoke(result)
+        }
+    }
 
     // application context 不经过 Activity 的 base context,
     // 这里按当前应用内语言包装, 使 snackbar 等全局文案跟随应用内语言

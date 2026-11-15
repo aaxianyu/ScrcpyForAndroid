@@ -14,6 +14,15 @@ class SnackbarController(
     val defaultWithDismissAction: Boolean? = null,
     val defaultDuration: SnackbarDuration? = null,
 ) {
+    /** 绑到另一份宿主：页面想把自己的 SnackbarHost 作为落点时用它，其余默认值保持不变。 */
+    fun withHost(host: SnackbarHostState): SnackbarController = SnackbarController(
+        scope = scope,
+        hostState = host,
+        defaultActionLabel = defaultActionLabel,
+        defaultWithDismissAction = defaultWithDismissAction,
+        defaultDuration = defaultDuration,
+    )
+
     fun show(
         message: String,
         actionLabel: String? = defaultActionLabel,
@@ -23,9 +32,11 @@ class SnackbarController(
         onAction: (() -> Unit)? = null,
     ) {
         scope.launch {
-            // 总是发给当前可见页面的宿主：否则在二级页（如应用管理）里 show 的消息
-            // 会落在主页 Scaffold 的宿主上，回到主页才补现
-            val host = AppRuntime.snackbarHostState ?: hostState
+            // 发给控制器绑定的宿主：页面各自渲染自己的 SnackbarHost，消息留在本页；
+            // 二级页通过 withHost 绑定自己的宿主，不依赖全局宿主栈猜页面
+            val host = hostState
+            // 页面销毁后宿主已注销：此时 showSnackbar 会一直挂起到页面重建，直接丢弃这条
+            if (!AppRuntime.isHostRegistered(host)) return@launch
             val result = host.showSnackbar(
                 message = message,
                 actionLabel = actionLabel,

@@ -163,7 +163,12 @@ internal fun AppManagerScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val navigator = LocalRootNavigator.current
-    val snackbar = LocalSnackbarController.current
+    // 本页自己的提示条宿主与控制器：消息落在这里，不依赖全局宿主栈挑页面
+    val pageSnackHostState = remember { SnackbarHostState() }
+    val hostSnackbarController = LocalSnackbarController.current
+    val snackbar = remember(pageSnackHostState, hostSnackbarController) {
+        hostSnackbarController.withHost(pageSnackHostState)
+    }
     val viewModel: AppManagerViewModel = viewModel()
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -892,8 +897,7 @@ internal fun AppManagerScreen(
         }
     }
 
-    // 本页自己的 snackbar 宿主：消息走 AppRuntime 的宿主栈顶，二级页里也能即时显示
-    val pageSnackHostState = remember { SnackbarHostState() }
+    // 本页自己的 snackbar 宿主（控制器绑定的宿主见页面开头）
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     DisposableEffect(pageSnackHostState) {
@@ -913,9 +917,11 @@ internal fun AppManagerScreen(
                     // 消息条按底部槽位的高度上移，落到底栏上方而不是压在底栏上。
                     // 底栏自绘在内容层内（不进 Scaffold 的 bottomBar 槽位，那样会
                     // 改变它与搜索浮层的前后关系），所以避让量由这里显式给出。
-                    modifier = Modifier.padding(
-                        bottom = bottomSlotClearance(floatingForm),
-                    ),
+                    modifier = Modifier
+                        .padding(bottom = bottomSlotClearance(floatingForm))
+                        .onGloballyPositioned {
+                            AppRuntime.markSnackbarHostStateLaidOut(pageSnackHostState)
+                        },
                 )
             },
         ) { _ ->

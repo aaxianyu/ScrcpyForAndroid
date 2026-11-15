@@ -33,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -576,7 +577,14 @@ fun MainScreen() {
                         }
                     }
                 },
-                snackbarHost = { SnackbarHost(snackHostState) },
+                snackbarHost = {
+                    SnackbarHost(
+                        snackHostState,
+                        modifier = Modifier.onGloballyPositioned {
+                            AppRuntime.markSnackbarHostStateLaidOut(snackHostState)
+                        },
+                    )
+                },
             ) { contentPadding ->
                 val bottomInnerPadding =
                     if (asBundle.floatingBottomBar)

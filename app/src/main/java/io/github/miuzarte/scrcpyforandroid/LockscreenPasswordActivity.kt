@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Password
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -242,7 +243,14 @@ private fun LockscreenPasswordScreen(
                 )
             }
         },
-        snackbarHost = { SnackbarHost(hostState) },
+        snackbarHost = {
+            SnackbarHost(
+                hostState,
+                modifier = Modifier.onGloballyPositioned {
+                    AppRuntime.markSnackbarHostStateLaidOut(hostState)
+                },
+            )
+        },
     ) { pagePadding ->
         Box(
             modifier =

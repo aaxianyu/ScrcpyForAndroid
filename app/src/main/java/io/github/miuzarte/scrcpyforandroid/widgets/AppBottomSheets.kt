@@ -33,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
@@ -47,7 +48,6 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppOrdering
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppSortKey
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
-import io.github.miuzarte.scrcpyforandroid.services.LocalSnackbarController
 import io.github.miuzarte.scrcpyforandroid.ui.ImeSafeInputField
 import java.util.Locale
 import top.yukonga.miuix.kmp.basic.*
@@ -184,8 +184,8 @@ fun AppListBottomSheet(
                 val visibleEntries = remember(entries, searchQuery, searchHint) {
                     appSheetVisibleEntries(entries, if (searchHint != null) searchQuery else null)
                 }
-                // 收藏提示条宿主：与列表 / 无结果两种渲染同生命周期（AppRuntime 取最后注册的
-                // 宿主），注册后提示条落进本面板底部渲染，而不是被面板挡在下面看不见
+                // 收藏提示条宿主：与列表 / 无结果两种渲染同生命周期；收藏动作直接发给它，
+                // 提示条落进本面板底部渲染，而不是被面板挡在下面看不见
                 val sheetSnackHostState = remember { SnackbarHostState() }
                 DisposableEffect(sheetSnackHostState) {
                     val unregister = AppRuntime.registerSnackbarHostState(sheetSnackHostState)
@@ -304,7 +304,11 @@ fun AppListBottomSheet(
                             // 刚触发的收藏提示条不会消失
                             SnackbarHost(
                                 state = sheetSnackHostState,
-                                modifier = Modifier.align(Alignment.BottomCenter),
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .onGloballyPositioned {
+                                        AppRuntime.markSnackbarHostStateLaidOut(sheetSnackHostState)
+                                    },
                             )
                         }
                     } else {
@@ -336,6 +340,7 @@ fun AppListBottomSheet(
                                         iconLoader = iconLoader,
                                         iconEpoch = iconEpoch,
                                         spinnerColors = DropdownDefaults.dropdownColors(),
+                                        snackHost = sheetSnackHostState,
                                     )
                                 }
                             }
@@ -351,7 +356,11 @@ fun AppListBottomSheet(
                             // 提示条贴在列表底部、盖在列表之上；宿主在列表 / 无结果下都存活
                             SnackbarHost(
                                 state = sheetSnackHostState,
-                                modifier = Modifier.align(Alignment.BottomCenter),
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .onGloballyPositioned {
+                                        AppRuntime.markSnackbarHostStateLaidOut(sheetSnackHostState)
+                                    },
                             )
                         }
                     }
@@ -368,8 +377,8 @@ private fun AppListBottomSheetItem(
     iconLoader: suspend (String) -> ImageBitmap?,
     iconEpoch: Int,
     spinnerColors: DropdownColors,
+    snackHost: SnackbarHostState,
 ) {
-    val snackbar = LocalSnackbarController.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -421,8 +430,9 @@ private fun AppListBottomSheetItem(
                 onClick = {
                     val next = !targetFavorite
                     targetFavorite = next
-                    // 反馈：收藏 / 取消收藏的提示条（宿主在面板内，见列表区的 SnackbarHost）
-                    snackbar.show(if (next) addedMessage else removedMessage)
+                    // 反馈：收藏 / 取消收藏的提示条；直接发给面板自己的宿主，
+                    // 否则消息会被面板外的宿主接走、挡在面板下面
+                    AppRuntime.snackbar(snackHost, if (next) addedMessage else removedMessage)
                     onToggle()
                 },
             ) {

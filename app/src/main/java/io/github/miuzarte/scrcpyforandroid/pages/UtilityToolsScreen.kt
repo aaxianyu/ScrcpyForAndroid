@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -1035,7 +1036,14 @@ internal fun UtilityToolsScreen(
     // 顶栏折叠只由下方列表那条连接驱动（列表的 scrollBehavior 参数）；Scaffold 上不挂这条
     // 连接，否则进程管理浮层里的滚动会顺着它冒泡到 ScrollBehavior，把本页标题顶起来
     Scaffold(
-        snackbarHost = { SnackbarHost(snackHostState) },
+        snackbarHost = {
+            SnackbarHost(
+                snackHostState,
+                modifier = Modifier.onGloballyPositioned {
+                    AppRuntime.markSnackbarHostStateLaidOut(snackHostState)
+                },
+            )
+        },
         topBar = {
             BlurredBar(backdrop = blurBackdrop) {
                 TopAppBar(
@@ -1915,7 +1923,11 @@ private fun DeviceSpecsSheet(
             // 提示条贴在浮层内容底部，盖在规格卡片之上
             SnackbarHost(
                 state = sheetSnackHostState,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .onGloballyPositioned {
+                        AppRuntime.markSnackbarHostStateLaidOut(sheetSnackHostState)
+                    },
             )
         }
     }
@@ -2121,7 +2133,11 @@ private fun ProcessSheet(
             // 提示条贴在浮层内容底部，盖在列表之上
             SnackbarHost(
                 state = sheetSnackHostState,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .onGloballyPositioned {
+                        AppRuntime.markSnackbarHostStateLaidOut(sheetSnackHostState)
+                    },
             )
         }
         // 底部不加留白：列表本身要能一直滚到屏幕底边，否则最后一行与屏幕之间会空一段
