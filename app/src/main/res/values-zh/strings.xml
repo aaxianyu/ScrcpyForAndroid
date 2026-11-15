@@ -948,6 +948,8 @@
     <string name="app_manager_install_package_gone">找不到安装包，可能已被卸载，请刷新</string>
     <string name="app_manager_export_outcome_partial">已导出 %1$d / %2$d 个应用 · %3$d 个导出失败：%4$s</string>
     <string name="app_manager_export_open_failed">导出文件无法打开</string>
+    <string name="app_manager_device_refused">设备拒绝了这次请求</string>
+    <string name="app_manager_device_refused_reason">设备拒绝了这次请求（%1$s）</string>
     <string name="app_manager_export_open_folder_failed">无法打开所在文件夹</string>
     <string name="app_manager_snackbar_open">打开</string>
     <string name="app_manager_snackbar_install">安装</string>

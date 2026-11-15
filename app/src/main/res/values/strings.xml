@@ -949,6 +949,8 @@
     <string name="app_manager_install_package_gone">Install source not found; it may have been uninstalled — refresh the list</string>
     <string name="app_manager_export_outcome_partial">Exported %1$d of %2$d app(s) · %3$d failed: %4$s</string>
     <string name="app_manager_export_open_failed">Cannot open the exported file</string>
+    <string name="app_manager_device_refused">The device refused the request</string>
+    <string name="app_manager_device_refused_reason">The device refused the request (%1$s)</string>
     <string name="app_manager_export_open_folder_failed">Cannot open the containing folder</string>
     <string name="app_manager_snackbar_open">Open</string>
     <string name="app_manager_snackbar_install">Install</string>

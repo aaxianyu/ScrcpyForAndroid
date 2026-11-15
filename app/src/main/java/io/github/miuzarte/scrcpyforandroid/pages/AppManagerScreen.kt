@@ -87,6 +87,7 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.ui.FastScroller
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.InstallSourceSheet
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.LocalAppPickerSheet
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.MaskedTopBarAction
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.appManagerErrorText
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.SearchOverlay
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.TransferProgressDialog
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.bottomSlotClearance
@@ -1638,25 +1639,7 @@ private const val RUNNING_REFRESH_INTERVAL_MS = 30_000L
  * 回调可能运行在组合之外（协程回调），统一走 [AppRuntime.stringResource]
  * 按应用内语言取文案，不依赖组合上下文。
  */
-private fun errorText(error: AppManagerError): String = when (error) {
-    is AppManagerError.ChannelOccupied ->
-        AppRuntime.stringResource(R.string.app_manager_adb_channel_occupied)
-
-    is AppManagerError.Device -> when (error.reason) {
-        DeviceAppRepository.EXPORT_NOT_PUBLISHED ->
-            AppRuntime.stringResource(R.string.app_manager_export_not_published)
-
-        DeviceAppRepository.EXPORT_NO_TARGET ->
-            AppRuntime.stringResource(R.string.app_manager_export_no_target)
-
-        else -> error.reason
-    }
-    AppManagerError.NotConnected ->
-        AppRuntime.stringResource(R.string.app_manager_not_connected)
-
-    AppManagerError.Slow ->
-        AppRuntime.stringResource(R.string.app_manager_load_timeout, DeviceAppRepository.LOAD_TIMEOUT_MS / 1000)
-}
+private fun errorText(error: AppManagerError): String = appManagerErrorText(error)
 
 private fun singleSuccessText(action: AppAction, app: DeviceApp): String = when (action) {
     AppAction.OPEN -> AppRuntime.stringResource(R.string.app_manager_opening, app.displayLabel)
