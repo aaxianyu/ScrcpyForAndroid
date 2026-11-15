@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,7 +56,6 @@ import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
-import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
 import io.github.miuzarte.scrcpyforandroid.services.PublicDirs
 import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
@@ -66,9 +64,6 @@ import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetItem
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,8 +83,6 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.extended.Close
-import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -152,7 +145,6 @@ private const val ADB_TCP_PORT_MAX = 65535
 // 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
 private const val REBOOT_RESULT_WAIT_MS = 3_000L
 
-
 private data class ActivatableApp(
     val name: String,
     val packageName: String,
@@ -192,122 +184,6 @@ private fun extractDisplaySize(shellOutput: String, kind: String): String {
     return shellOutput.lineSequence()
         .firstOrNull { it.startsWith(target) }
         ?.removePrefix(target)?.trim().orEmpty()
-}
-
-
-// 设备信息行按约定只报出厂值, 被改写过时才把当前值一并给出
-private fun withCurrentValue(physical: String, current: String?): String =
-    if (current.isNullOrBlank() || current == physical || physical.isBlank()) {
-        physical
-    } else {
-        "$physical · ${AppRuntime.stringResource(R.string.tools_value_now)} $current"
-    }
-// 从 shell 输出中取以「key:」开头的那一行的值
-private fun lineValue(shellOutput: String, key: String): String {
-    val target = "$key:"
-    return shellOutput.lineSequence()
-        .firstOrNull { it.trim().startsWith(target) }
-        ?.trim()?.removePrefix(target)?.trim().orEmpty()
-}
-
-private sealed interface SpecsState {
-    data object Loading : SpecsState
-    data class Failed(val reason: String) : SpecsState
-    data class Ready(val specs: List<DeviceSpec>) : SpecsState
-}
-
-private class DeviceSpec(
-    val labelRes: Int,
-    val value: String,
-)
-
-// 合并为一条 shell 命令取全部属性，避免多次往返
-private const val PROP_BUNDLE_COMMAND =
-    "getprop ro.product.model; getprop ro.product.manufacturer; getprop ro.build.version.release; " +
-        "getprop ro.build.version.sdk; getprop ro.product.cpu.abi; getprop ro.hardware; getprop ro.serialno"
-
-private suspend fun collectDeviceSpecs(
-    charging: String,
-    full: String,
-    discharging: String,
-): List<DeviceSpec> = withContext(Dispatchers.IO) {
-    NativeAdbService.ensureConnectionResponsive()
-    val props = NativeAdbService.shell(PROP_BUNDLE_COMMAND)
-        .lineSequence()
-        .map { it.trim() }
-        .toList()
-
-    // 各项独立命令并行拉取，async 继承 IO 调度器才真正并发
-    coroutineScope {
-        listOf(
-            async {
-                DeviceSpec(R.string.tools_info_model, "${props.getOrElse(1) { "" }} ${props.getOrElse(0) { "" }}".trim())
-            },
-            async {
-                val version = props.getOrElse(2) { "" }
-                val sdk = props.getOrElse(3) { "" }
-                DeviceSpec(
-                    R.string.tools_info_android_version,
-                    if (sdk.isNotBlank()) "$version (SDK $sdk)" else version,
-                )
-            },
-            async {
-                val cpu = NativeAdbService.shell("cat /proc/cpuinfo")
-                val hardware = lineValue(cpu, "Hardware").ifBlank { props.getOrElse(5) { "" } }
-                DeviceSpec(R.string.tools_info_cpu_model, hardware)
-            },
-            async { DeviceSpec(R.string.tools_info_cpu_abi, props.getOrElse(4) { "" }) },
-            async {
-                val mem = NativeAdbService.shell("cat /proc/meminfo")
-                val total = lineValue(mem, "MemTotal").replace("kB", "").trim().toLongOrNull() ?: 0L
-                val avail = lineValue(mem, "MemAvailable").replace("kB", "").trim().toLongOrNull() ?: 0L
-                DeviceSpec(R.string.tools_info_ram, if (total > 0L) "${readableSize(avail)} / ${readableSize(total)}" else "unknown")
-            },
-            async {
-                val size = NativeAdbService.shell("wm size")
-                DeviceSpec(
-                    R.string.tools_info_screen,
-                    withCurrentValue(extractDisplaySize(size, "Physical"), parseWmSetting(size, "size")?.override),
-                )
-            },
-            async {
-                val density = NativeAdbService.shell("wm density")
-                DeviceSpec(
-                    R.string.tools_info_density,
-                    withCurrentValue(extractDensity(density, "Physical"), parseWmSetting(density, "density")?.override),
-                )
-            },
-            async { DeviceSpec(R.string.tools_info_serial, props.getOrElse(6) { "" }) },
-            async {
-                val battery = NativeAdbService.shell("dumpsys battery")
-                val level = lineValue(battery, "level")
-                val status = when (lineValue(battery, "status")) {
-                    "2" -> charging
-                    "5" -> full
-                    else -> discharging
-                }
-                val tenths = lineValue(battery, "temperature").toIntOrNull() ?: 0
-                DeviceSpec(
-                    R.string.tools_info_battery,
-                    AppRuntime.stringResource(
-                        R.string.tools_info_battery_value,
-                        level,
-                        status,
-                        "${tenths / 10}.${tenths % 10}",
-                    ),
-                )
-            },
-            async {
-                val df = NativeAdbService.shell("df -h /data")
-                val row = df.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.elementAtOrNull(1)
-                val columns = row?.split(Regex("\\s+")).orEmpty()
-                DeviceSpec(
-                    R.string.tools_info_storage,
-                    if (columns.size > 3) "${columns[3]} / ${columns[1]}" else "unknown",
-                )
-            },
-        ).awaitAll()
-    }.filter { it.value.isNotBlank() && it.value != "unknown" }
 }
 
 private fun readableSize(kilobytes: Long): String =
@@ -364,7 +240,6 @@ internal fun UtilityToolsScreen(
     var activationLoading by remember { mutableStateOf(false) }
     var activationBusy by remember { mutableStateOf(false) }
     var activationDetectFailed by remember { mutableStateOf(false) }
-    var specsSheetOpen by remember { mutableStateOf(false) }
     var processSheetOpen by remember { mutableStateOf(false) }
     var processes by remember { mutableStateOf<List<DeviceProcess>>(emptyList()) }
     var processLoading by remember { mutableStateOf(false) }
@@ -465,13 +340,13 @@ internal fun UtilityToolsScreen(
         }
     }
 
-    fun openSpecsSheet() {
+    fun openDeviceInfo() {
         scope.launch {
             if (!NativeAdbService.isConnected()) {
                 AppRuntime.snackbar(R.string.tools_not_connected)
                 return@launch
             }
-            specsSheetOpen = true
+            navigator.push(RootScreen.DeviceInfo)
         }
     }
 
@@ -691,7 +566,6 @@ internal fun UtilityToolsScreen(
             }
         }
     }
-
 
 
     fun openActivationSheet() {
@@ -932,7 +806,7 @@ internal fun UtilityToolsScreen(
                 icon = Icons.Rounded.PhoneAndroid,
                 titleResId = R.string.tools_device_info,
                 descResId = R.string.tools_device_info_desc,
-                onClick = { openSpecsSheet() },
+                onClick = { openDeviceInfo() },
             ),
         )
 
@@ -1186,7 +1060,6 @@ internal fun UtilityToolsScreen(
         )
     }
 
-
     if (screenStandbyDialogOpen) {
         ScreenStandbyDialog(
             onDismiss = { screenStandbyDialogOpen = false },
@@ -1234,12 +1107,6 @@ internal fun UtilityToolsScreen(
             onActivate = ::activateApps,
         )
     }
-
-    DeviceSpecsSheet(
-        show = specsSheetOpen,
-        onDismissRequest = { specsSheetOpen = false },
-    )
-
 
     ProcessSheet(
         show = processSheetOpen,
@@ -1583,6 +1450,31 @@ private fun ToolInfoPanel(
 }
 
 @Composable
+private fun SpecRow(label: String, value: String, valueColor: Color = Color.Unspecified) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+        Text(
+            text = value,
+            fontSize = 13.sp,
+            color = valueColor,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
 private fun ToolActionRow(
     confirmEnabled: Boolean,
     onDismiss: () -> Unit,
@@ -1752,7 +1644,6 @@ private val RebootMode.confirmDescResId: Int
         RebootMode.Fastboot -> R.string.tools_reboot_confirm_fastboot_desc
     }
 
-
 @Composable
 private fun ScreenStandbyDialog(
     onDismiss: () -> Unit,
@@ -1788,175 +1679,6 @@ private val ScreenStandbyAction.successResId: Int
         ScreenStandbyAction.TurnOff -> R.string.tools_screen_standby_success_off
         ScreenStandbyAction.TurnOn -> R.string.tools_screen_standby_success_on
     }
-
-@Composable
-private fun DeviceSpecsSheet(
-    show: Boolean,
-    onDismissRequest: () -> Unit,
-) {
-    var state by remember(show) { mutableStateOf<SpecsState>(SpecsState.Loading) }
-    val haptic = LocalHapticFeedback.current
-    val context = LocalContext.current
-
-    val charging = stringResource(R.string.tools_info_battery_charging)
-    val full = stringResource(R.string.tools_info_battery_full)
-    val discharging = stringResource(R.string.tools_info_battery_discharging)
-
-    LaunchedEffect(show) {
-        if (!show) return@LaunchedEffect
-        state = SpecsState.Loading
-        state = runCatching {
-            collectDeviceSpecs(charging, full, discharging)
-        }.fold(
-            onSuccess = { SpecsState.Ready(it) },
-            onFailure = { SpecsState.Failed(it.message ?: "") },
-        )
-    }
-
-    OverlayBottomSheet(
-        show = show,
-        title = stringResource(R.string.tools_device_info),
-        startAction = {
-            // 返回箭头，与应用管理「从本机应用安装」面板左上角同款
-            IconButton(
-                onClick = {
-                    haptic.contextClick()
-                    onDismissRequest()
-                },
-                modifier = Modifier.offset(y = UiSpacing.SheetHeaderIconOpticalOffset),
-            ) {
-                Icon(
-                    imageVector = MiuixIcons.Back,
-                    contentDescription = stringResource(R.string.cd_back),
-                )
-            }
-        },
-        endAction = {
-            // 仅 Ready 状态提供复制入口：Loading/Failed 没有可复制的行
-            val ready = state as? SpecsState.Ready
-            if (ready != null) {
-                // 行文本在组合期拼好：onClick 里不能再调 stringResource
-                val lines = ready.specs.map {
-                    stringResource(
-                        R.string.tools_device_info_copy_line,
-                        stringResource(it.labelRes),
-                        it.value,
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        haptic.contextClick()
-                        LocalInputService.setClipboardText(
-                            context,
-                            lines.joinToString("\n"),
-                        )
-                        AppRuntime.snackbar(R.string.tools_device_info_copied)
-                    },
-                    modifier = Modifier.offset(y = UiSpacing.SheetHeaderIconOpticalOffset),
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Copy,
-                        contentDescription = stringResource(R.string.tools_device_info_copy_all),
-                    )
-                }
-            }
-        },
-        onDismissRequest = onDismissRequest,
-        defaultWindowInsetsPadding = false,
-    ) {
-        // 提示条宿主：浮层由 miuix 根对话框层绘制，提示条须由浮层内的宿主渲染
-        // 才叠在规格卡片之上；宿主随本 lambda 组合，收起后随 onDispose 注销
-        // （宿主为何不能写在函数体里，见下文 ProcessSheet 的注释）
-        val sheetSnackHostState = remember { SnackbarHostState() }
-        DisposableEffect(sheetSnackHostState) {
-            val unregister = AppRuntime.registerSnackbarHostState(sheetSnackHostState)
-            onDispose(unregister)
-        }
-
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                when (val current = state) {
-                    SpecsState.Loading -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = UiSpacing.PageBottom * 2),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = stringResource(R.string.tools_info_loading),
-                                color = colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                    }
-
-                    is SpecsState.Failed -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = UiSpacing.PageBottom),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = stringResource(R.string.tools_info_failed, current.reason),
-                                color = colorScheme.error,
-                                fontSize = 14.sp,
-                            )
-                        }
-                    }
-
-                    is SpecsState.Ready -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.defaultColors(color = colorScheme.secondaryContainer),
-                        ) {
-                            Column(modifier = Modifier.padding(UiSpacing.ContentVertical)) {
-                                current.specs.forEach { spec ->
-                                    SpecRow(label = stringResource(spec.labelRes), value = spec.value)
-                                }
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(UiSpacing.SheetBottom))
-            }
-            // 提示条贴在浮层内容底部，盖在规格卡片之上
-            SnackbarHost(
-                state = sheetSnackHostState,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .onGloballyPositioned {
-                        AppRuntime.markSnackbarHostStateLaidOut(sheetSnackHostState)
-                    },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SpecRow(label: String, value: String, valueColor: Color = Color.Unspecified) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            fontSize = 13.sp,
-            color = colorScheme.onSurfaceVariantSummary,
-        )
-        Text(
-            text = value,
-            fontSize = 13.sp,
-            color = valueColor,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
 
 @Composable
 private fun ProcessSheet(

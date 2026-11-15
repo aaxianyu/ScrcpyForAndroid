@@ -319,7 +319,7 @@ object NativeAdbService {
         return response
     }
 
-    suspend fun shellBatch(build: ShellBatchBuilder.() -> Unit): List<String> {
+    suspend fun shellBatch(timeoutMs: Long = 0, build: ShellBatchBuilder.() -> Unit): List<String> {
         val builder = ShellBatchBuilder().apply(build)
         if (builder.commands.isEmpty()) {
             return emptyList()
@@ -338,7 +338,7 @@ object NativeAdbService {
                 }
             }
         }
-        val response = shell(script)
+        val response = shell(script, timeoutMs)
         val outputs = ArrayList<String>(builder.commands.size)
         var remaining = response
         markers.forEach { marker ->

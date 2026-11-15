@@ -1,0 +1,29 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+
+    <!-- 存储设备外框 -->
+    <path
+        android:pathData="M8.1,5.3 H19.9 Q21.1,5.3 21.7,6.6 L24.1,12.1 Q24.5,12.9 24.5,13.7 V20 Q24.5,22 22.5,22 H5.5 Q3.5,22 3.5,20 V13.7 Q3.5,12.9 3.9,12.1 L6.3,6.6 Q6.9,5.3 8.1,5.3 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- 横向分隔线 -->
+    <path
+        android:pathData="M3.8,14.1 L24.2,14.1"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+
+    <!-- 指示灯 -->
+    <path
+        android:pathData="M8.1,17.1 m-0.9,0 a0.9,0.9 0 1,0 1.8,0 a0.9,0.9 0 1,0 -1.8,0 M11.3,17.1 m-0.9,0 a0.9,0.9 0 1,0 1.8,0 a0.9,0.9 0 1,0 -1.8,0"
+        android:fillColor="#FFFFFFFF" />
+
+</vector>

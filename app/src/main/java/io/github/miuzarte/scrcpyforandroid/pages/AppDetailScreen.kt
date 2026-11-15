@@ -9,13 +9,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -40,7 +35,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
@@ -58,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
@@ -73,7 +66,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -105,6 +97,7 @@ import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
 import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalBlurMode
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
+import io.github.miuzarte.scrcpyforandroid.ui.SkeletonBar
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
 import io.github.miuzarte.scrcpyforandroid.ui.rememberPageScrollBehavior
@@ -913,7 +906,7 @@ private const val SHELL_PACKAGE = "com.android.shell"
  * 详情类顶栏只有返回钮与少量动作钮，不需要像列表页那样按形态给动作区让位。长标题在中间省略。
  */
 @Composable
-private fun BoxScope.DetailCollapsedTitle(title: String, visible: Boolean) {
+internal fun BoxScope.DetailCollapsedTitle(title: String, visible: Boolean) {
     val alpha = remember { Animatable(if (visible) 1f else 0f) }
     val translationY = remember { Animatable(if (visible) 0f else 20f) }
     LaunchedEffect(visible) {
@@ -1219,32 +1212,6 @@ private fun DetailMessageCard(message: String) {
             modifier = Modifier.padding(vertical = UiSpacing.Small),
         )
     }
-}
-
-/**
- * 骨架块：主题弱色 + 呼吸透明度。
- *
- * 用固定宽度而不是按比例铺满：值的长度本来就不一样，等宽占位块拼在一起会像一张表格。
- */
-@Composable
-private fun SkeletonBar(width: Dp, height: Dp = 12.dp) {
-    val transition = rememberInfiniteTransition(label = "detail-skeleton")
-    val alpha by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.9f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "detail-skeleton-alpha",
-    )
-    Box(
-        modifier = Modifier
-            .width(width)
-            .height(height)
-            .clip(RoundedCornerShape(4.dp))
-            .background(colorScheme.onSurfaceVariantSummary.copy(alpha = alpha * 0.4f)),
-    )
 }
 
 /** 可复制文本的统一交互：MIUIx 按压反馈 + 单击。 */
