@@ -33,6 +33,8 @@ fun AppActionSheet(
     app: DeviceApp?,
     onDismissRequest: () -> Unit,
     onActionPicked: (AppAction) -> Unit,
+    /** 打开应用详情；它是独立页面，不属于 [AppAction] 那组设备动作。 */
+    onDetailsPicked: () -> Unit,
     /** 该应用此刻有进程在跑；null = 运行态未知 */
     running: Boolean? = null,
 ) {
@@ -46,6 +48,9 @@ fun AppActionSheet(
         title = app.displayLabel,
         onDismissRequest = onDismissRequest,
         actions = listOf(
+            ActionSheetItem(stringResource(R.string.app_manager_detail_title)) {
+                onDetailsPicked()
+            },
             ActionSheetItem(stringResource(R.string.app_manager_open), app.isEnabled) {
                 onActionPicked(AppAction.OPEN)
             },

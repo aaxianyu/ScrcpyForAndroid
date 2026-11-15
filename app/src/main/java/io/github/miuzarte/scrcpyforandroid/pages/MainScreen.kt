@@ -140,6 +140,8 @@ sealed interface RootScreen: NavKey {
     @Serializable
     data object AppManager: RootScreen
     @Serializable
+    data class AppDetail(val packageName: String): RootScreen
+    @Serializable
     data class ScrcpyOptionRecord(val profileId: String): RootScreen
 }
 
@@ -771,6 +773,10 @@ fun MainScreen() {
             AppManagerScreen(
                 onBackToDevices = rootNavigator.backToDevicesTab,
             )
+        }
+
+        entry<RootScreen.AppDetail>(swipeDismiss = swipeBackDirection) { route ->
+            AppDetailScreen(packageName = route.packageName)
         }
     }
 

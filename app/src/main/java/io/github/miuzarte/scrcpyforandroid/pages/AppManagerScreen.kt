@@ -337,6 +337,8 @@ internal fun AppManagerScreen(
     var actionSheetApp by remember { mutableStateOf<DeviceApp?>(null) }
     var actionSheetVisible by remember { mutableStateOf(false) }
     var pendingSheetAction by remember { mutableStateOf<AppAction?>(null) }
+    // 「应用详情」是独立页面而不是设备动作：包名先记下，等面板收起后再推路由
+    var pendingDetailPackage by remember { mutableStateOf<String?>(null) }
     // 面板按包名回读最新行：点开面板时那次状态校准是异步的，读回来要能刷到面板上——
     // 「打开」「强制停止」是否置灰看的正是这一行的启用态与运行态。行已不在列表时退回快照。
     val actionSheetLiveApp = actionSheetApp?.let { snapshot ->
@@ -1349,6 +1351,10 @@ internal fun AppManagerScreen(
                 pendingSheetAction = action
                 actionSheetVisible = false
             },
+            onDetailsPicked = {
+                pendingDetailPackage = actionSheetLiveApp?.packageName ?: actionSheetApp?.packageName
+                actionSheetVisible = false
+            },
             // 运行态未知（null）时传 null：面板内部据此不置灰强制停止
             running = actionSheetLiveApp?.let { app ->
                 uiState.runningPackages.runningOrNull(app.packageName)
@@ -1356,6 +1362,13 @@ internal fun AppManagerScreen(
         )
         LaunchedEffect(actionSheetVisible, actionSheetApp) {
             if (!actionSheetVisible) {
+                val detailPackage = pendingDetailPackage
+                pendingDetailPackage = null
+                if (detailPackage != null) {
+                    actionSheetApp = null
+                    navigator.push(RootScreen.AppDetail(detailPackage))
+                    return@LaunchedEffect
+                }
                 val action = pendingSheetAction
                 val app = actionSheetLiveApp
                 pendingSheetAction = null

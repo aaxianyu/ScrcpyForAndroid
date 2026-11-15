@@ -984,4 +984,45 @@
     <string name="app_manager_export_outcome">已导出 %1$d / %2$d 个应用</string>
     <string name="app_manager_export_outcome_downloads">已导出 %1$d / %2$d 个应用到 Download/Scrcpy 目录</string>
     <string name="app_manager_export_rolled_back">%1$d 个应用未能导出完成，文件没有保存，请重试</string>
+
+    <!-- 应用详情 -->
+    <string name="app_manager_detail_title">应用详情</string>
+    <string name="app_manager_detail_version">版本</string>
+    <string name="app_manager_detail_version_combined">%1$s（%2$s）</string>
+    <string name="app_manager_detail_uid">应用 UID</string>
+    <string name="app_manager_detail_abi">ABI</string>
+    <string name="app_manager_detail_running">运行状态</string>
+    <string name="app_manager_detail_running_yes">运行中</string>
+    <string name="app_manager_detail_running_no">未运行</string>
+    <string name="app_manager_detail_disabled">禁用状态</string>
+    <string name="app_manager_detail_disabled_yes">已禁用</string>
+    <string name="app_manager_detail_disabled_no">未禁用</string>
+    <string name="app_manager_detail_system_app">系统应用</string>
+    <string name="app_manager_detail_yes">是</string>
+    <string name="app_manager_detail_no">否</string>
+    <string name="app_manager_detail_min_sdk">最低 SDK 版本</string>
+    <string name="app_manager_detail_target_sdk">目标 SDK 版本</string>
+    <string name="app_manager_detail_apk_size">安装包大小</string>
+    <string name="app_manager_detail_first_install">首次安装时间</string>
+    <string name="app_manager_detail_last_update">最后更新时间</string>
+    <string name="app_manager_detail_installer">安装来源</string>
+    <string name="app_manager_detail_install_method">安装方式</string>
+    <string name="app_manager_detail_install_method_adb">ADB</string>
+    <string name="app_manager_detail_install_method_preinstalled">系统预装</string>
+    <string name="app_manager_detail_signing_scheme">签名方案</string>
+    <string name="app_manager_detail_signing_value">v%1$s</string>
+    <string name="app_manager_detail_permissions">权限</string>
+    <string name="app_manager_detail_permissions_value">申请 %1$d · 运行时 %2$d</string>
+    <string name="app_manager_detail_code_path">安装路径</string>
+    <string name="app_manager_detail_data_dir">数据目录</string>
+    <string name="app_manager_detail_unknown">未知</string>
+    <string name="app_manager_detail_size_split">%1$s（%2$s）</string>
+    <string name="app_manager_detail_load_failed">读取应用信息失败：%1$s</string>
+    <string name="app_manager_detail_timeout">设备 %1$d 秒内没有返回应用信息</string>
+    <string name="app_manager_detail_unrecognized">无法解析设备返回的应用信息</string>
+    <string name="app_manager_detail_not_found">该应用已不在设备上</string>
+    <string name="app_manager_detail_copied_label">已复制应用名到剪贴板</string>
+    <string name="app_manager_detail_copied_package">已复制包名到剪贴板</string>
+    <string name="app_manager_detail_copied_code_path">已复制安装路径到剪贴板</string>
+    <string name="app_manager_detail_copied_data_dir">已复制数据目录到剪贴板</string>
 </resources>

@@ -985,4 +985,45 @@
     <string name="app_manager_export_outcome">Exported %1$d of %2$d app(s)</string>
     <string name="app_manager_export_outcome_downloads">Exported %1$d of %2$d app(s) to Download/Scrcpy</string>
     <string name="app_manager_export_rolled_back">Export of %1$d app(s) did not finish; the file was not saved. Please try again.</string>
+
+    <!-- App details -->
+    <string name="app_manager_detail_title">App details</string>
+    <string name="app_manager_detail_version">Version</string>
+    <string name="app_manager_detail_version_combined">%1$s (%2$s)</string>
+    <string name="app_manager_detail_uid">App UID</string>
+    <string name="app_manager_detail_abi">ABI</string>
+    <string name="app_manager_detail_running">Running status</string>
+    <string name="app_manager_detail_running_yes">Running</string>
+    <string name="app_manager_detail_running_no">Not running</string>
+    <string name="app_manager_detail_disabled">Disabled status</string>
+    <string name="app_manager_detail_disabled_yes">Disabled</string>
+    <string name="app_manager_detail_disabled_no">Not disabled</string>
+    <string name="app_manager_detail_system_app">System app</string>
+    <string name="app_manager_detail_yes">Yes</string>
+    <string name="app_manager_detail_no">No</string>
+    <string name="app_manager_detail_min_sdk">Minimum SDK version</string>
+    <string name="app_manager_detail_target_sdk">Target SDK version</string>
+    <string name="app_manager_detail_apk_size">Package size</string>
+    <string name="app_manager_detail_first_install">First installed</string>
+    <string name="app_manager_detail_last_update">Last updated</string>
+    <string name="app_manager_detail_installer">Installed from</string>
+    <string name="app_manager_detail_install_method">Install method</string>
+    <string name="app_manager_detail_install_method_adb">ADB</string>
+    <string name="app_manager_detail_install_method_preinstalled">Preinstalled</string>
+    <string name="app_manager_detail_signing_scheme">Signing scheme</string>
+    <string name="app_manager_detail_signing_value">v%1$s</string>
+    <string name="app_manager_detail_permissions">Permissions</string>
+    <string name="app_manager_detail_permissions_value">%1$d requested · %2$d runtime</string>
+    <string name="app_manager_detail_code_path">Install path</string>
+    <string name="app_manager_detail_data_dir">Data directory</string>
+    <string name="app_manager_detail_unknown">Unknown</string>
+    <string name="app_manager_detail_size_split">%1$s (%2$s)</string>
+    <string name="app_manager_detail_load_failed">Couldn\'t read app details: %1$s</string>
+    <string name="app_manager_detail_timeout">The device didn\'t answer within %1$d seconds</string>
+    <string name="app_manager_detail_unrecognized">Couldn\'t parse the app details the device returned</string>
+    <string name="app_manager_detail_not_found">This app is no longer installed</string>
+    <string name="app_manager_detail_copied_label">Copied app name to clipboard</string>
+    <string name="app_manager_detail_copied_package">Copied package name to clipboard</string>
+    <string name="app_manager_detail_copied_code_path">Copied install path to clipboard</string>
+    <string name="app_manager_detail_copied_data_dir">Copied data directory to clipboard</string>
 </resources>
