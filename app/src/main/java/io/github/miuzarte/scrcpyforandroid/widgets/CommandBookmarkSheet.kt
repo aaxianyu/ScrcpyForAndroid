@@ -35,6 +35,7 @@ import io.github.miuzarte.scrcpyforandroid.storage.CommandBookmarks
 import io.github.miuzarte.scrcpyforandroid.storage.Storage
 import io.github.miuzarte.scrcpyforandroid.storage.commandForInput
 import io.github.miuzarte.scrcpyforandroid.ui.confirm
+import io.github.miuzarte.scrcpyforandroid.ui.DialogHeading
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -340,35 +341,38 @@ private fun BookmarkDeleteDialog(
     val haptic = LocalHapticFeedback.current
     OverlayDialog(
         show = true,
-        title = stringResource(R.string.bookmark_delete),
-        // 描述走 summary：组件库按标题样式居中排版，与标题同一条中轴
-        summary = stringResource(R.string.bookmark_delete_confirm, bookmark.name),
         onDismissRequest = onDismiss,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(UiSpacing.PageItem),
-        ) {
-            TextButton(
-                text = stringResource(R.string.button_cancel),
-                onClick = {
-                    haptic.contextClick()
-                    onDismiss()
-                },
-                modifier = Modifier.weight(1f),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            DialogHeading(
+                title = stringResource(R.string.bookmark_delete_title, bookmark.name),
+                summary = stringResource(R.string.bookmark_delete_summary),
             )
-            // 底色与取消一致，只把文字染红：删除是破坏性动作，靠字色区分而不换按钮样式
-            TextButton(
-                text = stringResource(R.string.bookmark_delete),
-                onClick = {
-                    haptic.confirm()
-                    onConfirm()
-                },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColors(
-                    textColor = MiuixTheme.colorScheme.error,
-                ),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.PageItem),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.button_cancel),
+                    onClick = {
+                        haptic.contextClick()
+                        onDismiss()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                // 底色与取消一致，只把文字染红：删除是破坏性动作，靠字色区分而不换按钮样式
+                TextButton(
+                    text = stringResource(R.string.bookmark_delete),
+                    onClick = {
+                        haptic.confirm()
+                        onConfirm()
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColors(
+                        textColor = MiuixTheme.colorScheme.error,
+                    ),
+                )
+            }
         }
     }
 }

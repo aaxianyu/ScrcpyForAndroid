@@ -61,6 +61,7 @@ import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
 import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetDialog
 import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetItem
+import io.github.miuzarte.scrcpyforandroid.ui.DialogHeading
 import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
 import kotlinx.coroutines.Dispatchers
@@ -1176,7 +1177,7 @@ private fun PortSheet(
 
     OverlayDialog(
         show = true,
-        title = stringResource(R.string.tools_wireless_adb),
+        title = stringResource(R.string.tools_wireless_adb_dialog_title),
         onDismissRequest = onDismiss,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentVertical)) {
@@ -1204,7 +1205,7 @@ private fun PortSheet(
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(
-                    text = stringResource(R.string.button_confirm),
+                    text = stringResource(R.string.button_apply),
                     onClick = { onApply(resolvedPort.toInt()) },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.textButtonColorsPrimary(),
@@ -1233,11 +1234,13 @@ private fun ActivationSheet(
 
     OverlayDialog(
         show = true,
-        title = stringResource(R.string.tools_activate_app),
-        summary = activateHint,
         onDismissRequest = onDismiss,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal)) {
+            DialogHeading(
+                title = stringResource(R.string.tools_activate_app),
+                summary = activateHint,
+            )
             when {
                 loading -> {
                     Text(
@@ -1308,7 +1311,7 @@ private fun ActivationSheet(
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(
-                    text = stringResource(R.string.button_confirm),
+                    text = stringResource(R.string.tools_activate_action),
                     onClick = { onActivate(selection.toList()) },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.textButtonColorsPrimary(),
@@ -1496,7 +1499,7 @@ private fun ToolActionRow(
             modifier = Modifier.weight(1f),
         )
         TextButton(
-            text = stringResource(R.string.button_confirm),
+            text = stringResource(R.string.button_apply),
             onClick = onConfirm,
             modifier = Modifier.weight(1f),
             colors = ButtonDefaults.textButtonColorsPrimary(),
@@ -1594,25 +1597,33 @@ private fun RebootConfirmDialog(
 ) {
     OverlayDialog(
         show = true,
-        title = stringResource(mode.confirmTitleResId),
-        summary = stringResource(mode.confirmDescResId),
         onDismissRequest = onDismiss,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
-        ) {
-            TextButton(
-                text = stringResource(R.string.button_cancel),
-                onClick = onDismiss,
-                modifier = Modifier.weight(1f),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            DialogHeading(
+                title = stringResource(mode.confirmTitleResId),
+                summary = stringResource(mode.confirmDescResId),
             )
-            TextButton(
-                text = stringResource(R.string.button_confirm),
-                onClick = onConfirm,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.textButtonColorsPrimary(),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.button_cancel),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(mode.confirmActionResId),
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f),
+                    colors = if (mode.isDangerous) {
+                        ButtonDefaults.textButtonColors(textColor = colorScheme.error)
+                    } else {
+                        ButtonDefaults.textButtonColorsPrimary()
+                    },
+                )
+            }
         }
     }
 }
@@ -1644,6 +1655,19 @@ private val RebootMode.confirmDescResId: Int
         RebootMode.Fastboot -> R.string.tools_reboot_confirm_fastboot_desc
     }
 
+private val RebootMode.confirmActionResId: Int
+    get() = when (this) {
+        RebootMode.Normal -> R.string.tools_reboot_normal
+        RebootMode.Soft -> R.string.tools_reboot_soft
+        RebootMode.Shutdown -> R.string.tools_reboot_shutdown
+        RebootMode.Recovery -> R.string.tools_reboot_action_recovery
+        RebootMode.Fastboot -> R.string.tools_reboot_action_fastboot
+    }
+
+// 关机与两种底层的模式切换不会自己退回系统，按钮取错误色
+private val RebootMode.isDangerous: Boolean
+    get() = this == RebootMode.Shutdown || this == RebootMode.Recovery || this == RebootMode.Fastboot
+
 @Composable
 private fun ScreenStandbyDialog(
     onDismiss: () -> Unit,
@@ -1651,25 +1675,29 @@ private fun ScreenStandbyDialog(
 ) {
     OverlayDialog(
         show = true,
-        title = stringResource(R.string.tools_screen_standby),
-        summary = stringResource(R.string.tools_screen_standby_dialog_desc),
         onDismissRequest = onDismiss,
     ) {
-        // 两个动作都只翻显示面板电源、不经过系统睡眠流程，随时可以反向操作
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
-        ) {
-            TextButton(
-                text = stringResource(R.string.tools_screen_standby_wake_up),
-                onClick = { onAction(ScreenStandbyAction.TurnOn) },
-                modifier = Modifier.weight(1f),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            DialogHeading(
+                title = stringResource(R.string.tools_screen_standby),
+                summary = stringResource(R.string.tools_screen_standby_dialog_desc),
             )
-            TextButton(
-                text = stringResource(R.string.tools_screen_standby_turn_off),
-                onClick = { onAction(ScreenStandbyAction.TurnOff) },
-                modifier = Modifier.weight(1f),
-            )
+            // 两个动作都只翻显示面板电源、不经过系统睡眠流程，随时可以反向操作
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.tools_screen_standby_wake_up),
+                    onClick = { onAction(ScreenStandbyAction.TurnOn) },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.tools_screen_standby_turn_off),
+                    onClick = { onAction(ScreenStandbyAction.TurnOff) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }

@@ -188,7 +188,7 @@ class AppProbeClient(context: Context) {
     /**
      * 有进程在跑的应用包名集合；**读不出进程表时返回 [RunningSnapshot.Unknown]**（与
      * [disabledPackages] 的「失败即空集」不同：这里空集代表「确实没应用在跑」，会把全部应用的
-     * 强制停止置灰）。
+     * 强行停止置灰）。
      *
      * 只跑一次 `ps -A`：进程表本身就带包名，不必再查 `pm list packages`——应用清单已经在
      * 手上，这里只要「这些包里哪些有进程」。

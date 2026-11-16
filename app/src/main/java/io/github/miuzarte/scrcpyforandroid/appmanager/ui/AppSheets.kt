@@ -1,6 +1,7 @@
 package io.github.miuzarte.scrcpyforandroid.appmanager.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -12,6 +13,8 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetDialog
 import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetItem
+import io.github.miuzarte.scrcpyforandroid.ui.DialogHeading
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownItem
@@ -39,9 +42,9 @@ fun AppActionSheet(
     running: Boolean? = null,
 ) {
     if (app == null) return
-    // 强制停止只在「确实有进程在跑」时可用：已停用一律置灰（停用优先）；
+    // 强行停止只在「确实有进程在跑」时可用：已停用一律置灰（停用优先）；
     // 运行态未知时不置灰——拿不到运行状态就没依据禁用，否则一次 ps -A 读失败
-    // 会让全列表的强制停止都点不动。置灰而不隐藏，菜单位置保持稳定
+    // 会让全列表的强行停止都点不动。置灰而不隐藏，菜单位置保持稳定
     val forceStopEnabled = app.isEnabled && running != false
     ActionSheetDialog(
         visible = visible,
@@ -78,8 +81,8 @@ fun AppActionSheet(
 }
 
 /**
- * 安装来源面板：miuix 窗口对话框，
- * 标题「安装APK」、描述说明选择来源，「文件管理 / 已安装」两个动作按钮。
+ * 安装来源面板：miuix 弹窗（OverlayDialog），
+ * 标题「安装 APK」、说明选择来源，「选择文件 / 选择应用」两个动作按钮。
  */
 @Composable
 fun InstallSourceSheet(
@@ -90,24 +93,29 @@ fun InstallSourceSheet(
 ) {
     OverlayDialog(
         show = visible,
-        title = stringResource(R.string.app_manager_install_source_title),
-        summary = stringResource(R.string.app_manager_install_source_desc),
         onDismissRequest = onDismissRequest,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
-        ) {
-            TextButton(
-                text = stringResource(R.string.app_manager_install_source_file),
-                onClick = onPickFiles,
-                modifier = Modifier.weight(1f),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            DialogHeading(
+                title = stringResource(R.string.app_manager_install_source_title),
+                summary = stringResource(R.string.app_manager_install_source_desc),
             )
-            TextButton(
-                text = stringResource(R.string.app_manager_install_source_local),
-                onClick = onPickLocalApps,
-                modifier = Modifier.weight(1f),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
+            ) {
+                TextButton(
+                    text = stringResource(R.string.app_manager_install_source_file),
+                    onClick = onPickFiles,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = stringResource(R.string.app_manager_install_source_local),
+                    onClick = onPickLocalApps,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                )
+            }
         }
     }
 }

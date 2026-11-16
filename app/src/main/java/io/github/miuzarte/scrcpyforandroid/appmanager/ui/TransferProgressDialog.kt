@@ -23,6 +23,7 @@ import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.TransferPhase
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.TransferProgress
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.SizeFormat
+import io.github.miuzarte.scrcpyforandroid.ui.DialogHeading
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -56,20 +57,6 @@ fun TransferProgressDialog(
 
     OverlayDialog(
         show = true,
-        // 标题说「现在在哪个阶段」，副标题（summary）说「在处理哪个应用」
-        title = stringResource(
-            when {
-                exporting -> if (progress.phase == TransferPhase.PREPARE) {
-                    R.string.app_manager_transfer_preparing
-                } else {
-                    R.string.app_manager_transfer_exporting
-                }
-                progress.phase == TransferPhase.PREPARE -> R.string.app_manager_transfer_preparing
-                progress.phase == TransferPhase.COMMIT -> R.string.app_manager_transfer_installing
-                else -> R.string.app_manager_transfer_transferring
-            },
-        ),
-        summary = progress.label,
         // 不传 onDismissRequest：点空白 / 系统返回由下面按钮与确认框接管，
         // 避免误触直接丢掉整个传输进度
         onDismissRequest = { abortConfirmVisible = true },
@@ -80,6 +67,22 @@ fun TransferProgressDialog(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // 标题说「现在在哪个阶段」，说明说「在处理哪个应用」
+            DialogHeading(
+                title = stringResource(
+                    when {
+                        exporting -> if (p.phase == TransferPhase.PREPARE) {
+                            R.string.app_manager_transfer_preparing
+                        } else {
+                            R.string.app_manager_transfer_exporting
+                        }
+                        p.phase == TransferPhase.PREPARE -> R.string.app_manager_transfer_preparing
+                        p.phase == TransferPhase.COMMIT -> R.string.app_manager_transfer_installing
+                        else -> R.string.app_manager_transfer_transferring
+                    },
+                ),
+                summary = p.label,
+            )
             LinearProgressIndicator(
                 progress = p.fraction,
                 modifier = Modifier.fillMaxWidth(),
@@ -142,31 +145,43 @@ fun TransferProgressDialog(
     }
 
     if (abortConfirmVisible) {
+        val abortTitle = stringResource(
+            if (exporting) {
+                R.string.app_manager_transfer_abort_title_export
+            } else {
+                R.string.app_manager_transfer_abort_title_install
+            },
+            liveProgress.label,
+        )
         OverlayDialog(
             show = true,
-            title = stringResource(R.string.app_manager_transfer_abort_title),
-            summary = stringResource(R.string.app_manager_transfer_abort_summary),
             onDismissRequest = { abortConfirmVisible = false },
             onDismissFinished = { abortConfirmVisible = false },
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TextButton(
-                    text = stringResource(R.string.button_cancel),
-                    onClick = { abortConfirmVisible = false },
-                    modifier = Modifier.weight(1f),
+            Column(modifier = Modifier.fillMaxWidth()) {
+                DialogHeading(
+                    title = abortTitle,
+                    summary = stringResource(R.string.app_manager_transfer_abort_summary),
                 )
-                TextButton(
-                    text = stringResource(R.string.app_manager_transfer_abort_confirm),
-                    onClick = {
-                        abortConfirmVisible = false
-                        onAbortConfirm()
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(
+                        text = stringResource(R.string.button_cancel),
+                        onClick = { abortConfirmVisible = false },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        text = stringResource(R.string.app_manager_transfer_abort_confirm),
+                        onClick = {
+                            abortConfirmVisible = false
+                            onAbortConfirm()
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.textButtonColors(textColor = colorScheme.error),
+                    )
+                }
             }
         }
     }

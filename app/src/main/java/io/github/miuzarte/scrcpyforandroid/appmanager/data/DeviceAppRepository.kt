@@ -76,7 +76,7 @@ object DeviceAppRepository {
      * - 列表加载 / 下拉刷新（[loadInner]）；
      * - 应用管理页停在前台时的 30 秒轮询（[refreshRunningState]）；
      * - 点开某个应用 / 多选勾上某个应用时的单包校准（[refreshAppState]）；
-     * - 强制停止、打开之后的定向重拉（[refreshRunning]）。
+     * - 强行停止、打开之后的定向重拉（[refreshRunning]）。
      */
     private val _runningPackages = MutableStateFlow<Set<String>?>(null)
 
@@ -105,7 +105,7 @@ object DeviceAppRepository {
      * 单包校准的在途去重与排队上限。
      *
      * 点开一行、勾选一行都会校准一个包，每条校准要两条 ADB 命令。连续勾选十几个应用时若
-     * 照单全收，【强制停止】那条定向重拉就会排在它们后面，「运行中」标签要等几十秒才消失。
+     * 照单全收，【强行停止】那条定向重拉就会排在它们后面，「运行中」标签要等几十秒才消失。
      * 所以同一个包在途时不再重复排队，排队数到 [MAX_PENDING_CALIBRATIONS] 就丢掉新的——
      * 被丢掉的那一行，用户下次点它或 30 秒轮询会重新校准。
      */
@@ -391,7 +391,7 @@ object DeviceAppRepository {
                     return
                 }
                 // 运行集合与已停用集合同一个位置取：都是「列表之外的一次附加查询」，
-                // 失败不影响列表本身。读不出来时置 null（未知），由界面决定「强制停止仍可点」
+                // 失败不影响列表本身。读不出来时置 null（未知），由界面决定「强行停止仍可点」
                 val running = probeClient.runningPackages()
                 if (commitKey(generation, loadGeneration, key, deviceKey) == null) {
                     Log.d(TAG, "load: drop stale result before running commit gen=$generation")
@@ -418,7 +418,7 @@ object DeviceAppRepository {
                     }
 
                     is AppProbeClient.RunningSnapshot.Unknown -> {
-                        // 未知就退回 null：界面据此不显示「运行中」标签、也不据此置灰强制停止
+                        // 未知就退回 null：界面据此不显示「运行中」标签、也不据此置灰强行停止
                         _runningPackages.value = null
                         // 命令原文与英文异常名只进日志：提示里给固定措辞，用户看到的始终是中文
                         Log.w(
@@ -532,7 +532,7 @@ object DeviceAppRepository {
                         )
                     },
                 )
-            // 打开成功后运行集合立刻变了：不重拉的话菜单里「强制停止」还是灰的、
+            // 打开成功后运行集合立刻变了：不重拉的话菜单里「强行停止」还是灰的、
             // 行上也没有「运行中」，用户会以为刚打开的应用停不掉。
             // 等一小会儿再拉：`am start` 返回时进程可能还没起来，立刻查会查到「没在跑」
             if (opened is ActionResult.Success) {
@@ -591,7 +591,7 @@ object DeviceAppRepository {
                 removePending(app.packageName)
                 // 只重拉运行集合（一次 ps -A），不动整份应用清单：
                 // 标签按重拉结果走，重拉失败则沿用旧集合。
-                // 只有强制停止才把该包从旧集合里摘掉：打开应用时重拉失败说明「不知道」，
+                // 只有强行停止才把该包从旧集合里摘掉：打开应用时重拉失败说明「不知道」，
                 // 不能顺手把它标成「没在跑」
                 refreshRunning(app.packageName.takeIf { action == AppAction.FORCE_STOP })
             }
@@ -1788,7 +1788,7 @@ object DeviceAppRepository {
     /**
      * 只重拉运行集合（一次 `ps -A`），不动整份应用清单。
      *
-     * 强制停止后用它定标签：命令没有回显可判，只能以重拉结果为准。
+     * 强行停止后用它定标签：命令没有回显可判，只能以重拉结果为准。
      * - 重拉成功：完全按重拉结果走。系统可能立刻把应用拉回来，那就继续显示「运行中」——
      *   谎报「已停止」比看起来没生效更糟。
      * - 重拉失败：沿用旧集合，只把 [stoppedPackage] 摘掉。命令确实下发成功了，标签还挂着
@@ -1796,7 +1796,7 @@ object DeviceAppRepository {
      */
     private fun refreshRunning(stoppedPackage: String? = null) {
         scope.launch {
-            // 强制停止与打开是同一机理的两端：`am force-stop` 返回时进程未必已经退出，
+            // 强行停止与打开是同一机理的两端：`am force-stop` 返回时进程未必已经退出，
             // 立刻查会查到「还在跑」，标签看起来没生效。等一小会儿再拉，两个方向都用同一个
             // 常量；不带 stoppedPackage 的调用（定时刷新）不需要等待，直接查。
             if (stoppedPackage != null) {
@@ -1809,13 +1809,13 @@ object DeviceAppRepository {
     }
 
     /**
-     * 重拉一次运行集合并写回，供强制停止 / 打开 / 定时刷新共用。
+     * 重拉一次运行集合并写回，供强行停止 / 打开 / 定时刷新共用。
      *
      * [stoppedPackage] 只在「刚下发了停止命令」时传：重拉失败时把该包从旧集合里摘掉。
      * 打开应用与定时刷新没有这层信息，读不到就只能维持「未知」。
      *
      * 读不出来时**保留上一次快照**，与 [loadInner] 的「退回 null」是两个方向，取舍在此：
-     * 轮询每 30 秒就会再来一次，偶尔一次读不到不该让整表角标消失、把全部强制停止重新点亮
+     * 轮询每 30 秒就会再来一次，偶尔一次读不到不该让整表角标消失、把全部强行停止重新点亮
      * （用户会以为应用都没在跑了）；而一次完整加载读不到，说明这台设备此刻确实说不清，
      * 退回「未知」比沿用一份可能已经过时很久的快照更诚实。代价是 `ps -A` 长期失败的 ROM
      * 上，轮询路径的角标会停在最后一次成功的快照上——它至少是这台设备真实读到过的结果。
@@ -1880,7 +1880,7 @@ object DeviceAppRepository {
      * - 不阻塞调用方：菜单、勾选立刻生效，读到结果再就地更新那一行与菜单里的可用性；
      * - 只改这一个包：其余行的角标保持原样，列表不会因为一次点击整体闪一遍；
      * - 运行集合原本未知（null）时整份采用新结果：只塞一个包会让其余包从「不知道」变成
-     *   「没在跑」，把全列表的强制停止一起置灰。
+     *   「没在跑」，把全列表的强行停止一起置灰。
      */
     fun refreshAppState(packageName: String) {
         val generation = calibrationGeneration
@@ -1984,7 +1984,7 @@ object DeviceAppRepository {
      * 单包校准允许排队的条数上限。
      *
      * 每条校准两条 ADB 命令，弱网下单条最多 8 秒；三个在排队足以覆盖正常的多选节奏，
-     * 再多就会把【强制停止】之后的定向重拉挤到后面，标签迟迟不消失。
+     * 再多就会把【强行停止】之后的定向重拉挤到后面，标签迟迟不消失。
      * 停止后排队中的校准还会被 [calibrationGeneration] 作废，所以定向重拉实际最多只等
      * 一条已经在跑的校准，而不是整条队列。
      */

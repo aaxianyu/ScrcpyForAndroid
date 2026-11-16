@@ -16,7 +16,7 @@ enum class AppAction {
     /**
      * 行冻结语义：
      * - [PendingRelease.ON_REFRESH]：等一次完整列表刷新后解冻（卸载 / 停用 / 启用）
-     * - [PendingRelease.ON_COMMAND]：命令返回即解冻（强制停止 / 清除数据 / 打开）
+     * - [PendingRelease.ON_COMMAND]：命令返回即解冻（强行停止 / 清除数据 / 打开）
      */
     val pendingRelease: PendingRelease
         get() = when (this) {
@@ -32,7 +32,7 @@ enum class AppAction {
             // 列表与设备上的安装状态才对得上（摘行会让人以为应用被移除了）。
             DISABLE -> ListEffect.FLIP_ENABLED
             ENABLE -> ListEffect.FLIP_ENABLED
-            // 强制停止没有回显可判，只能重拉一次运行集合来定标签（不做 PID 回读验证）
+            // 强行停止没有回显可判，只能重拉一次运行集合来定标签（不做 PID 回读验证）
             FORCE_STOP -> ListEffect.REFRESH_RUNNING
             // 打开不走 shell 命令（`am start` 在 executeSingle 里单独处理），
             // 它自己的运行态重拉也在那里做，见 DeviceAppRepository.executeSingle
@@ -51,7 +51,7 @@ enum class ListEffect {
     /** 启用 / 停用：就地翻成相反的启用态，行留在原处 */
     FLIP_ENABLED,
 
-    /** 强制停止：重拉运行集合，「运行中」标签与强制停止的可用性按重拉结果走 */
+    /** 强行停止：重拉运行集合，「运行中」标签与强行停止的可用性按重拉结果走 */
     REFRESH_RUNNING,
 }
 
@@ -92,7 +92,7 @@ object AppCommands {
 
     /**
      * 成功判定：
-     * - 强制停止无成功输出可判，命令完成即视为已下发；
+     * - 强行停止无成功输出可判，命令完成即视为已下发；
      * - 停用 / 启用看 `new state:` 回显；卸载 / 清除数据看 `Success`。
      */
     fun isSuccess(action: AppAction, packageName: String, output: String): Boolean =

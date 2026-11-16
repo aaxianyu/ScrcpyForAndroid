@@ -55,7 +55,7 @@ class AppListUiStateTest {
 
     @Test
     fun `empty running set is not the same as unknown`() {
-        // 空集合 = 确实没有应用在跑（强制停止全部置灰），与 null 语义不同
+        // 空集合 = 确实没有应用在跑（强行停止全部置灰），与 null 语义不同
         val state = AppListUiState(apps = listOf(app), runningPackages = emptySet())
         assertEquals(emptySet<String>(), state.runningPackages)
         assertEquals(false, state.runningPackages.isRunning("com.a"))

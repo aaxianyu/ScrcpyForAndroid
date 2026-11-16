@@ -27,8 +27,8 @@ data class AppListUiState(
     /**
      * 有进程在跑的应用包名集合；**null = 运行态未知**（这次没读到 `ps -A`）。
      *
-     * 未知与空集合必须分开：空集合表示「确实没有应用在跑」，此时所有应用的强制停止都该置灰；
-     * 未知只是这次没读到，按产品约定强制停止仍然可点、也不显示「运行中」标签。
+     * 未知与空集合必须分开：空集合表示「确实没有应用在跑」，此时所有应用的强行停止都该置灰；
+     * 未知只是这次没读到，按产品约定强行停止仍然可点、也不显示「运行中」标签。
      */
     val runningPackages: Set<String>? = null,
 ) {
@@ -63,7 +63,7 @@ internal fun Set<String>?.isRunning(packageName: String): Boolean =
 /**
  * 三态版本：null = 运行态未知，true / false 才是确定的结论。
  *
- * 「强制停止」是否置灰需要这个区别：未知时不置灰（仍可点），确定没在跑才置灰。
+ * 「强行停止」是否置灰需要这个区别：未知时不置灰（仍可点），确定没在跑才置灰。
  */
 internal fun Set<String>?.runningOrNull(packageName: String): Boolean? =
     this?.contains(packageName)

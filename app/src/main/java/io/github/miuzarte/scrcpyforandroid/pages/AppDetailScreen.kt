@@ -825,6 +825,7 @@ internal fun AppDetailScreen(packageName: String) {
 
             AppConfirmDialog(
                 visible = confirmVisible,
+                confirmLabel = stringResource(R.string.app_manager_action_export),
                 title = app?.let {
                     stringResource(R.string.app_manager_confirm_title_export_single, it.displayLabel)
                 } ?: "",

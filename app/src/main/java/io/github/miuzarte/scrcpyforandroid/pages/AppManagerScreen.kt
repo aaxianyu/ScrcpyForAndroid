@@ -317,7 +317,7 @@ internal fun AppManagerScreen(
     /**
      * 选中集里该动作真正作用到的条目。
      *
-     * 启用只作用于已停用的、停用只作用于已启用的；其余动作（导出 / 卸载 / 强制停止 /
+     * 启用只作用于已停用的、停用只作用于已启用的；其余动作（导出 / 卸载 / 强行停止 /
      * 清除数据）作用于全部选中项。混合选中时命令、提示计数与行尾在途圈都按这个集合走，
      * 已经是目标态的条目不会被重复操作。
      */
@@ -342,7 +342,7 @@ internal fun AppManagerScreen(
     // 「应用详情」是独立页面而不是设备动作：包名先记下，等面板收起后再推路由
     var pendingDetailPackage by remember { mutableStateOf<String?>(null) }
     // 面板按包名回读最新行：点开面板时那次状态校准是异步的，读回来要能刷到面板上——
-    // 「打开」「强制停止」是否置灰看的正是这一行的启用态与运行态。行已不在列表时退回快照。
+    // 「打开」「强行停止」是否置灰看的正是这一行的启用态与运行态。行已不在列表时退回快照。
     val actionSheetLiveApp = actionSheetApp?.let { snapshot ->
         uiState.apps.firstOrNull { it.packageName == snapshot.packageName } ?: snapshot
     }
@@ -624,7 +624,7 @@ internal fun AppManagerScreen(
 
     // 运行态定时刷新：只有停在本页且处于前台时才每 30 秒重拉一次 `ps -A`。
     // 被控设备上的应用随时会被用户自己打开 / 退出，一次快照放到几十分钟后必然过时，
-    // 角标和「强制停止」的置灰就会说谎。只拉进程表、不拉应用清单，代价很小。
+    // 角标和「强行停止」的置灰就会说谎。只拉进程表、不拉应用清单，代价很小。
     val refreshRunningTick by rememberUpdatedState<() -> Unit>({
         if (!uiState.notConnected) DeviceAppRepository.refreshRunningState()
     })
@@ -1000,7 +1000,7 @@ internal fun AppManagerScreen(
                                     if (!selected.remove(app.packageName)) {
                                         selected.add(app.packageName)
                                         // 勾上时校准一次：勾选之后马上要按状态挑动作
-                                        // （启用/停用互斥、强制停止要看是否在跑）
+                                        // （启用/停用互斥、强行停止要看是否在跑）
                                         DeviceAppRepository.refreshAppState(app.packageName)
                                     }
                                 } else {
@@ -1369,7 +1369,7 @@ internal fun AppManagerScreen(
                 pendingDetailPackage = actionSheetLiveApp?.packageName ?: actionSheetApp?.packageName
                 actionSheetVisible = false
             },
-            // 运行态未知（null）时传 null：面板内部据此不置灰强制停止
+            // 运行态未知（null）时传 null：面板内部据此不置灰强行停止
             running = actionSheetLiveApp?.let { app ->
                 uiState.runningPackages.runningOrNull(app.packageName)
             },
@@ -1583,18 +1583,61 @@ internal fun AppManagerScreen(
     val confirm = confirmRequest
     AppConfirmDialog(
         visible = confirmVisible && confirm != null,
-        title = when {
-            confirm?.isInstall == true -> stringResource(R.string.app_manager_confirm_title_install)
-            // 批量导出（含只选一个的情形）：标题带数量
-            confirm?.action == AppAction.EXPORT_APK && confirm.app == null ->
-                stringResource(R.string.app_manager_confirm_title_batch_export, confirm.batchCount)
+        title = confirm?.let { c ->
+            when {
+                c.isInstall && c.batchCount == 1 && c.installApps.size == 1 ->
+                    stringResource(R.string.app_manager_confirm_title_install_single, c.installApps[0].label)
 
-            // 单个应用导出：标题带应用名，与其它单应用动作同一形态
-            confirm?.action == AppAction.EXPORT_APK && confirm.app != null ->
-                stringResource(R.string.app_manager_confirm_title_export_single, confirm.app.displayLabel)
+                c.isInstall -> stringResource(R.string.app_manager_confirm_title_install_batch, c.batchCount)
 
-            else -> stringResource(R.string.app_manager_confirm_title_app, confirm?.batchCount ?: 0)
+                // 批量导出（含只选一个的情形）：标题带数量
+                c.action == AppAction.EXPORT_APK && c.app == null ->
+                    stringResource(R.string.app_manager_confirm_title_batch_export, c.batchCount)
+
+                // 单个应用导出：标题带应用名，与其它单应用动作同一形态
+                c.action == AppAction.EXPORT_APK ->
+                    stringResource(R.string.app_manager_confirm_title_export_single, c.app?.displayLabel ?: "")
+
+                c.app != null -> stringResource(
+                    when (c.action) {
+                        AppAction.UNINSTALL -> R.string.app_manager_confirm_title_uninstall_single
+                        AppAction.DISABLE -> R.string.app_manager_confirm_title_disable_single
+                        AppAction.ENABLE -> R.string.app_manager_confirm_title_enable_single
+                        AppAction.FORCE_STOP -> R.string.app_manager_confirm_title_force_stop_single
+                        AppAction.CLEAR_DATA -> R.string.app_manager_confirm_title_clear_data_single
+                        else -> R.string.app_manager_confirm_title_uninstall_single
+                    },
+                    c.app.displayLabel,
+                )
+
+                else -> stringResource(
+                    when (c.action) {
+                        AppAction.UNINSTALL -> R.string.app_manager_confirm_title_uninstall_batch
+                        AppAction.DISABLE -> R.string.app_manager_confirm_title_disable_batch
+                        AppAction.ENABLE -> R.string.app_manager_confirm_title_enable_batch
+                        else -> R.string.app_manager_confirm_title_uninstall_batch
+                    },
+                    c.batchCount,
+                )
+            }
+        } ?: "",
+        // 右按钮写明动作本身；破坏性动作取错误色
+        confirmLabel = when {
+            confirm?.isInstall == true -> stringResource(R.string.app_manager_action_install)
+            confirm?.action == AppAction.EXPORT_APK -> stringResource(R.string.app_manager_action_export)
+            confirm?.action == AppAction.UNINSTALL -> stringResource(R.string.app_manager_uninstall)
+            confirm?.action == AppAction.DISABLE -> stringResource(R.string.app_manager_disable)
+            confirm?.action == AppAction.ENABLE -> stringResource(R.string.app_manager_enable)
+            confirm?.action == AppAction.FORCE_STOP -> stringResource(R.string.app_manager_force_stop)
+            confirm?.action == AppAction.CLEAR_DATA -> stringResource(R.string.app_manager_clear_data)
+            else -> stringResource(R.string.button_confirm)
         },
+        // 安装请求借用 UNINSTALL 作哨兵，别把安装也染成危险色
+        dangerous = confirm?.isInstall != true && (
+            confirm?.action == AppAction.UNINSTALL ||
+                confirm?.action == AppAction.CLEAR_DATA ||
+                confirm?.action == AppAction.FORCE_STOP
+            ),
         summary = confirmSummary(confirm),
         onConfirm = {
             if (confirm != null) {
@@ -1846,7 +1889,6 @@ private fun confirmSummary(confirm: ConfirmRequest?): String {
     return when {
         confirm.isInstall && confirm.batchCount == 1 && confirm.installApps.size == 1 -> stringResource(
             R.string.app_manager_local_install_confirm_single,
-            confirm.installApps[0].label,
         ) + splitHintLine(
             confirm.splitCount,
             R.string.app_manager_local_install_confirm_single_split,
@@ -1854,7 +1896,6 @@ private fun confirmSummary(confirm: ConfirmRequest?): String {
 
         confirm.isInstall -> stringResource(
             R.string.app_manager_local_install_confirm,
-            confirm.batchCount,
         ) + splitHintLine(
             confirm.splitCount,
             R.string.app_manager_local_install_confirm_split,
@@ -1894,17 +1935,19 @@ private fun confirmSummary(confirm: ConfirmRequest?): String {
                 AppAction.CLEAR_DATA -> R.string.app_manager_confirm_clear_data_single
                 else -> R.string.app_manager_confirm_uninstall_single
             },
-            confirm.app.displayLabel,
         )
 
-        else -> stringResource(
-            when (confirm.action) {
-                AppAction.UNINSTALL -> R.string.app_manager_confirm_uninstall_batch
-                AppAction.DISABLE -> R.string.app_manager_confirm_disable_batch
-                AppAction.ENABLE -> R.string.app_manager_confirm_enable_batch
-                else -> R.string.app_manager_confirm_uninstall_batch
-            },
-            confirm.batchCount,
-        )
+        else -> when (confirm.action) {
+            AppAction.UNINSTALL -> stringResource(
+                R.string.app_manager_confirm_uninstall_batch,
+                confirm.batchCount,
+            )
+            AppAction.DISABLE -> stringResource(R.string.app_manager_confirm_disable_batch)
+            AppAction.ENABLE -> stringResource(R.string.app_manager_confirm_enable_batch)
+            else -> stringResource(
+                R.string.app_manager_confirm_uninstall_batch,
+                confirm.batchCount,
+            )
+        }
     }
 }
