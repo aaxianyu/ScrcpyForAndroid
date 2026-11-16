@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -56,6 +57,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -915,13 +917,25 @@ internal fun AppManagerScreen(
         // AppManagerListPage 的 LazyColumn 上已挂同一条（见其 scrollBehavior 参数）
         Scaffold(
             snackbarHost = {
+                // 避让量随浮层的揭示 / 回收同步收放，切换期间不跳变。底栏自绘在内容层内
+                // （不进 Scaffold 的 bottomBar 槽位，那样会改变它与搜索浮层的前后关系），
+                // 所以避让量由这里显式给出。
+                val clearance = remember {
+                    Animatable(if (searchOpen) 0.dp else bottomSlotClearance(floatingForm), Dp.VectorConverter)
+                }
+                LaunchedEffect(searchOpen, floatingForm) {
+                    clearance.animateTo(
+                        targetValue = if (searchOpen) 0.dp else bottomSlotClearance(floatingForm),
+                        animationSpec = tween(
+                            if (animationsDisabled) 0 else AppManagerMotion.REVEAL_DURATION_MS,
+                            easing = AppManagerMotion.RevealEasing,
+                        ),
+                    )
+                }
                 SnackbarHost(
                     pageSnackHostState,
-                    // 消息条按底部槽位的高度上移，落到底栏上方而不是压在底栏上。
-                    // 底栏自绘在内容层内（不进 Scaffold 的 bottomBar 槽位，那样会
-                    // 改变它与搜索浮层的前后关系），所以避让量由这里显式给出。
                     modifier = Modifier
-                        .padding(bottom = bottomSlotClearance(floatingForm))
+                        .padding(bottom = clearance.value)
                         .onGloballyPositioned {
                             AppRuntime.markSnackbarHostStateLaidOut(pageSnackHostState)
                         },
