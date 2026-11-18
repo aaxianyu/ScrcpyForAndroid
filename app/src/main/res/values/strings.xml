@@ -891,7 +891,7 @@
     <string name="app_manager_search">Search</string>
     <string name="app_manager_search_cancel">Cancel</string>
     <string name="app_manager_display_options">Display options</string>
-    <string name="app_manager_install_apk">Install APK</string>
+    <string name="app_manager_install_apk">Install app</string>
     <string name="app_manager_hide_version">Hide version</string>
     <string name="app_manager_hide_apk_size">Hide package size</string>
     <string name="app_manager_split_badge">Split</string>
@@ -930,7 +930,7 @@
     <string name="app_manager_clear_data">Clear data</string>
     <string name="app_manager_export_apk">Export package</string>
     <string name="app_manager_uninstall">Uninstall</string>
-    <string name="app_manager_install_source_title">Install APK</string>
+    <string name="app_manager_install_source_title">Install app</string>
     <string name="app_manager_install_source_desc">Choose a package from files, or install an app already on this device.</string>
     <string name="app_manager_install_source_file">Choose file</string>
     <string name="app_manager_install_source_local">Choose app</string>

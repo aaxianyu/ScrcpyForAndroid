@@ -742,7 +742,6 @@ object DeviceAppRepository {
         }
     }
 
-    /** 文件安装：系统文件选择器选中的 APK，逐个推送安装。 */
     /** 清掉上一次操作可能没走到 finally 的临时目录：残留最多活到下一次操作。 */
     private fun resetScratchDirs() {
         for (name in SCRATCH_DIRS) runCatching { File(AppRuntime.context.cacheDir, name).deleteRecursively() }
@@ -786,6 +785,12 @@ object DeviceAppRepository {
         manager.getApplicationLabel(application).toString().takeIf { it.isNotBlank() }
     }.getOrNull()
 
+    /**
+     * 文件安装：系统文件选择器选中的安装包逐个推送安装。
+     *
+     * 选中项可以是单个 `.apk`，也可以是容器（`.apks` 等，判据见 [InstallGrouping.isContainer]）——
+     * 容器先解包，再按 split 分组推送。
+     */
     fun installDocuments(
         uris: List<android.net.Uri>,
         displayNames: List<String>,
@@ -2083,9 +2088,9 @@ enum class TransferPhase { PREPARE, TRANSFER, COMMIT }
 /** 安装 / 提取的传输进度（进度弹窗唯一数据源）。 */
 data class TransferProgress(
     val active: Boolean = false,
-    /** true = 提取 APK；false = 安装 APK（只影响弹窗标题）。 */
+    /** true = 提取 APK；false = 安装应用（只影响弹窗标题）。 */
     val exporting: Boolean = false,
-    /** 当前项：本机应用标签 / APK 文件名。 */
+    /** 当前项：本机应用标签 / 安装包文件名。 */
     val label: String = "",
     val doneBytes: Long = 0L,
     /** 0 表示未知总量（此时进度条走不确定态）。 */

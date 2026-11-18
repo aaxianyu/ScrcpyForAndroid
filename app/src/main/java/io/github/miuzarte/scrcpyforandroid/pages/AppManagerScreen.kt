@@ -696,7 +696,7 @@ internal fun AppManagerScreen(
         )
     }
 
-    // 文件选择器：安装 APK
+    // 文件选择器：安装应用（单个 .apk，或 .apks 等容器）
     val apkPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris: List<android.net.Uri> ->
@@ -1692,7 +1692,7 @@ private val DocumentsUiPackages = listOf(
 
 private const val AppManagerGroupCount = 2
 
-/** 顶栏动作区宽度：右缘 padding 16dp + 三个 40dp 动作钮（搜索 / 显示选项 / 安装 APK）。
+/** 顶栏动作区宽度：右缘 padding 16dp + 三个 40dp 动作钮（搜索 / 显示选项 / 安装应用）。
  *  40dp 取自 `MaskedTopBarAction.TouchSize`，16dp 取自 `TopAppBarDefaults.ActionIconPadding`；
  *  动作钮增减时必须同步，否则折叠态标题会压到按钮下。 */
 private val TopBarActionStripWidth = 136.dp

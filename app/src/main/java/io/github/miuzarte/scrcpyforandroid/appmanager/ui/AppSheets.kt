@@ -82,7 +82,7 @@ fun AppActionSheet(
 
 /**
  * 安装来源面板：miuix 弹窗（OverlayDialog），
- * 标题「安装 APK」、说明选择来源，「选择文件 / 选择应用」两个动作按钮。
+ * 标题「安装应用」、说明选择来源，「选择文件 / 选择应用」两个动作按钮。
  */
 @Composable
 fun InstallSourceSheet(

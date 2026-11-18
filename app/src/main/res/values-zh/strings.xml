@@ -890,7 +890,7 @@
     <string name="app_manager_search">搜索</string>
     <string name="app_manager_search_cancel">取消</string>
     <string name="app_manager_display_options">显示选项</string>
-    <string name="app_manager_install_apk">安装 APK</string>
+    <string name="app_manager_install_apk">安装应用</string>
     <string name="app_manager_hide_version">隐藏版本号</string>
     <string name="app_manager_hide_apk_size">隐藏安装包大小</string>
     <string name="app_manager_split_badge">Split</string>
@@ -929,7 +929,7 @@
     <string name="app_manager_clear_data">清除数据</string>
     <string name="app_manager_export_apk">导出安装包</string>
     <string name="app_manager_uninstall">卸载</string>
-    <string name="app_manager_install_source_title">安装 APK</string>
+    <string name="app_manager_install_source_title">安装应用</string>
     <string name="app_manager_install_source_desc">从文件管理选择安装包，或直接安装本机已装应用。</string>
     <string name="app_manager_install_source_file">选择文件</string>
     <string name="app_manager_install_source_local">选择应用</string>
