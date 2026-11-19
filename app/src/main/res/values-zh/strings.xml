@@ -716,14 +716,14 @@
     <string name="tools_title">实用工具</string>
     <string name="tools_group_device">设备工具</string>
     <string name="tools_group_display">显示</string>
-    <string name="tools_group_app">应用管理</string>
+    <string name="tools_group_app">应用</string>
     <string name="tools_group_debug">调试工具</string>
     <string name="tools_app_manager">应用管理</string>
-    <string name="tools_app_manager_desc">管理被控设备上已安装的应用</string>
+    <string name="tools_app_manager_desc">停用、卸载、导出等操作</string>
     <string name="tools_not_implemented">尚未实现</string>
     <string name="tools_not_connected">未连接设备</string>
     <string name="tools_screenshot">截图</string>
-    <string name="tools_screenshot_desc">截取设备屏幕为 PNG 文件</string>
+    <string name="tools_screenshot_desc">截取当前屏幕并保存为 PNG</string>
     <string name="tools_screenshot_executing">正在截图…</string>
     <string name="tools_screenshot_done">截图已完成</string>
     <string name="tools_screenshot_saved">截图已保存：%1$s</string>
@@ -733,7 +733,7 @@
     <string name="tools_screenshot_save">保存</string>
     <string name="tools_screenshot_open">打开</string>
     <string name="tools_advanced_reboot">高级重启</string>
-    <string name="tools_advanced_reboot_desc">重启、Recovery、Fastboot 等</string>
+    <string name="tools_advanced_reboot_desc">重启到 Recovery、Fastboot 等模式</string>
     <string name="tools_reboot_normal">重启</string>
     <string name="tools_reboot_soft">软重启</string>
     <string name="tools_reboot_shutdown">关机</string>
@@ -754,7 +754,7 @@
     <string name="tools_reboot_executing">正在执行：%1$s…</string>
     <string name="tools_reboot_unconfirmed">无法确认「%1$s」的执行结果，请查看设备。</string>
     <string name="tools_screen_density">屏幕 DPI</string>
-    <string name="tools_screen_density_desc">调整屏幕 DPI</string>
+    <string name="tools_screen_density_desc">改变界面元素的显示大小</string>
     <string name="tools_density_hint">DPI（%1$d–%2$d）</string>
     <string name="tools_density_applied">DPI 已设为 %1$s</string>
     <string name="tools_density_restored">DPI 已恢复出厂值：%1$s</string>
@@ -765,9 +765,9 @@
     <string name="tools_value_now">当前值</string>
     <string name="tools_value_restore">恢复</string>
     <string name="tools_screen_resolution">屏幕分辨率</string>
-    <string name="tools_screen_resolution_desc">调整屏幕显示分辨率</string>
+    <string name="tools_screen_resolution_desc">改变屏幕输出的像素数量</string>
     <string name="tools_screen_standby">熄屏待机</string>
-    <string name="tools_screen_standby_desc">在不锁屏的情况下熄灭设备屏幕</string>
+    <string name="tools_screen_standby_desc">关闭显示与触摸，但不锁屏</string>
     <string name="tools_screen_standby_dialog_desc">熄灭后显示与触摸关闭但不锁屏，可随时反向操作。</string>
     <string name="tools_screen_standby_turn_off">熄灭屏幕</string>
     <string name="tools_screen_standby_wake_up">点亮屏幕</string>
@@ -795,7 +795,7 @@
     <string name="tools_wireless_adb_failed">开启无线调试失败：%1$s</string>
     <string name="tools_activate_app">激活应用</string>
     <string name="tools_activate_action">激活</string>
-    <string name="tools_activate_app_desc">激活 Shizuku、黑阈等应用</string>
+    <string name="tools_activate_app_desc">通过 ADB 运行各应用的启动脚本</string>
     <string name="tools_activate_detecting">正在检测已安装的应用…</string>
     <string name="tools_activate_detect_failed">检测应用失败：%1$s</string>
     <string name="tools_activate_detect_failed_hint">应用检测失败，请检查 ADB 连接后重试。</string>
@@ -867,7 +867,7 @@
     <string name="device_info_selinux_enforcing">强制</string>
     <string name="device_info_selinux_permissive">宽容</string>
     <string name="tools_process_manager">进程管理</string>
-    <string name="tools_process_manager_desc">按内存占用查看与停止正在运行的应用</string>
+    <string name="tools_process_manager_desc">按内存占用查看与结束运行中的应用</string>
     <string name="tools_process_loading">正在读取进程列表…</string>
     <string name="tools_process_empty">没有正在运行的应用</string>
     <string name="tools_process_empty_filtered">隐藏系统应用后没有可显示的进程</string>
