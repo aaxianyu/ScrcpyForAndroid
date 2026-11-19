@@ -145,6 +145,7 @@ private data class StaticSnapshot(
     val instructionSets: List<String> = emptyList(),
     val socModel: String? = null,
     val cores: Int? = null,
+    val maxCpuFreqKhz: Long? = null,
     val physicalSize: WmSetting? = null,
     val density: WmSetting? = null,
     val display: DisplaySnapshot = DisplaySnapshot(),
@@ -193,6 +194,7 @@ private suspend fun collectStatic(): StaticSnapshot {
         command("df -k /data")
         command("getenforce")
         command("cmd wifi status")
+        command("cat /sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq 2>/dev/null")
     }
 
     fun valueAt(index: Int): String? =
@@ -210,6 +212,10 @@ private suspend fun collectStatic(): StaticSnapshot {
         instructionSets = valueAt(8)?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty(),
         socModel = valueAt(9) ?: valueAt(10) ?: valueAt(11),
         cores = valueAt(12)?.toIntOrNull(),
+        maxCpuFreqKhz = valueAt(19)
+            ?.lineSequence()
+            ?.mapNotNull { it.trim().toLongOrNull()?.takeIf { freq -> freq > 0 } }
+            ?.maxOrNull(),
         physicalSize = valueAt(13)?.let { parseWmSetting(it, "size") },
         density = valueAt(14)?.let { parseWmSetting(it, "density") },
         display = parseDisplaySnapshot(valueAt(15).orEmpty()),
@@ -522,6 +528,10 @@ private fun DeviceInfoCards(static: StaticSnapshot, live: LiveSnapshot?) {
         null
     }
     val screenSizeText = inches?.let { stringResource(R.string.device_info_inches, String.format(Locale.US, "%.2f", it)) }
+    // 面板不给 PPI 时 screenInches 会退回 DPI 折算，这种值只是估算。
+    val screenSizeEstimated = inches != null &&
+        (static.display.ppiX == null || static.display.ppiY == null ||
+            static.display.ppiX <= 0f || static.display.ppiY <= 0f)
 
     val totalMemBytes = live?.mem?.totalKb?.times(1024)
     val availableMemBytes = live?.mem?.availableKb?.times(1024)
@@ -552,6 +562,12 @@ private fun DeviceInfoCards(static: StaticSnapshot, live: LiveSnapshot?) {
     val processorText = listOfNotNull(
         static.socModel,
         static.cores?.let { stringResource(R.string.device_info_core_count, it) },
+        static.maxCpuFreqKhz?.let {
+            stringResource(
+                R.string.device_info_cpu_max_freq,
+                String.format(Locale.US, "%.2f", it / 1_000_000.0),
+            )
+        },
     ).takeIf { it.isNotEmpty() }?.joinToString(" | ")
 
     val refreshRateText = static.display.refreshRates
@@ -652,6 +668,7 @@ private fun DeviceInfoCards(static: StaticSnapshot, live: LiveSnapshot?) {
                 iconRes = R.drawable.device_description_screen,
                 label = stringResource(R.string.device_info_screen_size),
                 value = screenSizeText,
+                valueBadge = if (screenSizeEstimated) stringResource(R.string.device_info_size_estimated) else null,
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(UiSpacing.Large)) {
@@ -804,6 +821,7 @@ private fun StatCell(
     iconRes: Int?,
     label: String,
     value: String?,
+    valueBadge: String? = null,
     subline: String? = null,
     progress: Float? = null,
     detail: String? = null,
@@ -828,14 +846,26 @@ private fun StatCell(
             )
         }
         Spacer(Modifier.height(UiSpacing.Small))
-        Text(
-            text = value ?: stringResource(R.string.device_info_unknown),
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (value == null) colorScheme.onSurfaceVariantSummary else colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = value ?: stringResource(R.string.device_info_unknown),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (value == null) colorScheme.onSurfaceVariantSummary else colorScheme.onSurface,
+                modifier = Modifier.weight(1f, fill = false),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (valueBadge != null) {
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = valueBadge,
+                    fontSize = 10.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                )
+            }
+        }
         if (progress != null) {
             Spacer(Modifier.height(UiSpacing.Small))
             LinearProgressIndicator(
@@ -978,7 +1008,7 @@ private fun LoadingCards() {
         Column(modifier = Modifier.fillMaxWidth()) {
             StatLabel(iconRes = R.drawable.device_description_cpu, label = stringResource(R.string.device_info_cpu_model))
             Spacer(Modifier.height(UiSpacing.Small))
-            SkeletonBar(width = 160.dp, height = 19.dp)
+            SkeletonBar(width = 220.dp, height = 19.dp)
         }
     }
     InfoCard {
