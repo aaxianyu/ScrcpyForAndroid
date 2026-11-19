@@ -167,7 +167,7 @@ internal fun oneDecimal(value: Double): String = String.format(Locale.US, "%.1f"
 internal fun pixelsText(wmValue: String?): String? =
     wmValue?.split('x')?.takeIf { it.size == 2 }?.joinToString(" × ")
 
-/** 屏幕对角线英寸数：优先用出厂横纵 PPI 分别折算，缺 PPI 时退回逻辑密度。 */
+/** 屏幕对角线英寸数：优先用出厂横纵 PPI 分别折算，缺 PPI 时退回 DPI。 */
 internal fun screenInches(widthPx: Int, heightPx: Int, ppiX: Float?, ppiY: Float?, densityDpi: Int?): Double? {
     if (widthPx <= 0 || heightPx <= 0) return null
     if (ppiX != null && ppiY != null && ppiX > 0f && ppiY > 0f) {

@@ -715,6 +715,10 @@
 
     <!-- Utility tools -->
     <string name="tools_title">Utility tools</string>
+    <string name="tools_group_device">Device tools</string>
+    <string name="tools_group_display">Display</string>
+    <string name="tools_group_app">App management</string>
+    <string name="tools_group_debug">Debugging tools</string>
     <string name="tools_app_manager">App manager</string>
     <string name="tools_app_manager_desc">Manage apps installed on the controlled device</string>
     <string name="tools_not_implemented">Not implemented yet</string>
@@ -750,13 +754,13 @@
     <string name="tools_reboot_confirm_fastboot_desc">The device will restart into Fastboot for fastboot flashing.</string>
     <string name="tools_reboot_executing">Executing: %1$s…</string>
     <string name="tools_reboot_unconfirmed">Cannot confirm %1$s. Check the device.</string>
-    <string name="tools_screen_density">Screen density</string>
-    <string name="tools_screen_density_desc">Adjust display density</string>
-    <string name="tools_density_hint">Density (%1$d–%2$d)</string>
-    <string name="tools_density_applied">Density set to %1$s</string>
-    <string name="tools_density_restored">Density restored to factory: %1$s</string>
-    <string name="tools_density_failed">Failed to change density: %1$s</string>
-    <string name="tools_density_read_failed">Failed to read density: %1$s</string>
+    <string name="tools_screen_density">Screen DPI</string>
+    <string name="tools_screen_density_desc">Adjust screen DPI</string>
+    <string name="tools_density_hint">DPI (%1$d–%2$d)</string>
+    <string name="tools_density_applied">DPI set to %1$s</string>
+    <string name="tools_density_restored">DPI restored to factory: %1$s</string>
+    <string name="tools_density_failed">Failed to change DPI: %1$s</string>
+    <string name="tools_density_read_failed">Failed to read DPI: %1$s</string>
     <string name="tools_apply_not_effective">Command finished but the setting did not take effect</string>
     <string name="tools_value_factory">Factory</string>
     <string name="tools_value_now">Active</string>
@@ -773,7 +777,7 @@
     <string name="tools_screen_standby_failed">Screen standby failed: %1$s</string>
     <string name="tools_screen_standby_timeout">Screen standby failed: the device did not respond in time</string>
     <string name="tools_resolution_width">Width</string>
-    <string name="tools_resolution_density">Density</string>
+    <string name="tools_resolution_density">DPI</string>
     <string name="tools_resolution_height">Height</string>
     <string name="tools_resolution_applied">Resolution set to %1$sx%2$s</string>
     <string name="tools_resolution_restored">Resolution restored to factory: %1$s</string>
@@ -815,10 +819,10 @@
     <string name="device_info_cpu_model">CPU</string>
     <string name="device_info_factory">Factory %1$s</string>
     <string name="device_info_resolution_current">Current %1$s</string>
-    <string name="device_info_density">Pixel density</string>
-    <string name="device_info_factory_dpi">Factory %1$d DPI</string>
-    <string name="device_info_dpi">%1$d DPI</string>
-    <string name="device_info_dpi_current">Current %1$d DPI</string>
+    <string name="device_info_density">DPI</string>
+    <string name="device_info_factory_dpi">Factory %1$d</string>
+    <string name="device_info_dpi">%1$d</string>
+    <string name="device_info_dpi_current">Current %1$d</string>
     <string name="device_info_ppi">PPI</string>
     <string name="device_info_ppi_value">%1$s × %2$s</string>
     <string name="device_info_refresh_rate">Refresh rates</string>

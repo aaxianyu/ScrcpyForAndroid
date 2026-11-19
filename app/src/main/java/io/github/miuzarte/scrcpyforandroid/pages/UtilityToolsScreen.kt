@@ -43,6 +43,7 @@ import androidx.core.content.FileProvider
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.models.isWmRestored
 import io.github.miuzarte.scrcpyforandroid.models.parseWmSetting
+import io.github.miuzarte.scrcpyforandroid.scaffolds.SectionSmallTitle
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
@@ -618,7 +619,8 @@ internal fun UtilityToolsScreen(
         }
     }
 
-    val tools = listOf(
+    val toolGroups: List<Pair<Int, List<ToolItem>>> = listOf(
+        R.string.tools_group_device to listOf(
             ToolItem(
                 icon = R.drawable.tool_screenshot,
                 titleResId = R.string.tools_screenshot,
@@ -696,6 +698,14 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
+                icon = R.drawable.tool_device_info,
+                titleResId = R.string.tools_device_info,
+                descResId = R.string.tools_device_info_desc,
+                onClick = { openDeviceInfo() },
+            ),
+        ),
+        R.string.tools_group_display to listOf(
+            ToolItem(
                 icon = R.drawable.tool_density,
                 titleResId = R.string.tools_screen_density,
                 descResId = R.string.tools_screen_density_desc,
@@ -742,11 +752,21 @@ internal fun UtilityToolsScreen(
                     }
                 },
             ),
+        ),
+        R.string.tools_group_app to listOf(
             ToolItem(
-                icon = R.drawable.tool_activate,
-                titleResId = R.string.tools_activate_app,
-                descResId = R.string.tools_activate_app_desc,
-                onClick = { openActivationSheet() },
+                icon = R.drawable.tool_app_manager,
+                titleResId = R.string.tools_app_manager,
+                descResId = R.string.tools_app_manager_desc,
+                onClick = {
+                    scope.launch {
+                        if (!NativeAdbService.isConnected()) {
+                            AppRuntime.snackbar(R.string.tools_not_connected)
+                            return@launch
+                        }
+                        navigator.push(RootScreen.AppManager)
+                    }
+                },
             ),
             ToolItem(
                 icon = R.drawable.tool_process,
@@ -764,19 +784,13 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = R.drawable.tool_app_manager,
-                titleResId = R.string.tools_app_manager,
-                descResId = R.string.tools_app_manager_desc,
-                onClick = {
-                    scope.launch {
-                        if (!NativeAdbService.isConnected()) {
-                            AppRuntime.snackbar(R.string.tools_not_connected)
-                            return@launch
-                        }
-                        navigator.push(RootScreen.AppManager)
-                    }
-                },
+                icon = R.drawable.tool_activate,
+                titleResId = R.string.tools_activate_app,
+                descResId = R.string.tools_activate_app_desc,
+                onClick = { openActivationSheet() },
             ),
+        ),
+        R.string.tools_group_debug to listOf(
             ToolItem(
                 icon = R.drawable.tool_wireless_adb,
                 titleResId = R.string.tools_wireless_adb,
@@ -794,13 +808,8 @@ internal fun UtilityToolsScreen(
                     }
                 },
             ),
-            ToolItem(
-                icon = R.drawable.tool_device_info,
-                titleResId = R.string.tools_device_info,
-                descResId = R.string.tools_device_info_desc,
-                onClick = { openDeviceInfo() },
-            ),
-        )
+        ),
+    )
 
     fun reboot(mode: RebootMode) {
         scope.launch {
@@ -946,30 +955,33 @@ internal fun UtilityToolsScreen(
                 scrollBehavior = scrollBehavior,
                 bottomInnerPadding = UiSpacing.PageBottom,
             ) {
-                item {
-                    Card {
-                        Column {
-                            tools.forEach { tool ->
-                                ArrowPreference(
-                                    title = stringResource(tool.titleResId),
-                                    summary =
-                                        if (tool.titleResId == R.string.tools_wireless_adb && adbOverTcpOn) {
-                                            stringResource(R.string.tools_wireless_adb_active, activeTcpPort)
-                                        } else {
-                                            stringResource(tool.descResId)
+                toolGroups.forEach { (titleResId, tools) ->
+                    item {
+                        SectionSmallTitle(stringResource(titleResId))
+                        Card {
+                            Column {
+                                tools.forEach { tool ->
+                                    ArrowPreference(
+                                        title = stringResource(tool.titleResId),
+                                        summary =
+                                            if (tool.titleResId == R.string.tools_wireless_adb && adbOverTcpOn) {
+                                                stringResource(R.string.tools_wireless_adb_active, activeTcpPort)
+                                            } else {
+                                                stringResource(tool.descResId)
+                                            },
+                                        startAction = {
+                                            Icon(
+                                                painter = painterResource(tool.icon),
+                                                contentDescription = null,
+                                                tint = Color.Unspecified,
+                                            )
                                         },
-                                    startAction = {
-                                        Icon(
-                                            painter = painterResource(tool.icon),
-                                            contentDescription = null,
-                                            tint = Color.Unspecified,
-                                        )
-                                    },
-                                    onClick = {
-                                        haptic.contextClick()
-                                        tool.onClick()
-                                    },
-                                )
+                                        onClick = {
+                                            haptic.contextClick()
+                                            tool.onClick()
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -1323,7 +1335,7 @@ private fun DensitySheet(
 ) {
     var input by remember { mutableStateOf("") }
 
-    // 极端密度值会让设备 UI 几乎不可用，限制在常见安全区间
+    // 极端 DPI 值会让设备 UI 几乎不可用，限制在常见安全区间
     val inSafeRange = input.toIntOrNull()?.let { it in DENSITY_MIN..DENSITY_MAX } ?: false
 
     OverlayDialog(

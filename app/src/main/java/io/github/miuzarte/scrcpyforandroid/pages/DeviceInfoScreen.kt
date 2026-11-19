@@ -511,7 +511,7 @@ private fun DeviceInfoCards(static: StaticSnapshot, live: LiveSnapshot?) {
     }
 
     // 折叠屏可能从不同面板分别给出分辨率和 PPI；优先用 mBaseDisplayInfo 同一条记录里的真实像素，
-    // 保证像素与 PPI 同源；PPI 缺失时退回同一条记录里的 density。
+    // 保证像素与 PPI 同源；PPI 缺失时退回同一条记录里的 DPI。
     val panelWidthPx = static.display.realWidthPx
         ?: static.physicalSize?.physical?.substringBefore('x')?.toIntOrNull()
     val panelHeightPx = static.display.realHeightPx

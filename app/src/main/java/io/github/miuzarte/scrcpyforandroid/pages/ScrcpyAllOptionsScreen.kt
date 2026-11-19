@@ -63,7 +63,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
 import kotlin.math.roundToInt
 
-// 与工具页屏幕分辨率/密度的安全区间一致: 越界值会生成不可用的虚拟显示
+// 与工具页屏幕分辨率/DPI 的安全区间一致: 越界值会生成不可用的虚拟显示
 private const val CUSTOM_DISPLAY_SIZE_MIN = 320
 private const val CUSTOM_DISPLAY_SIZE_MAX = 4320
 private const val CUSTOM_DISPLAY_DPI_MIN = 80
@@ -797,7 +797,7 @@ internal fun ScrcpyAllOptionsPage(
     var customDisplayDpiEdited by rememberSaveable(selectedProfileId) {
         mutableStateOf(false)
     }
-    // 与工具页一致的安全区间: 越界尺寸或密度会生成不可用的虚拟显示
+    // 与工具页一致的安全区间: 越界尺寸或 DPI 会生成不可用的虚拟显示
     val customDisplayCanSwap = remember(customDisplayWidthInput, customDisplayHeightInput) {
         customDisplayWidthInput.toIntOrNull()?.let { it in CUSTOM_DISPLAY_SIZE_MIN..CUSTOM_DISPLAY_SIZE_MAX } == true &&
             customDisplayHeightInput.toIntOrNull()
