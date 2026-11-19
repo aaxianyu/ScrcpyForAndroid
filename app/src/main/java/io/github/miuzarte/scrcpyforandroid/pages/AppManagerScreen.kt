@@ -86,6 +86,7 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerViewModel
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.appSectionHeaderHeight
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.DisplayOptionsMenu
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.FastScroller
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.installFailureReason
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.InstallSourceSheet
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.LocalAppPickerSheet
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.MaskedTopBarAction
@@ -1805,20 +1806,16 @@ private fun splitHintLine(count: Int, resId: Int, withCount: Boolean = false): S
     return "\n" + text
 }
 
-/**
- * 缺分包失败的原始输出是 `INSTALL_FAILED_MISSING_SPLIT: Missing split for <包名>`：
- * 原样抛给用户等于没说，按标记换成一句能看懂的话。
- */
-private const val MISSING_SPLIT_MARKER = "MISSING_SPLIT"
-
 /** 安装结果聚合文案；[appName] 只在本次就装一个包、且调用方拿得到本机应用名时给。 */
 private fun installOutcomeText(
     outcome: DeviceAppRepository.InstallOutcome,
     appName: String? = null,
 ): String {
-    val missingSplit = outcome.lastError?.contains(MISSING_SPLIT_MARKER) == true
+    val failure = installFailureReason(outcome.lastError)
     return when {
-        outcome.successCount == 1 && appName != null -> AppRuntime.stringResource(
+        outcome.successCount == 1 &&
+            outcome.failureCount == 0 &&
+            appName != null -> AppRuntime.stringResource(
             R.string.app_manager_install_success_named,
             appName,
         )
@@ -1829,24 +1826,16 @@ private fun installOutcomeText(
         )
 
         outcome.successCount == 0 -> AppRuntime.stringResource(
-            if (missingSplit) {
-                R.string.app_manager_install_failed_missing_split
-            } else {
-                R.string.app_manager_install_failed
-            },
-            outcome.lastError ?: "",
+            R.string.app_manager_install_failed,
+            failure ?: outcome.lastError ?: "",
         )
 
         else -> AppRuntime.stringResource(
             R.string.app_manager_install_partial,
             outcome.successCount,
             outcome.failureCount,
-            // 缺分包是这批里唯一值得单独说清的失败，其余照旧透传原始文本
-            if (missingSplit) {
-                AppRuntime.stringResource(R.string.app_manager_install_failed_missing_split)
-            } else {
-                outcome.lastError ?: ""
-            },
+            // 认得出的失败码换成一句人话，认不出的照旧透传原始文本
+            failure ?: outcome.lastError ?: "",
         )
     }
 }
