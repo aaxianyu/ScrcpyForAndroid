@@ -48,10 +48,13 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
@@ -86,7 +89,6 @@ import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.basic.Search
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Download
-import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import kotlin.math.abs
@@ -658,7 +660,7 @@ private fun BatchActionItem(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = batchActionIcon(action),
+                    painter = batchActionIcon(action),
                     contentDescription = null,
                     modifier = Modifier.size(21.dp),
                     tint = iconColor,
@@ -709,12 +711,13 @@ private fun AppAction.isApplicable(canEnable: Boolean, canDisable: Boolean): Boo
     else -> true
 }
 
-internal fun batchActionIcon(action: AppAction): ImageVector = when (action) {
-    AppAction.DISABLE -> MiuixIcons.Basic.Close
-    AppAction.ENABLE -> MiuixIcons.Ok
-    AppAction.UNINSTALL -> MiuixIcons.Delete
-    AppAction.EXPORT_APK -> MiuixIcons.Download
-    else -> MiuixIcons.Basic.Close
+@Composable
+internal fun batchActionIcon(action: AppAction): Painter = when (action) {
+    AppAction.DISABLE -> painterResource(R.drawable.app_manager_batch_disable)
+    AppAction.ENABLE -> painterResource(R.drawable.app_manager_batch_enable)
+    AppAction.UNINSTALL -> rememberVectorPainter(MiuixIcons.Delete)
+    AppAction.EXPORT_APK -> rememberVectorPainter(MiuixIcons.Download)
+    else -> rememberVectorPainter(MiuixIcons.Basic.Close)
 }
 
 internal fun batchActionLabel(action: AppAction): Int = when (action) {

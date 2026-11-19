@@ -122,10 +122,10 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.basic.Search
+import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.SelectAll
-import top.yukonga.miuix.kmp.icon.extended.Share
 import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.shader.isRenderEffectSupported
 import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
@@ -1196,7 +1196,7 @@ internal fun AppManagerScreen(
                                             )
                                         }
                                         MaskedTopBarAction(
-                                            icon = MiuixIcons.Share,
+                                            icon = MiuixIcons.Add,
                                             contentDescription = stringResource(R.string.app_manager_install_apk),
                                             onClick = {
                                                 haptic.contextClick()

@@ -20,14 +20,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.CameraAlt
-import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material.icons.rounded.Visibility
-import androidx.compose.material.icons.rounded.AspectRatio
-import androidx.compose.material.icons.rounded.Wifi
-import androidx.compose.material.icons.rounded.Verified
-import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -41,9 +33,9 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
@@ -116,7 +108,6 @@ import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import kotlinx.coroutines.Job
-import androidx.compose.material.icons.rounded.Bedtime
 
 private const val REMOTE_SHOT_DIR = "/data/local/tmp"
 private const val SCREENSHOT_DIR = "screenshots"
@@ -629,7 +620,7 @@ internal fun UtilityToolsScreen(
 
     val tools = listOf(
             ToolItem(
-                icon = Icons.Rounded.CameraAlt,
+                icon = R.drawable.tool_screenshot,
                 titleResId = R.string.tools_screenshot,
                 descResId = R.string.tools_screenshot_desc,
                 onClick = {
@@ -664,7 +655,7 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.RestartAlt,
+                icon = R.drawable.tool_reboot,
                 titleResId = R.string.tools_advanced_reboot,
                 descResId = R.string.tools_advanced_reboot_desc,
                 onClick = {
@@ -688,7 +679,7 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.Bedtime,
+                icon = R.drawable.tool_standby,
                 titleResId = R.string.tools_screen_standby,
                 descResId = R.string.tools_screen_standby_desc,
                 onClick = {
@@ -705,7 +696,7 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.Visibility,
+                icon = R.drawable.tool_density,
                 titleResId = R.string.tools_screen_density,
                 descResId = R.string.tools_screen_density_desc,
                 onClick = {
@@ -729,7 +720,7 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.AspectRatio,
+                icon = R.drawable.tool_resolution,
                 titleResId = R.string.tools_screen_resolution,
                 descResId = R.string.tools_screen_resolution_desc,
                 onClick = {
@@ -752,13 +743,13 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.Verified,
+                icon = R.drawable.tool_activate,
                 titleResId = R.string.tools_activate_app,
                 descResId = R.string.tools_activate_app_desc,
                 onClick = { openActivationSheet() },
             ),
             ToolItem(
-                icon = Icons.Rounded.Memory,
+                icon = R.drawable.tool_process,
                 titleResId = R.string.tools_process_manager,
                 descResId = R.string.tools_process_manager_desc,
                 onClick = {
@@ -773,7 +764,7 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.Apps,
+                icon = R.drawable.tool_app_manager,
                 titleResId = R.string.tools_app_manager,
                 descResId = R.string.tools_app_manager_desc,
                 onClick = {
@@ -787,7 +778,7 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.Wifi,
+                icon = R.drawable.tool_wireless_adb,
                 titleResId = R.string.tools_wireless_adb,
                 descResId = R.string.tools_wireless_adb_desc,
                 onClick = {
@@ -804,7 +795,7 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = Icons.Rounded.PhoneAndroid,
+                icon = R.drawable.tool_device_info,
                 titleResId = R.string.tools_device_info,
                 descResId = R.string.tools_device_info_desc,
                 onClick = { openDeviceInfo() },
@@ -969,9 +960,9 @@ internal fun UtilityToolsScreen(
                                         },
                                     startAction = {
                                         Icon(
-                                            imageVector = tool.icon,
+                                            painter = painterResource(tool.icon),
                                             contentDescription = null,
-                                            tint = colorScheme.primary,
+                                            tint = Color.Unspecified,
                                         )
                                     },
                                     onClick = {
@@ -1546,7 +1537,7 @@ private fun ScreenshotResultDialog(
 }
 
 private data class ToolItem(
-    val icon: ImageVector,
+    val icon: Int,
     val titleResId: Int,
     val descResId: Int,
     val onClick: () -> Unit,
