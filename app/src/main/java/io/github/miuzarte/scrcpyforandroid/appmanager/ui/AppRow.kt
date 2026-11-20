@@ -296,7 +296,10 @@ private fun AppIcon(
     // 读取只看「已应用版本」：正在看的行不随图标逐块到达而跳变；行被回收时才推进（见 IconApplyGate）
     val appliedEpoch = IconApplyGate.appliedFor(app.packageName)
     // 已显示图标的行按「已应用版本」冻结；还没有图标的行必须随数据版本刷新，否则首屏永远停在占位
-    val icon = remember(app.packageName, appliedEpoch) { iconProvider(app.packageName) }
+    // 键另带版本名与体积：应用更新后旧图标已从缓存删掉，同一包名要取回新图；值不变时键也不变，行不跳变
+    val icon = remember(app.packageName, app.versionName, app.apkSizeBytes, appliedEpoch) {
+        iconProvider(app.packageName)
+    }
         ?: remember(app.packageName, "placeholder", iconEpoch) { iconProvider(app.packageName) }
     val latestEpoch = rememberUpdatedState(iconEpoch)
     DisposableEffect(app.packageName) {

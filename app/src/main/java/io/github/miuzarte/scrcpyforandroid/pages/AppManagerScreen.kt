@@ -1435,7 +1435,8 @@ internal fun AppManagerScreen(
             // 从这里进就是新一次选择：中断过的安装会把上次的搜索词与勾选留在会话里
             viewModel.clearLocalPickerSession()
             localPickerOpen = true
-            viewModel.loadLocalApps()
+            // 列表已在会话里：直接显示，枚举在后台刷新；列表为空时由选择器自身的加载态呈现
+            viewModel.loadLocalApps(background = true)
         },
     )
 
@@ -1461,7 +1462,7 @@ internal fun AppManagerScreen(
         iconEpoch = localIconEpoch,
         onQueryChange = viewModel::onLocalPickerQueryChange,
         onToggleSelect = viewModel::toggleLocalSelection,
-        onRefresh = viewModel::loadLocalApps,
+        onRefresh = { viewModel.loadLocalApps() },
         onClearSelection = viewModel::clearLocalSelection,
         hideVersion = hideVersion,
         hideApkSize = hideApkSize,

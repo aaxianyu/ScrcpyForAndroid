@@ -455,7 +455,7 @@ private fun LocalAppList(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LocalAppIcon(packageName = app.packageName, epoch = iconEpoch)
+                LocalAppIcon(app = app, epoch = iconEpoch)
                 Spacer(Modifier.width(12.dp))
                 // 末尾留 8dp：包名 / 体积那一行是撑满这一格的，不留距会直接贴上复选框
                 // 名称 + 包名 + (版本+大小的第三行)
@@ -590,11 +590,14 @@ private fun LocalPickerSlow(onRetry: () -> Unit) {
 
 /** 本机应用图标：直接取自本机系统；非位图图标手工渲染成位图。 */
 @Composable
-private fun LocalAppIcon(packageName: String, epoch: Int) {
+private fun LocalAppIcon(app: LocalApp, epoch: Int) {
     // 只读内存缓存：图标读取是跨进程 Binder 调用，由 [AppManagerViewModel]
     // 在 IO 线程预热进 LRU；代次变化（预热完成）时按 remember 键重取，
     // 未命中先出占位图。组合里不做任何跨进程调用。
-    val icon = remember(packageName, epoch) { DeviceAppRepository.localIcon(packageName) }
+    // 键带版本名与体积：应用更新后同一包名的图标要换成新图
+    val icon = remember(app.packageName, app.versionName, app.apkSizeBytes, epoch) {
+        DeviceAppRepository.localIcon(app)
+    }
     // 垫色只给占位图标用：surfaceContainerHighest 与行底本就不同色（静态下浅 #E8E8E8 / 深 #2D2D2D），
     // 莫奈配色把差值放大后更显眼。adaptive 图标的位图四角是透明的，垫色会顺着图标轮廓透出一圈色边，
     // 所以图标到位后不垫任何底色

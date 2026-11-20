@@ -152,10 +152,17 @@ class AppManagerViewModel(
     /** 本机枚举代次：慢之后用户可能又拉一次，旧结果回来不写回。 */
     private var localLoadGeneration = 0
 
-    fun loadLocalApps() {
+    /**
+     * 枚举本机应用。
+     *
+     * [background] 为真（再次打开选择器）时不举加载标志、超时也不换成超时提示：已有列表先顶上，
+     * 结果回来原地替换。列表为空时两者照旧，否则会停在一个没有内容的静默状态。
+     */
+    fun loadLocalApps(background: Boolean = false) {
         val generation = ++localLoadGeneration
-        _localAppsLoading.value = true
-        DeviceAppRepository.loadLocalApps { result ->
+        val hasCachedList = _localApps.value.isNotEmpty()
+        _localAppsLoading.value = !background || !hasCachedList
+        DeviceAppRepository.loadLocalApps(background = background) { result ->
             // 代次收口：枚举慢了之后用户可能又拉了一次，回来的旧结果不能再写
             if (generation != localLoadGeneration) return@loadLocalApps
             // 回调一到就收：置位在枚举返回的那一刻，不等图标预热（预热是后台的）
@@ -177,8 +184,9 @@ class AppManagerViewModel(
                 }
 
                 LocalAppRepository.Result.Slow -> {
-                    // 不碰列表与 loaded：后台那次枚举还在跑，回来会覆盖这个状态
-                    _localAppsSlow.value = true
+                    // 不碰列表与 loaded：后台那次枚举还在跑，回来会覆盖这个状态。
+                    // 列表已在屏上时不换超时提示，否则后台刷新会把可用列表顶掉
+                    if (_localApps.value.isEmpty()) _localAppsSlow.value = true
                 }
             }
         }
@@ -195,7 +203,7 @@ class AppManagerViewModel(
             // 逐包确保活性：连续刷新 / 换设备时立即可中断。
             for (app in apps) {
                 ensureActive()
-                DeviceAppRepository.warmIcon(app.packageName)
+                DeviceAppRepository.warmLocalIcon(app)
             }
             _localIconEpoch.value = _localIconEpoch.value + 1
         }

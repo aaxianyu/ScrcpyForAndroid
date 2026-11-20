@@ -1,13 +1,13 @@
-﻿package io.github.miuzarte.scrcpyforandroid.appmanager.data
+package io.github.miuzarte.scrcpyforandroid.appmanager.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 /**
- * 缓存的承重逻辑：设备目录名清洗、跨设备内存 key 隔离、解码采样倍数。
+ * 缓存的承重逻辑：设备目录名清洗、跨设备内存 key 隔离、图标失效判定、解码采样倍数。
  *
- * 这三处都不碰 Context / 文件系统 / 位图，因此可在纯 JVM 下覆盖。
+ * 这些都不碰 Context / 文件系统 / 位图，因此可在纯 JVM 下覆盖。
  */
 class DeviceAppCacheKeysTest {
 
@@ -119,5 +119,31 @@ class DeviceAppCacheKeysTest {
         assertEquals(1, DeviceAppCache.sampleSizeFor(256, 200))
         // 短边仍够折半一次时，折半照常发生
         assertEquals(2, DeviceAppCache.sampleSizeFor(512, 300))
+    }
+
+    // ---------------------------------------------------------------- 图标失效
+
+    @Test
+    fun `a new version name makes the stored icon outdated`() {
+        assertEquals(true, DeviceAppCache.iconOutdated("0.7.2e", 53195983, "0.7.3e", 53195983))
+    }
+
+    @Test
+    fun `a rebuilt package of the same version is outdated by its size`() {
+        // 同一版本名重新打包（换了图标）只体现为体积变化，仅比版本名会漏判
+        assertEquals(true, DeviceAppCache.iconOutdated("0.7.3e", 50791243, "0.7.3e", 53195983))
+    }
+
+    @Test
+    fun `identical version and size keep the stored icon`() {
+        assertEquals(false, DeviceAppCache.iconOutdated("0.7.2e", 50791251, "0.7.2e", 50791251))
+    }
+
+    @Test
+    fun `a probe that lost one field does not count as an update`() {
+        // 探测偶发部分失败会给出空版本名或 0 体积，此时保留可用图标，等下一次完整探测
+        assertEquals(false, DeviceAppCache.iconOutdated("", 0, "0.7.2e", 50791251))
+        assertEquals(false, DeviceAppCache.iconOutdated("0.7.2e", 50791251, "", 0))
+        assertEquals(false, DeviceAppCache.iconOutdated("0.7.2e", 50791251, "0.7.2e", 0))
     }
 }

@@ -74,32 +74,39 @@ class LocalAppRepository(context: Context) {
 
     /**
      * 本机应用图标内存缓存：行内图标只有 40dp，组合里只读这里。
-     * 图标本身是跨进程 Binder 调用，必须在 [warmIcons]（IO 线程）里取，
+     * 图标本身是跨进程 Binder 调用，必须在 [warmIcon]（IO 线程）里取，
      * 解码结果按 [ICON_TARGET_PX] 上限采样，大图标不整份进内存。
      */
     private val iconCache =
         object : android.util.LruCache<String, ImageBitmap>(ICON_CACHE_MAX_ENTRIES) {}
 
+    /**
+     * 图标缓存的键带上版本名与 APK 体积：本机应用更新后图标会变，同一包名要区分新旧图。
+     * 旧版本的条目留在 LRU 里等容量淘汰，不影响新图。
+     */
+    private fun iconKey(app: LocalApp): String = "${app.packageName}@${app.versionName}@${app.apkSizeBytes}"
+
     /** 图标解码结果：组合里调用，纯内存命中；未命中返回 null（调用方出占位图）。 */
-    fun icon(packageName: String): ImageBitmap? = iconCache.get(packageName)
+    fun icon(app: LocalApp): ImageBitmap? = iconCache.get(iconKey(app))
 
     /**
      * 预热本机应用图标（IO 线程调用）：[icon] 只做内存命中，
      * 图标读取是跨进程 Binder 调用，离主线程整份灌入 LRU；
      * 完成后由调用方按代次推一次重组，行即取到图标。
      */
-    fun warmIcons(packages: Collection<String>) {
-        for (packageName in packages) warmIcon(packageName)
+    fun warmIcons(apps: Collection<LocalApp>) {
+        for (app in apps) warmIcon(app)
     }
 
-    fun warmIcon(packageName: String): ImageBitmap? {
-        iconCache.get(packageName)?.let { return it }
+    fun warmIcon(app: LocalApp): ImageBitmap? {
+        val key = iconKey(app)
+        iconCache.get(key)?.let { return it }
         val pm = appContext.packageManager
-        val icon = runCatching { pm.getApplicationIcon(packageName) }
+        val icon = runCatching { pm.getApplicationIcon(app.packageName) }
             .getOrNull()
             ?.toIconBitmap()
             ?: return null
-        return icon.asImageBitmap().also { iconCache.put(packageName, it) }
+        return icon.asImageBitmap().also { iconCache.put(key, it) }
     }
 
     /** 任意 Drawable 渲染成 ≤[ICON_TARGET_PX] 位图：满足行内 40dp，又不把大图标全尺寸读进内存。 */

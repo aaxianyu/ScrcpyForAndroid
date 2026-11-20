@@ -401,7 +401,7 @@ object DeviceAppRepository {
                     if (app.packageName in disabled) app.copy(isEnabled = false) else app
                 }
                 val sorted = AppOrdering.sorted(merged)
-                // 元数据先行：只写清单（emptyMap = 不动图标文件），列表立刻可用
+                // 元数据先行：只写清单、不写新图标文件；失效图标仍按版本清理，列表立刻可用
                 cache.write(key, sorted, emptyMap(), result.iconSuffix)
                 // cache.write 是同步写盘（数百条元数据 + 孤儿清理），期间主线程可能已切设备并
                 // 清空列表。再校验一次：旧设备的缓存已经正确落到它自己的目录，只是不能再把它
@@ -476,11 +476,11 @@ object DeviceAppRepository {
         return cache.icon(key, packageName)
     }
 
-    /** 本机应用图标（选择器行内只读缓存；解码见 [LocalAppRepository.warmIcons]）。 */
-    fun localIcon(packageName: String): ImageBitmap? = localAppRepository.icon(packageName)
+    /** 本机应用图标（选择器行内只读缓存；解码见 [LocalAppRepository.warmIcon]）。 */
+    fun localIcon(app: LocalApp): ImageBitmap? = localAppRepository.icon(app)
 
     /** 预热本机应用图标（IO 线程，见 [LocalAppRepository.warmIcon]）。 */
-    fun warmIcon(packageName: String): ImageBitmap? = localAppRepository.warmIcon(packageName)
+    fun warmLocalIcon(app: LocalApp): ImageBitmap? = localAppRepository.warmIcon(app)
 
     /**
      * 后台预热图标。
@@ -1741,10 +1741,15 @@ object DeviceAppRepository {
         _installing.value = false
     }
 
-    /** 本机应用枚举（供选择器使用）。 */
-    fun loadLocalApps(onResult: (LocalAppRepository.Result) -> Unit) {
+    /**
+     * 本机应用枚举（供选择器使用）。
+     *
+     * [background] 为真时不动忙碌标志：调用方用屏上的旧列表遮挡，枚举只做刷新，批量操作不该因此停摆。
+     * 首次打开时列表为空，由选择器自身的加载态呈现。
+     */
+    fun loadLocalApps(background: Boolean = false, onResult: (LocalAppRepository.Result) -> Unit) {
         // 同步置位：协程里才置位会让选择器先闪一帧空列表
-        _loadingLocalApps.value = true
+        _loadingLocalApps.value = !background
         val job = scope.launch {
             val result = withContext(Dispatchers.IO) { localAppRepository.loadUserApps() }
             _loadingLocalApps.value = false

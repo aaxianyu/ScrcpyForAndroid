@@ -19,8 +19,8 @@ import java.security.MessageDigest
 /**
  * 跨设备共享的图标库：同一应用在不同设备上装的是同一个包，图标也相同，没必要每台设备各存一份。
  *
- * 键是「包名@版本名」——版本变了图标可能变，旧条目按年龄与容量淘汰；条目名取键的 SHA-1 前 16 位，
- * 避免包名里的 `.` 与 `@` 直接做文件名，旁边挂一份 json 存回原始键。
+ * 键是「包名@版本名@APK 体积」——版本或体积变了图标都可能变，旧条目按年龄与容量淘汰；条目名取键的
+ * SHA-1 前 16 位，避免包名里的 `.` 与 `@` 直接做文件名，旁边挂一份 json 存回原始键。
  *
  * 单独放在 `cache/appmanager-shared`：设备目录的清理按「非当前设备」整目录删，共享库若在同一层会被连坐。
  */
@@ -66,7 +66,8 @@ internal object SharedIconStore {
 
     private fun root(): File = File(AppRuntime.context.cacheDir, "appmanager-shared")
 
-    private fun keyOf(packageName: String, versionName: String) = "$packageName@$versionName"
+    private fun keyOf(packageName: String, versionName: String, apkSizeBytes: Long) =
+        "$packageName@$versionName@$apkSizeBytes"
 
     private fun baseName(key: String): String =
         MessageDigest.getInstance("SHA-1").digest(key.toByteArray())
@@ -78,12 +79,12 @@ internal object SharedIconStore {
     private fun metaFile(key: String) = File(root(), baseName(key) + ".json")
 
     /** 组合阶段只读内存，不做 IO。 */
-    fun memoryIcon(packageName: String, versionName: String): ImageBitmap? =
-        memory.get(keyOf(packageName, versionName))
+    fun memoryIcon(packageName: String, versionName: String, apkSizeBytes: Long): ImageBitmap? =
+        memory.get(keyOf(packageName, versionName, apkSizeBytes))
 
     /** 读共享条目：内存 → 文件；文件损坏当作没有并删掉。 */
-    fun icon(packageName: String, versionName: String): ImageBitmap? {
-        val key = keyOf(packageName, versionName)
+    fun icon(packageName: String, versionName: String, apkSizeBytes: Long): ImageBitmap? {
+        val key = keyOf(packageName, versionName, apkSizeBytes)
         memory.get(key)?.let { return it }
         val file = iconFile(key)
         if (!file.isFile) return null
@@ -99,12 +100,12 @@ internal object SharedIconStore {
     }
 
     /**
-     * 写一张图标进共享库：本进程同键只写一次；键已存在就只续期 mtime。
+     * 写一张图标进共享库：本进程同键只写一次；键已存在就只续期 mtime。体积未知的不写——键不完整。
      * 长边超过 192px 时先等比缩小，落盘 WebP 质量 80。
      */
-    fun put(packageName: String, versionName: String, bitmap: ImageBitmap) {
-        if (packageName.isBlank() || versionName.isBlank()) return
-        val key = keyOf(packageName, versionName)
+    fun put(packageName: String, versionName: String, apkSizeBytes: Long, bitmap: ImageBitmap) {
+        if (packageName.isBlank() || versionName.isBlank() || apkSizeBytes <= 0) return
+        val key = keyOf(packageName, versionName, apkSizeBytes)
         val file = iconFile(key)
         if (file.isFile) {
             memory.put(key, bitmap)

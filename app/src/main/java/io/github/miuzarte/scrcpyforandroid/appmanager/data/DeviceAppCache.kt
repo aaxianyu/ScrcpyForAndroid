@@ -51,11 +51,20 @@ class DeviceAppCache(context: Context) {
 
     private val memoryCache = object : android.util.LruCache<String, ImageBitmap>(MEMORY_CACHE_MAX_ENTRIES) {}
 
-    /** 「设备键/包名」→ 版本名：共享图标库的键要它；主线程读、IO 线程写，用并发表。 */
-    private val versionsByName = java.util.concurrent.ConcurrentHashMap<String, String>()
+    /** 「设备键/包名」→ 上次落盘的条目：判断图标是否已过期要比对旧版本名与 APK 体积。 */
+    private val knownApps = java.util.concurrent.ConcurrentHashMap<String, CachedApp>()
 
-    private fun versionOf(deviceKey: String, packageName: String): String? =
-        versionsByName["$deviceKey/$packageName"]
+    /**
+     * 共享图标库的身份：版本名加 APK 体积。
+     *
+     * 同一版本名重新打包时体积会变、图标也可能已经换了，只按版本名借会拿到上一份安装包的图；
+     * 探测没拿到其中一项时不借也不写，等本机图标落盘。
+     */
+    private fun sharedIdentity(deviceKey: String, packageName: String): Pair<String, Long>? {
+        val cached = knownApps["$deviceKey/$packageName"] ?: return null
+        if (cached.versionName.isBlank() || cached.apkSizeBytes <= 0) return null
+        return cached.versionName to cached.apkSizeBytes
+    }
     // 副索引：icon/warmIcon 放入后记录 key，使 write() 只能淘汰本设备下已消失的条目
     private val memoryKeys = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
     // 访问标记不需要每次重组都写盘：一个进程内每台设备写一次就够
@@ -84,7 +93,9 @@ class DeviceAppCache(context: Context) {
         val parsed = runCatching { json.decodeFromString<CacheFile>(file.readText()) }.getOrNull()
             ?: return null
         if (parsed.device != deviceKey || parsed.schema != CACHE_SCHEMA_VERSION) return null
-        parsed.apps.forEach { versionsByName["$deviceKey/${it.packageName}"] = it.versionName }
+        parsed.apps.forEach {
+            knownApps["$deviceKey/${it.packageName}"] = it
+        }
         return CacheSnapshot(
             apps = parsed.apps.map {
                 DeviceApp(
@@ -104,27 +115,29 @@ class DeviceAppCache(context: Context) {
     fun write(deviceKey: String, apps: List<DeviceApp>, iconBytes: Map<String, ByteArray>, iconSuffix: String) {
         val dir = writableDeviceDir(deviceKey)
         val iconsDir = writableIconsDir(deviceKey)
+        // 进程内还没有这台设备的旧条目（中断后重进，清单不是这次进程读的）就先补一次，
+        // 否则本次更新会被当成首次写入，旧图标逃过失效判定
+        if (knownApps.keys.none { it.startsWith("$deviceKey/") }) seedKnownApps(deviceKey)
+        val entries = apps.map {
+            CachedApp(
+                packageName = it.packageName,
+                label = it.label,
+                versionName = it.versionName,
+                apkSizeBytes = it.apkSizeBytes,
+                isSystem = it.isSystem,
+                isEnabled = it.isEnabled,
+                splitCount = it.splitCount,
+            )
+        }
+        val persisted = dropOutdatedIcons(deviceKey, iconsDir, apps, entries)
+        // 失效图先删、新图后写：顺序反过来的话，随本次写入送来的新图会被当成旧图删掉再重抓
         iconBytes.forEach { (packageName, bytes) ->
             writeIconFile(iconsDir, packageName, bytes, iconSuffix)
         }
         val file = File(dir, "meta.json")
         file.writeText(
             json.encodeToString(
-                CacheFile(
-                    device = deviceKey,
-                    schema = CACHE_SCHEMA_VERSION,
-                    apps = apps.map {
-                        CachedApp(
-                            packageName = it.packageName,
-                            label = it.label,
-                            versionName = it.versionName,
-                            apkSizeBytes = it.apkSizeBytes,
-                            isSystem = it.isSystem,
-                            isEnabled = it.isEnabled,
-                            splitCount = it.splitCount,
-                        )
-                    },
-                ),
+                CacheFile(device = deviceKey, schema = CACHE_SCHEMA_VERSION, apps = persisted),
             ),
         )
         // memoryKeys 跟踪表定期与真实 LRU 对齐：容量淘汰发生时内部会静默摘除，故写入前先用 snapshot 校正
@@ -133,7 +146,6 @@ class DeviceAppCache(context: Context) {
         memoryKeys.retainAll(presentKeys)
         // 扫掉本设备目录里已不存在的图标文件：本页卸载走 removePackage 精确删，但设备上
         // 自行卸载、系统更新移除等外部变化只能靠这次全量写入收敛，否则图标目录只增不减
-        apps.forEach { versionsByName["$deviceKey/${it.packageName}"] = it.versionName }
         IconFiles.pruneOrphans(iconsDir, apps.mapTo(HashSet<String>()) { it.packageName })
         // 非当前设备的目录按年龄收掉；当前设备键换过（地址 → 序列号）后，旧键目录会自然闲置并被回收
         pruneStaleDevices(deviceKey)
@@ -148,12 +160,63 @@ class DeviceAppCache(context: Context) {
         }
     }
 
+    /**
+     * 应用被更新时删掉旧图标。
+     *
+     * 图标文件按包名索引、没有版本维度：留着旧文件 [hasIcon] 就永远为真，后台补齐再也不会重取，
+     * 界面会一直停在更新前的图标。删掉之后由这次加载之后的补齐按新版本重新拉取。
+     * 只在两边值都拿到时才比——探测偶发部分失败会给出空版本名或 0 体积，那不该清掉可用图标。
+     * 已知表与写回清单都用按字段合并后的条目：探测这次只拿到其一时，另一条沿用上次的值，
+     * 比对基准不会塌成退化值，重启后从盘上读回的基线也不会退化成空值而漏判更新。
+     *
+     * 返回合并后的条目，供 [write] 落盘。
+     */
+    private fun dropOutdatedIcons(
+        deviceKey: String,
+        iconsDir: File,
+        apps: List<DeviceApp>,
+        entries: List<CachedApp>,
+    ): List<CachedApp> {
+        val persisted = ArrayList<CachedApp>(apps.size)
+        apps.forEachIndexed { index, app ->
+            val key = "$deviceKey/${app.packageName}"
+            val current = entries[index]
+            val previous = knownApps[key]
+            val recorded = previous?.let {
+                it.copy(
+                    versionName = current.versionName.ifBlank { it.versionName },
+                    apkSizeBytes = if (current.apkSizeBytes > 0) current.apkSizeBytes else it.apkSizeBytes,
+                )
+            } ?: current
+            persisted += recorded
+            if (recorded.versionName.isNotBlank() && recorded.apkSizeBytes > 0) knownApps[key] = recorded
+            if (previous == null || !iconOutdated(previous.versionName, previous.apkSizeBytes, current.versionName, current.apkSizeBytes)) {
+                return@forEachIndexed
+            }
+            IconFiles.delete(iconsDir, app.packageName)
+            val memKey = memoryKey(deviceKey, app.packageName)
+            memoryCache.remove(memKey)
+            memoryKeys.remove(memKey)
+        }
+        return persisted
+    }
+
+    /** 进程内没有这台设备的旧条目时，从磁盘清单补一次，只用于失效判定，不写任何文件。 */
+    private fun seedKnownApps(deviceKey: String) {
+        val file = metaFile(deviceKey)
+        if (!file.isFile) return
+        val parsed = runCatching { json.decodeFromString<CacheFile>(file.readText()) }.getOrNull() ?: return
+        if (parsed.device != deviceKey || parsed.schema != CACHE_SCHEMA_VERSION) return
+        parsed.apps.forEach { knownApps["$deviceKey/${it.packageName}"] = it }
+    }
+
     /** 卸载成功：删除该包图标与元数据，避免下次冷启动又看到已卸载应用。 */
     fun removePackage(deviceKey: String, packageName: String) {
         IconFiles.delete(iconsDir(deviceKey), packageName)
         val key = memoryKey(deviceKey, packageName)
         memoryCache.remove(key)
         memoryKeys.remove(key)
+        knownApps.remove("$deviceKey/$packageName")
         val file = metaFile(deviceKey)
         if (!file.exists()) return
         val parsed = runCatching { json.decodeFromString<CacheFile>(file.readText()) }.getOrNull()
@@ -168,8 +231,10 @@ class DeviceAppCache(context: Context) {
         memoryCache.get(key)?.let { return it }
         val file = IconFiles.find(iconsDir(deviceKey), packageName)
         if (file == null) {
-            // 本设备还没拉到图标：共享库里其它设备存过同一版本的话直接借用
-            return versionOf(deviceKey, packageName)?.let { SharedIconStore.icon(packageName, it) }
+            // 本设备还没拉到图标：共享库里其它设备存过同版本、同体积的话直接借用
+            return sharedIdentity(deviceKey, packageName)?.let { identity ->
+                SharedIconStore.icon(packageName, identity.first, identity.second)
+            }
         }
         val bitmap = decodeSampled(file)
         if (bitmap == null) {
@@ -180,7 +245,9 @@ class DeviceAppCache(context: Context) {
         return bitmap.asImageBitmap().also {
             memoryCache.put(key, it)
             memoryKeys.add(key)
-            versionOf(deviceKey, packageName)?.let { version -> SharedIconStore.put(packageName, version, it) }
+            sharedIdentity(deviceKey, packageName)?.let { identity ->
+                SharedIconStore.put(packageName, identity.first, identity.second, it)
+            }
         }
     }
 
@@ -302,7 +369,9 @@ class DeviceAppCache(context: Context) {
         return bitmap.asImageBitmap().also {
             memoryCache.put(key, it)
             memoryKeys.add(key)
-            versionOf(deviceKey, packageName)?.let { version -> SharedIconStore.put(packageName, version, it) }
+            sharedIdentity(deviceKey, packageName)?.let { identity ->
+                SharedIconStore.put(packageName, identity.first, identity.second, it)
+            }
         }
     }
 
@@ -368,5 +437,16 @@ class DeviceAppCache(context: Context) {
          * 新设备特有的包名又会在图标文件落盘前取不到图。
          */
         fun memoryKey(deviceKey: String, packageName: String): String = "$deviceKey/$packageName"
+
+        /**
+         * 图标是否过期：版本名或 APK 体积变了就重取。
+         *
+         * 任一侧缺值时不下结论：探测偶发部分失败会给出空版本名或 0 体积，那不该当成更新。
+         */
+        fun iconOutdated(previousVersion: String, previousSize: Long, currentVersion: String, currentSize: Long): Boolean {
+            val versionChanged = previousVersion.isNotBlank() && currentVersion.isNotBlank() && previousVersion != currentVersion
+            val sizeChanged = previousSize > 0 && currentSize > 0 && previousSize != currentSize
+            return versionChanged || sizeChanged
+        }
     }
 }
