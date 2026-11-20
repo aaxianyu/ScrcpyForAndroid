@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -336,29 +337,51 @@ private fun AppIcon(
     }
 }
 
+/** 已停用角标的底色透明度：错误色叠在行底上，深浅主题各取一套。 */
+private const val DISABLED_BADGE_BG_ALPHA_LIGHT = 0.4f
+private const val DISABLED_BADGE_BG_ALPHA_DARK = 0.18f
+
 /**
  * 状态角标：已停用 / 运行中。
  *
- * 两者共用同一套视觉（底色、字号、圆角、内距都一致），只换文字：两者都表示「这个应用
- * 当前不是普通可用状态」，同款让同一行里的角标宽度与位置保持一致。
+ * 「已停用」用半透明错误色作底、文字仍是原来的摘要灰：错误色直接铺满会让半透明灰字浸成
+ * 暗红、几乎读不出来。底色叠在行底（surfaceContainer）上，透明度因此按主题分开取：深色主题
+ * 的文字是半透明白，底色一抬高字也跟着变亮，对比掉得比浅色快。两套默认配色下字与底都在
+ * 4.5:1 以上；开 Monet 后错误色随壁纸生成，浅色会掉到 4:1 附近，不再保证。
+ * 两个角标共用同一套版式，行高不随状态变化。
  */
 @Composable
 private fun StateBadge(badge: AppBadge) {
-    // 逐项写全而不是留 else：新增 [AppBadge] 时编译器会在这里报错，提醒补文案
-    val textRes = when (badge) {
-        AppBadge.Disabled -> R.string.app_manager_disabled
-        AppBadge.Running -> R.string.app_manager_running
-        AppBadge.None -> null
-    } ?: return
+    val isDark = colorScheme.background.luminance() < 0.5f
+    val disabledBgAlpha =
+        if (isDark) DISABLED_BADGE_BG_ALPHA_DARK else DISABLED_BADGE_BG_ALPHA_LIGHT
+    // 逐项写全而不是留 else：新增 [AppBadge] 时编译器会在这里报错，提醒补文案与配色
+    val (textRes, textColor, backgroundColor) = when (badge) {
+        AppBadge.Disabled ->
+            Triple(
+                R.string.app_manager_disabled,
+                colorScheme.onSurfaceVariantSummary,
+                colorScheme.error.copy(alpha = disabledBgAlpha),
+            )
+
+        AppBadge.Running ->
+            Triple(
+                R.string.app_manager_running,
+                colorScheme.onSurfaceVariantSummary,
+                colorScheme.surfaceContainerHighest,
+            )
+
+        AppBadge.None -> return
+    }
     Text(
         text = stringResource(textRes),
-        color = colorScheme.onSurfaceVariantSummary,
+        color = textColor,
         fontSize = 9.sp,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
-            .background(colorScheme.surfaceContainerHighest)
+            .background(backgroundColor)
             .padding(horizontal = 4.dp, vertical = 1.dp),
     )
 }
