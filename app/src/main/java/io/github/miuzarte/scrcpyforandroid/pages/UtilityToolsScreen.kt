@@ -622,39 +622,10 @@ internal fun UtilityToolsScreen(
     val toolGroups: List<Pair<Int, List<ToolItem>>> = listOf(
         R.string.tools_group_device to listOf(
             ToolItem(
-                icon = R.drawable.tool_screenshot,
-                titleResId = R.string.tools_screenshot,
-                descResId = R.string.tools_screenshot_desc,
-                onClick = {
-                    scope.launch {
-                        if (!NativeAdbService.isConnected()) {
-                            AppRuntime.snackbar(R.string.tools_not_connected)
-                            return@launch
-                        }
-                        AppRuntime.snackbar(R.string.tools_screenshot_executing)
-                        val stamp = "img_${System.currentTimeMillis()}"
-                        val remote = File(REMOTE_SHOT_DIR, "$stamp.png").path
-                        val outcome = runCatching {
-                            withContext(Dispatchers.IO) {
-                                NativeAdbService.shell("screencap -p $remote")
-                                val bytes = NativeAdbService.pull(remote)
-                                // 写进专用子目录：file_paths.xml 只声明该目录，
-                                // FileProvider 的可共享范围不扩大到整个 cache
-                                val shotDir = File(context.cacheDir, SCREENSHOT_DIR).apply { mkdirs() }
-                                val saved = File(shotDir, "$stamp.png").apply { writeBytes(bytes) }
-                                pruneScreenshotCache(shotDir)
-                                saved
-                            }
-                        }
-                        // 无论成功失败都清理设备端临时文件
-                        runCatching {
-                            withContext(Dispatchers.IO) { NativeAdbService.shell("rm -f $remote") }
-                        }
-                        outcome
-                            .onSuccess { pendingShot = it }
-                            .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
-                    }
-                },
+                icon = R.drawable.tool_device_info,
+                titleResId = R.string.tools_device_info,
+                descResId = R.string.tools_device_info_desc,
+                onClick = { openDeviceInfo() },
             ),
             ToolItem(
                 icon = R.drawable.tool_reboot,
@@ -698,10 +669,39 @@ internal fun UtilityToolsScreen(
                 },
             ),
             ToolItem(
-                icon = R.drawable.tool_device_info,
-                titleResId = R.string.tools_device_info,
-                descResId = R.string.tools_device_info_desc,
-                onClick = { openDeviceInfo() },
+                icon = R.drawable.tool_screenshot,
+                titleResId = R.string.tools_screenshot,
+                descResId = R.string.tools_screenshot_desc,
+                onClick = {
+                    scope.launch {
+                        if (!NativeAdbService.isConnected()) {
+                            AppRuntime.snackbar(R.string.tools_not_connected)
+                            return@launch
+                        }
+                        AppRuntime.snackbar(R.string.tools_screenshot_executing)
+                        val stamp = "img_${System.currentTimeMillis()}"
+                        val remote = File(REMOTE_SHOT_DIR, "$stamp.png").path
+                        val outcome = runCatching {
+                            withContext(Dispatchers.IO) {
+                                NativeAdbService.shell("screencap -p $remote")
+                                val bytes = NativeAdbService.pull(remote)
+                                // 写进专用子目录：file_paths.xml 只声明该目录，
+                                // FileProvider 的可共享范围不扩大到整个 cache
+                                val shotDir = File(context.cacheDir, SCREENSHOT_DIR).apply { mkdirs() }
+                                val saved = File(shotDir, "$stamp.png").apply { writeBytes(bytes) }
+                                pruneScreenshotCache(shotDir)
+                                saved
+                            }
+                        }
+                        // 无论成功失败都清理设备端临时文件
+                        runCatching {
+                            withContext(Dispatchers.IO) { NativeAdbService.shell("rm -f $remote") }
+                        }
+                        outcome
+                            .onSuccess { pendingShot = it }
+                            .onFailure { AppRuntime.snackbar(R.string.tools_screenshot_failed, it.message ?: "") }
+                    }
+                },
             ),
         ),
         R.string.tools_group_display to listOf(
