@@ -1069,7 +1069,7 @@
     <string name="app_manager_detail_running">Running status</string>
     <string name="app_manager_detail_running_yes">Running</string>
     <string name="app_manager_detail_running_no">Not running</string>
-    <string name="app_manager_detail_disabled">Disabled status</string>
+    <string name="app_manager_detail_disabled">Disable status</string>
     <string name="app_manager_detail_disabled_yes">Disabled</string>
     <string name="app_manager_detail_disabled_no">Not disabled</string>
     <string name="app_manager_detail_system_app">System app</string>

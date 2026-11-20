@@ -1068,9 +1068,9 @@
     <string name="app_manager_detail_running">运行状态</string>
     <string name="app_manager_detail_running_yes">运行中</string>
     <string name="app_manager_detail_running_no">未运行</string>
-    <string name="app_manager_detail_disabled">禁用状态</string>
-    <string name="app_manager_detail_disabled_yes">已禁用</string>
-    <string name="app_manager_detail_disabled_no">未禁用</string>
+    <string name="app_manager_detail_disabled">停用状态</string>
+    <string name="app_manager_detail_disabled_yes">已停用</string>
+    <string name="app_manager_detail_disabled_no">未停用</string>
     <string name="app_manager_detail_system_app">系统应用</string>
     <string name="app_manager_detail_yes">是</string>
     <string name="app_manager_detail_no">否</string>
