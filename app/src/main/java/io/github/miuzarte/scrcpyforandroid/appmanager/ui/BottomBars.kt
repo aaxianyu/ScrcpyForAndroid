@@ -729,7 +729,8 @@ internal fun batchActionIcon(action: AppAction): Painter = when (action) {
     AppAction.ENABLE -> painterResource(R.drawable.app_manager_batch_enable)
     AppAction.UNINSTALL -> rememberVectorPainter(MiuixIcons.Delete)
     AppAction.EXPORT_APK -> rememberVectorPainter(MiuixIcons.Download)
-    else -> rememberVectorPainter(MiuixIcons.Basic.Close)
+    AppAction.OPEN, AppAction.FORCE_STOP, AppAction.CLEAR_DATA ->
+        error("unsupported batch action: $action")
 }
 
 internal fun batchActionLabel(action: AppAction): Int = when (action) {
@@ -737,7 +738,8 @@ internal fun batchActionLabel(action: AppAction): Int = when (action) {
     AppAction.ENABLE -> R.string.app_manager_enable
     AppAction.UNINSTALL -> R.string.app_manager_uninstall
     AppAction.EXPORT_APK -> R.string.app_manager_batch_export
-    else -> R.string.app_manager_disable
+    AppAction.OPEN, AppAction.FORCE_STOP, AppAction.CLEAR_DATA ->
+        error("unsupported batch action: $action")
 }
 
 private val BATCH_BAR_WIDTH: Dp = 275.6.dp
