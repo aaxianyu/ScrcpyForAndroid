@@ -898,6 +898,11 @@ internal fun AppManagerScreen(
 
     val navBarsBottom = navigationBarBottomInset()
 
+    // 悬浮形态的底栏槽位挂在系统导航区之上：列表要让开「槽位（含悬浮外扩与边距）+ 导航条 + 8dp 间距」；
+    // 标准形态的槽位自带导航条内衬，只让开槽位本身
+    val listBottomInset = bottomSlotClearance(floatingForm) + navBarsBottom +
+        if (floatingForm) 8.dp else 0.dp
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Scaffold 上不挂 scrollBehavior 的嵌套滚动连接：OverlayBottomSheet 由本
         // Scaffold 托管，它的列表滚动会顺着这条连接冒泡到 ScrollBehavior、把本页顶栏
@@ -976,7 +981,7 @@ internal fun AppManagerScreen(
                             scrollBehavior = scrollBehavior,
                             listState = if (page == 0) userListState else systemListState,
                             iconProvider = { packageName -> DeviceAppRepository.icon(packageName) },
-                            bottomInnerPadding = if (floatingForm) 92.dp else 64.dp + navBarsBottom,
+                            bottomInnerPadding = listBottomInset,
                             topInnerPadding = topBarHeight,
                             onRefresh = { DeviceAppRepository.refresh() },
                             onListTouch = { listTouchTick.intValue++ },
@@ -1223,9 +1228,8 @@ internal fun AppManagerScreen(
                     hideDisabled = hideDisabled,
                 )
                 val sections = remember(currentGroupApps) { AppOrdering.groupBySection(currentGroupApps) }
-                // 滑块底距 = 底栏高度 + 8dp（与顶栏距离一致，不贴底）
-                val scrollerBottomInset =
-                    (if (floatingForm) 92.dp else 64.dp + navBarsBottom) + 8.dp
+                // 列表避让量已含栏体高度与悬浮形态的 8dp 间距，这里再留 8dp 轨道留白
+                val scrollerBottomInset = listBottomInset + 8.dp
                 FastScroller(
                     listState = currentListState,
                     sections = sections,

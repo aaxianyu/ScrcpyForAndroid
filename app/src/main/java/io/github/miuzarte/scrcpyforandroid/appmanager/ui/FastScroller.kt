@@ -62,6 +62,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -339,10 +340,20 @@ fun FastScroller(
         val items = info.visibleItemsInfo
         if (items.isEmpty()) return currentSections.first().letter
         // 首末节常常不足半屏，列表到顶/到底时中点落在邻节里，会报出与边缘不符的字母：
-        // 这两种情况改取贴着边缘的那一行，拖到底就是末节字母
+        // 这两种情况改取贴着边缘的那一行。只看 canScrollXxx 不够——拖到边缘的最后一次落位
+        // 可能比实时最大/最小滚动量差一两像素，那个标志仍为可滚，锚点就退回中线；按剩余
+        // 像素兜底，不足 2px 就算到底/到顶
+        val first = items.first()
+        val scrolled = scrolledPxOf(
+            firstIndex = first.index,
+            firstOffsetPx = first.offset,
+            prefix = dragPrefix ?: prefixOf(),
+            spacingPx = info.mainAxisItemSpacing.toFloat(),
+        )
+        val remaining = maxScrollPx(info) - scrolled
         val anchor = when {
-            !listState.canScrollBackward -> top
-            !listState.canScrollForward -> bottom - 1f
+            !listState.canScrollBackward || scrolled <= 0.5f -> top
+            !listState.canScrollForward || remaining <= 2f -> bottom - 1f
             else -> mid
         }
         val hit = items.firstOrNull { it.offset <= anchor && anchor < it.offset + it.size }
@@ -456,6 +467,14 @@ fun FastScroller(
                 ),
             )
         }
+    }
+
+    // 气泡字母跟着列表排版走：按住滑块不动时没有指针事件，字母停在按下或上次移动时的
+    // 值，拖到末节也不更新。列表每帧落位都会改 layoutInfo，这里跟着重算
+    LaunchedEffect(listState, bottomObscuredPx) {
+        snapshotFlow { visibleMidSectionLetter() }
+            .distinctUntilChanged()
+            .collect { refreshCapsuleText(it) }
     }
 
     /** 停止滚动 / 交互 [FastScrollerMotion.AUTO_HIDE_MS] 后淡出滑块。 */
