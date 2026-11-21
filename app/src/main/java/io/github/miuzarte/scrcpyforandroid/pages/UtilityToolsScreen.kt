@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.mutableStateListOf
@@ -49,6 +50,7 @@ import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
 import io.github.miuzarte.scrcpyforandroid.scaffolds.LazyColumn
 import io.github.miuzarte.scrcpyforandroid.services.AppRuntime
+import io.github.miuzarte.scrcpyforandroid.services.LocalInputService
 import io.github.miuzarte.scrcpyforandroid.services.PublicDirs
 import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
 import io.github.miuzarte.scrcpyforandroid.ui.LocalEnableBlur
@@ -71,6 +73,8 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.SnackbarDuration
+import top.yukonga.miuix.kmp.basic.SnackbarResult
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
@@ -95,11 +99,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppIconSource
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppProbeClient
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.DisplayOptionsMenu
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -108,6 +114,7 @@ import top.yukonga.miuix.kmp.basic.RefreshState
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.squircle.squircleClip
+import top.yukonga.miuix.kmp.squircle.squircleSurface
 import kotlinx.coroutines.Job
 
 private const val REMOTE_SHOT_DIR = "/data/local/tmp"
@@ -141,29 +148,142 @@ private const val REBOOT_RESULT_WAIT_MS = 3_000L
 private data class ActivatableApp(
     val name: String,
     val packageName: String,
+    /** 运行态探测命令：退出码 0 表示服务在跑，1 表示不在跑 */
+    val probeCommand: String,
     val startupScripts: List<String>,
 )
 
-// 激活失败时把最后一条 shell 输出带给用户
-private class ActivationFailure(output: String) : Exception(output)
+/** 探测结果；探不出结论（命令不可用、输出被截断）时为 [UNKNOWN]，不当成未激活。 */
+private enum class ActivationStatus { RUNNING, STOPPED, UNKNOWN }
 
-// 各应用的激活入口脚本路径为公开约定，按包名探测是否已安装
+private sealed interface ActivationResult {
+    data object AlreadyRunning : ActivationResult
+    data object Activated : ActivationResult
+    data object Unconfirmed : ActivationResult
+
+    /** 发送途中中断，命令是否到达设备无从判断：不以「已执行」对外陈述，原因留给详情。 */
+    data class Interrupted(val detail: String) : ActivationResult
+    data class Failed(val reason: String, val detail: String) : ActivationResult
+}
+
+// 启动脚本取自各应用官方的 ADB 激活方式；探测命令按各自守护进程的进程特征编写
 private val KNOWN_ACTIVATABLES = listOf(
     ActivatableApp(
         name = "Shizuku",
         packageName = "moe.shizuku.privileged.api",
+        probeCommand = "pidof shizuku_server",
         startupScripts = listOf(
             "sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh",
-            "APK=\$(pm path moe.shizuku.privileged.api | head -1 | cut -d: -f2); \$(dirname \$APK)/lib/arm64/libshizuku.so",
+            "APK=$(pm path moe.shizuku.privileged.api | head -1 | cut -d: -f2); $(dirname \$APK)/lib/arm64/libshizuku.so",
         ),
     ),
-    ActivatableApp("冰箱", "com.catchingnow.icebox",
-        listOf("sh /sdcard/Android/data/com.catchingnow.icebox/files/start.sh")),
-    ActivatableApp("黑阈", "me.piebridge.brevent",
-        listOf("sh /data/data/me.piebridge.brevent/brevent.sh")),
-    ActivatableApp("小黑屋", "web1n.stopapp",
-        listOf("sh /storage/emulated/0/Android/data/web1n.stopapp/files/starter.sh")),
+    ActivatableApp(
+        name = "冰箱",
+        packageName = "com.catchingnow.icebox",
+        // 守护进程的 comm 只是 app_process：匹配类名结尾接包名参数，并用 grep -v grep 排除探测自身
+        probeCommand = "A=AppProcessDaemon; B=\"Entry com.catchingnow.icebox 0\"; ps -A -o ARGS | grep -F \"\$A\$B\" | grep -v grep",
+        startupScripts = listOf("sh /sdcard/Android/data/com.catchingnow.icebox/files/start.sh"),
+    ),
+    ActivatableApp(
+        name = "黑阈",
+        packageName = "me.piebridge.brevent",
+        probeCommand = "pidof brevent_server",
+        // 应用把 brevent.sh 写在 /data/local/tmp；入口是先跑 bootstrap 再执行脚本
+        startupScripts = listOf(
+            "path=/data/local/tmp/brevent.sh; export CLASSPATH=$(pm path me.piebridge.brevent | cut -d: -f2); app_process /system/bin me.piebridge.brevent.server.BreventServer bootstrap; if [ -r \$path ]; then /system/bin/sh \$path; fi",
+        ),
+    ),
+    ActivatableApp(
+        name = "小黑屋",
+        packageName = "web1n.stopapp",
+        probeCommand = "pidof web1n.stopapp:maxwell_daemon",
+        startupScripts = listOf("sh /storage/emulated/0/Android/data/web1n.stopapp/files/starter.sh"),
+    ),
 )
+
+private suspend fun ActivatableApp.probeStatus(): ActivationStatus =
+    when (probeServiceRunning(probeCommand) { NativeAdbService.shell(it) }) {
+        true -> ActivationStatus.RUNNING
+        false -> ActivationStatus.STOPPED
+        null -> ActivationStatus.UNKNOWN
+    }
+
+/** 探测本身失败（命令不可用、链路断开）返回 null；协程取消照常向上抛。 */
+private suspend fun ActivatableApp.probeStatusOrNull(): ActivationStatus? =
+    try {
+        probeStatus()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Throwable) {
+        null
+    }
+
+private val ACTIVATION_ICON_SIZE = 30.dp
+private val ACTIVATION_ICON_CORNER_RADIUS = 8.dp
+
+/** 常见脚本输出译成结论；其余给通用原因，完整输出走「复制详情」。 */
+private fun activationFailureReason(attempt: StartupAttempt): String {
+    val output = attempt.output
+    return when {
+        output.contains("No such file or directory") ->
+            AppRuntime.stringResource(R.string.tools_activate_reason_no_script)
+
+        output.contains("Permission denied") ->
+            AppRuntime.stringResource(R.string.tools_activate_reason_no_permission)
+
+        output.contains("syntax error") ->
+            AppRuntime.stringResource(R.string.tools_activate_reason_bad_script)
+
+        output.contains("not found") ->
+            AppRuntime.stringResource(R.string.tools_activate_reason_missing_command)
+
+        else -> AppRuntime.stringResource(R.string.tools_activate_reason_unknown)
+    }
+}
+
+/** 详情保留未截断的原始输出；snackbar 只给结论。 */
+private fun activationFailureDetail(app: ActivatableApp, attempt: StartupAttempt): String = buildString {
+    append(app.name)
+    attempt.exitCode?.let { append("\nexit=").append(it) }
+    val output = attempt.output.trim()
+    if (output.isNotEmpty()) append('\n').append(output)
+}
+
+/** 激活单个应用：脚本发送失败返回 [ActivationResult.Interrupted]；探测失败按未确认处理，协程取消照常抛出。 */
+private suspend fun activateOne(app: ActivatableApp): Pair<ActivatableApp, ActivationResult> {
+    val before = app.probeStatusOrNull()
+    if (before == ActivationStatus.RUNNING) return app to ActivationResult.AlreadyRunning
+    val attempt = try {
+        tryStartupScripts(app.startupScripts) { NativeAdbService.shell(it) }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        return app to ActivationResult.Interrupted(
+            app.name + "\n" + limitReason(error.message.orEmpty().ifBlank { error.javaClass.simpleName }),
+        )
+    }
+    // 脚本退出码证明不了服务状态：以激活后的探测为准
+    return app to when (app.probeStatusOrNull()) {
+        ActivationStatus.RUNNING -> ActivationResult.Activated
+        ActivationStatus.STOPPED -> ActivationResult.Failed(
+            reason = activationFailureReason(attempt),
+            detail = activationFailureDetail(app, attempt),
+        )
+        else -> ActivationResult.Unconfirmed
+    }
+}
+
+private fun activationResultMessage(app: ActivatableApp, result: ActivationResult): String = when (result) {
+    ActivationResult.AlreadyRunning -> AppRuntime.stringResource(R.string.tools_activate_result_running, app.name)
+    ActivationResult.Activated -> AppRuntime.stringResource(R.string.tools_activate_result_success, app.name)
+    ActivationResult.Unconfirmed -> AppRuntime.stringResource(R.string.tools_activate_result_unconfirmed, app.name)
+    is ActivationResult.Interrupted -> AppRuntime.stringResource(R.string.tools_activate_result_interrupted, app.name)
+    is ActivationResult.Failed -> if (result.reason.isBlank()) {
+        AppRuntime.stringResource(R.string.tools_activate_result_failed, app.name)
+    } else {
+        AppRuntime.stringResource(R.string.tools_activate_result_failed_reason, app.name, result.reason)
+    }
+}
 
 private fun extractDensity(shellOutput: String, kind: String): String {
     val target = "$kind density:"
@@ -233,6 +353,9 @@ internal fun UtilityToolsScreen(
     var activationLoading by remember { mutableStateOf(false) }
     var activationBusy by remember { mutableStateOf(false) }
     var activationDetectFailed by remember { mutableStateOf(false) }
+    var activationStatuses by remember { mutableStateOf<Map<String, ActivationStatus>>(emptyMap()) }
+    var activationJob by remember { mutableStateOf<Job?>(null) }
+    var activationToken by remember { mutableStateOf<Any?>(null) }
     var processSheetOpen by remember { mutableStateOf(false) }
     var processes by remember { mutableStateOf<List<DeviceProcess>>(emptyList()) }
     var processLoading by remember { mutableStateOf(false) }
@@ -563,59 +686,103 @@ internal fun UtilityToolsScreen(
 
     fun openActivationSheet() {
         if (activationBusy) return
-        scope.launch {
+        // cancel() 是协作式的：旧任务可能还在 IO 里，回写共享状态前一律核对令牌
+        val token = Any()
+        activationToken = token
+        activationJob?.cancel()
+        activationJob = scope.launch {
             if (!NativeAdbService.isConnected()) {
                 AppRuntime.snackbar(R.string.tools_not_connected)
                 return@launch
             }
             activationLoading = true
             activationSheetOpen = true
-            runCatching {
+            try {
                 withContext(Dispatchers.IO) {
                     val installed = NativeAdbService.shell("pm list packages")
                         .lineSequence()
                         .map { it.removePrefix("package:").trim() }
                         .toSet()
-                    detectedActivatables = KNOWN_ACTIVATABLES.filter { it.packageName in installed }
+                    val apps = KNOWN_ACTIVATABLES.filter { it.packageName in installed }
+                    if (activationToken !== token) return@withContext
+                    detectedActivatables = apps
+                    activationStatuses = apps.associate { app ->
+                        app.packageName to (app.probeStatusOrNull() ?: ActivationStatus.UNKNOWN)
+                    }
+                    // 首次补拉可能因设备键取不到而中断：再试一次，缓存已齐时是空操作
+                    var fetched = 0
+                    var attempt = 0
+                    while (fetched == 0 && attempt < 2) {
+                        fetched = try {
+                            AppIconSource.ensure(apps.map { it.packageName })
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Throwable) {
+                            0
+                        }
+                        attempt++
+                    }
                 }
-            }.onFailure {
-                activationDetectFailed = true
-                AppRuntime.snackbar(R.string.tools_activate_detect_failed, it.message ?: "")
-            }.onSuccess {
+                if (activationToken !== token) return@launch
                 activationDetectFailed = false
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (activationToken !== token) return@launch
+                activationDetectFailed = true
+                AppRuntime.snackbar(R.string.tools_activate_detect_failed, error.message ?: "")
+            } finally {
+                // 旧任务取消可能晚于新检测：只有仍是当前这次才复位加载态
+                if (activationToken === token) activationLoading = false
             }
-            activationLoading = false
         }
     }
 
     fun activateApps(apps: List<ActivatableApp>) {
-        // 立即关闭弹窗，执行结果用 snackbar 报告，避免脚本卡住时用户被困在弹窗里
+        // 立即关闭弹窗，执行结果用一条 snackbar 汇总，避免脚本卡住时用户被困在弹窗里
         activationSheetOpen = false
+        if (apps.isEmpty()) return
         scope.launch {
             activationBusy = true
-            for (app in apps) {
-                AppRuntime.snackbar(R.string.tools_activate_executing, app.name)
-                val outcome = runCatching {
-                    withContext(Dispatchers.IO) {
-                        val attempt = tryStartupScripts(app.startupScripts) { NativeAdbService.shell(it) }
-                        if (attempt.exitCode != null && attempt.exitCode != 0) {
-                            throw ActivationFailure("exit=${attempt.exitCode}: ${attempt.output}")
-                        }
-                        // 脚本零退出或状态未知都不能证明常驻服务已启动。
-                        attempt
-                    }
-                }.onFailure { AppRuntime.snackbar(R.string.tools_activate_failed, app.name, it.message ?: "") }
-                outcome.onSuccess { attempt ->
-                    if (attempt.exitCode == null) {
-                        // 未收到退出标记，不能确认脚本是否执行完毕。
-                        AppRuntime.snackbar(R.string.tools_activate_script_run, app.name)
-                    } else {
-                        AppRuntime.snackbar(R.string.tools_activate_success, app.name)
+            AppRuntime.snackbar(
+                if (apps.size == 1) {
+                    AppRuntime.stringResource(R.string.tools_activate_executing, apps.single().name)
+                } else {
+                    AppRuntime.stringResource(R.string.tools_activate_executing_many, apps.size)
+                },
+            )
+            try {
+                val results = withContext(Dispatchers.IO) { apps.map { activateOne(it) } }
+                val separator = AppRuntime.stringResource(R.string.tools_activate_result_separator)
+                val failures = results.mapNotNull { (_, result) ->
+                    when (result) {
+                        is ActivationResult.Failed -> result.detail
+                        is ActivationResult.Interrupted -> result.detail
+                        else -> null
                     }
                 }
+                AppRuntime.snackbar(
+                    message = results.joinToString(separator) { (app, result) -> activationResultMessage(app, result) },
+                    actionLabel = if (failures.isEmpty()) {
+                        null
+                    } else {
+                        AppRuntime.stringResource(R.string.tools_activate_copy_details)
+                    },
+                    duration = if (failures.isEmpty()) null else SnackbarDuration.Long,
+                    dismissNewest = true,
+                    onResult = { snackbarResult ->
+                        if (snackbarResult == SnackbarResult.ActionPerformed && failures.isNotEmpty()) {
+                            LocalInputService.setClipboardText(
+                                context,
+                                failures.joinToString("\n\n"),
+                            )
+                            AppRuntime.snackbar(R.string.tools_activate_details_copied)
+                        }
+                    },
+                )
+            } finally {
+                activationBusy = false
             }
-            activationBusy = false
-            activationSheetOpen = false
         }
     }
 
@@ -1105,9 +1272,13 @@ internal fun UtilityToolsScreen(
     if (activationSheetOpen) {
         ActivationSheet(
             apps = detectedActivatables,
+            statuses = activationStatuses,
             loading = activationLoading,
             detectFailed = activationDetectFailed,
-            onDismiss = { activationSheetOpen = false },
+            onDismiss = {
+                activationSheetOpen = false
+                activationJob?.cancel()
+            },
             onActivate = ::activateApps,
         )
     }
@@ -1219,9 +1390,22 @@ private fun PortSheet(
     }
 }
 
+/** 弹窗状态说明：统一居中；字号与颜色取 [DialogHeading] 说明行的样式。 */
+@Composable
+private fun ActivationHint(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier.fillMaxWidth(),
+        style = textStyles.body1,
+        color = colorScheme.onSurfaceSecondary,
+        textAlign = TextAlign.Center,
+    )
+}
+
 @Composable
 private fun ActivationSheet(
     apps: List<ActivatableApp>,
+    statuses: Map<String, ActivationStatus>,
     loading: Boolean,
     detectFailed: Boolean,
     onDismiss: () -> Unit,
@@ -1245,29 +1429,11 @@ private fun ActivationSheet(
                 summary = activateHint,
             )
             when {
-                loading -> {
-                    Text(
-                        text = stringResource(R.string.tools_activate_detecting),
-                        fontSize = 12.sp,
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
-                }
+                loading -> ActivationHint(stringResource(R.string.tools_activate_detecting))
 
-                detectFailed -> {
-                    Text(
-                        text = stringResource(R.string.tools_activate_detect_failed_hint),
-                        fontSize = 12.sp,
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
-                }
+                detectFailed -> ActivationHint(stringResource(R.string.tools_activate_detect_failed_hint))
 
-                apps.isEmpty() -> {
-                    Text(
-                        text = stringResource(R.string.tools_activate_none),
-                        fontSize = 12.sp,
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
-                }
+                apps.isEmpty() -> ActivationHint(stringResource(R.string.tools_activate_none))
 
                 else -> {
                     apps.forEach { app ->
@@ -1290,11 +1456,55 @@ private fun ActivationSheet(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(UiSpacing.ContentHorizontal),
                             ) {
-                                Text(
-                                    text = app.name,
-                                    fontSize = 15.sp,
-                                    modifier = Modifier.weight(1f),
-                                )
+                                var icon by remember(app.packageName) {
+                                    mutableStateOf(AppIconSource.memoryIcon(app.packageName))
+                                }
+                                LaunchedEffect(app.packageName) {
+                                    if (icon == null) icon = AppIconSource.loadIcon(app.packageName)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(ACTIVATION_ICON_SIZE)
+                                        .squircleClip(cornerRadius = ACTIVATION_ICON_CORNER_RADIUS),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    val bitmap = icon
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Fit,
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .squircleSurface(
+                                                    color = colorScheme.secondaryVariant,
+                                                    cornerRadius = ACTIVATION_ICON_CORNER_RADIUS,
+                                                ),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Android,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = colorScheme.onSecondaryVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = app.name, fontSize = 15.sp)
+                                    if (statuses[app.packageName] == ActivationStatus.RUNNING) {
+                                        Text(
+                                            text = stringResource(R.string.tools_activate_status_running),
+                                            fontSize = 12.sp,
+                                            color = colorScheme.primary,
+                                        )
+                                    }
+                                }
                                 Checkbox(
                                     state = if (app in selection) ToggleableState.On else ToggleableState.Off,
                                     onClick = null,

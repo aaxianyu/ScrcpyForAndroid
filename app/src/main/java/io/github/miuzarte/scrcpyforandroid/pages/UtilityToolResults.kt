@@ -78,6 +78,21 @@ internal suspend fun tryStartupScripts(
 }
 
 /**
+ * 探测常驻服务是否在运行：探测命令退出 0 视为在运行，退出 1 视为未运行。
+ *
+ * 启动脚本的退出码证明不了服务状态——各应用的脚本在「已在运行」时往往也返回 0，
+ * 重复启动时又可能因杀旧进程失败返回非 0。其余退出码与缺少尾标记都算无法判断。
+ */
+internal suspend fun probeServiceRunning(
+    probe: String,
+    shell: suspend (String) -> String,
+): Boolean? = when (parseStartupAttempt(shell(startupCommand(probe))).exitCode) {
+    0 -> true
+    1 -> false
+    else -> null
+}
+
+/**
  * 设备上的一条应用进程。
  *
  * [label] 是应用显示名，取它要设备侧 `PackageManager`，由探测程序按包名回传；探测没跑成或
