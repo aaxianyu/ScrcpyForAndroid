@@ -61,7 +61,7 @@ class AppRunningTest {
 
     @Test
     fun `missing header returns null`() {
-        // 读不出进程表：返回 null，界面据此不置灰强行停止
+        // 读不出进程表：返回 null，界面据此不置灰结束运行
         assertNull(runningPackagesFromPs("this is not a process table"))
         assertNull(runningPackagesFromPs(""))
     }

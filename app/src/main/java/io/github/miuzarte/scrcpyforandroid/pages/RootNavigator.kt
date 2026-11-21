@@ -5,6 +5,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 class RootNavigator(
     val push: (RootScreen) -> Unit,
     val pop: () -> Unit,
+    /** 该路由是否仍在栈顶：异步动作的回调要据此判断它代言的页面是否还在最前面。 */
+    val isCurrent: (RootScreen) -> Boolean,
     /**
      * F7「返回设备页」：清掉导航栈中间层直到只剩根，并瞬时切到「设备」Tab。
      *

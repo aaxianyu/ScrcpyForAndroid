@@ -57,6 +57,7 @@ import io.github.miuzarte.scrcpyforandroid.storage.Settings
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.appSettings
 import io.github.miuzarte.scrcpyforandroid.storage.Storage.quickDevices
 import io.github.miuzarte.scrcpyforandroid.ui.*
+import io.github.miuzarte.scrcpyforandroid.ui.consumeBottomBarSwipes
 import io.github.miuzarte.scrcpyforandroid.ui.component.FloatingBottomBar
 import io.github.miuzarte.scrcpyforandroid.ui.component.FloatingBottomBarItem
 import kotlinx.coroutines.*
@@ -215,6 +216,7 @@ fun MainScreen() {
                 if (rootBackStack.size > 1)
                     rootBackStack.removeAt(rootBackStack.lastIndex)
             },
+            isCurrent = { route -> rootBackStack.lastOrNull() == route },
             backToDevicesTab = {
                 // F7：清掉导航栈中间层直到只剩根，瞬时切到设备 Tab，路径上无残留页面
                 instantNavTransition = true
@@ -562,6 +564,7 @@ fun MainScreen() {
                         // 底栏不跟随渐进模糊, 渐进模糊回退到高斯模糊, 没启用模糊则无模糊
                         BlurredBar(backdrop = blurBackdrop, allowProgressive = false) {
                             NavigationBar(
+                                modifier = Modifier.consumeBottomBarSwipes(),
                                 color =
                                     if (blurBackdrop != null) Color.Transparent
                                     else colorScheme.surface,
@@ -674,6 +677,7 @@ fun MainScreen() {
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = 12.dp + contentPadding.calculateBottomPadding())
+                                .consumeBottomBarSwipes()
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,

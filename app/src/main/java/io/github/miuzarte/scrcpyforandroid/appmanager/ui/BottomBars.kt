@@ -70,7 +70,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppAction
+import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.ui.BlurredBar
+import io.github.miuzarte.scrcpyforandroid.ui.consumeBottomBarSwipes
 import io.github.miuzarte.scrcpyforandroid.ui.component.FloatingBottomBar
 import io.github.miuzarte.scrcpyforandroid.ui.component.FloatingBottomBarItem
 import io.github.miuzarte.scrcpyforandroid.ui.component.FloatingGlassBar
@@ -79,17 +81,27 @@ import io.github.miuzarte.scrcpyforandroid.ui.rememberPressInRootModifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.DropdownDefaults
+import top.yukonga.miuix.kmp.basic.DropdownEntry
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.basic.Search
+import top.yukonga.miuix.kmp.icon.extended.Clear
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Download
+import top.yukonga.miuix.kmp.icon.extended.More
+import top.yukonga.miuix.kmp.icon.extended.Pause
+import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Store
+import top.yukonga.miuix.kmp.popup.OverlayDropdownPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import kotlin.math.abs
 
@@ -200,22 +212,7 @@ private fun FloatingBottomSlot(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // 悬浮底栏区域吞掉滑动手势：NavDisplay 的滑动返回覆盖整页，落在底栏上的横滑
-            // 会被识别成返回手势直接退出页面。子组件（胶囊拖拽 / 圆钮按压）先于本节点收到
-            // 事件，这里只负责把剩余移动标记为已消费，导航层便认定其已处理。
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    down.consume()
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        event.changes.forEach { change ->
-                            if (change.pressed) change.consume()
-                        }
-                        if (event.changes.none { it.pressed }) break
-                    }
-                }
-            },
+            .consumeBottomBarSwipes(),
         contentAlignment = Alignment.BottomCenter,
     ) {
         // 分组胶囊 + 搜索圆钮：整组水平居中；外层 8dp 给按压胀放留溢出空间。
@@ -359,8 +356,9 @@ private fun FloatingBottomSlot(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     actions.forEach { action ->
-                        BatchActionItem(
-                            action = action,
+                        BarActionItem(
+                            icon = batchActionIcon(action),
+                            label = stringResource(batchActionLabel(action)),
                             // 忙碌 / 无选中集置灰；启用与停用还看选中集的现状，
                             // 全体同态时该动作无事可做
                             enabled = !batchBusy && batchHasSelection && action.isApplicable(
@@ -416,6 +414,7 @@ private fun StandardBottomSlot(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .consumeBottomBarSwipes()
             .then(if (backdrop != null) Modifier else Modifier.background(colorScheme.surface)),
     ) {
         // 分组栏：调 miuix NavigationBar，选中指示与颜色由组件按主题处理。
@@ -461,8 +460,9 @@ private fun StandardBottomSlot(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     actions.forEach { action ->
-                        BatchActionItem(
-                            action = action,
+                        BarActionItem(
+                            icon = batchActionIcon(action),
+                            label = stringResource(batchActionLabel(action)),
                             // 忙碌 / 无选中集置灰；启用与停用还看选中集的现状，
                             // 全体同态时该动作无事可做
                             enabled = !batchBusy && batchHasSelection && action.isApplicable(
@@ -522,41 +522,47 @@ private const val BATCH_PRESS_BG_ALPHA = 0.12f
  *
  * 不消费指针事件，底栏自身的玻璃按压手势层仍能收到同一批事件。
  */
+@Composable
 private fun Modifier.pressWithinBounds(
     onPressedChange: (Boolean) -> Unit,
     onClick: () -> Unit,
-): Modifier = pointerInput(Unit) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        var inside = true
-        onPressedChange(true)
-        while (true) {
-            val event = awaitPointerEvent()
-            val change = event.changes.fastFirstOrNull { it.id == down.id }
-            if (change == null) {
-                onPressedChange(false)
-                return@awaitEachGesture
-            }
-            val position = change.position
-            if (position.x < 0f || position.x > size.width ||
-                position.y < 0f || position.y > size.height
-            ) {
-                if (inside) {
-                    inside = false
-                    onPressedChange(false)
+): Modifier {
+    // 手势协程只随 key 重建、比组合活得久，回调经 rememberUpdatedState 取当前这一版
+    val currentPressedChange = rememberUpdatedState(onPressedChange)
+    val currentClick = rememberUpdatedState(onClick)
+    return pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var inside = true
+            currentPressedChange.value(true)
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.fastFirstOrNull { it.id == down.id }
+                if (change == null) {
+                    currentPressedChange.value(false)
+                    return@awaitEachGesture
                 }
-            }
-            if (!change.pressed) {
-                if (inside) onClick()
-                onPressedChange(false)
-                return@awaitEachGesture
+                val position = change.position
+                if (position.x < 0f || position.x > size.width ||
+                    position.y < 0f || position.y > size.height
+                ) {
+                    if (inside) {
+                        inside = false
+                        currentPressedChange.value(false)
+                    }
+                }
+                if (!change.pressed) {
+                    if (inside) currentClick.value()
+                    currentPressedChange.value(false)
+                    return@awaitEachGesture
+                }
             }
         }
     }
 }
 
 /**
- * 批量动作项：图标槽 28.3dp（内 21dp 字形），文字 11sp 粗体
+ * 底栏动作项（列表页批量栏与详情页底栏共用）：图标槽 28.3dp（内 21dp 字形），文字 11sp 粗体
  * （大字体 16sp / 降级 10sp / 大字体降级 14sp），图标与文字间距 -2.2dp，
  * 文字最多两行省略。
  *
@@ -571,8 +577,9 @@ private fun Modifier.pressWithinBounds(
  * 作废本次手势。禁用项不产生按压交互，因此没有任何反馈。
  */
 @Composable
-private fun BatchActionItem(
-    action: AppAction,
+private fun BarActionItem(
+    icon: Painter,
+    label: String,
     enabled: Boolean,
     colors: BatchActionColors,
     press: PressBackground,
@@ -660,14 +667,14 @@ private fun BatchActionItem(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painter = batchActionIcon(action),
+                    painter = icon,
                     contentDescription = null,
                     modifier = Modifier.size(21.dp),
                     tint = iconColor,
                 )
             }
             Text(
-                text = stringResource(batchActionLabel(action)),
+                text = label,
                 fontSize = labelSize,
                 fontWeight = FontWeight.Bold,
                 color = textColor,
@@ -826,4 +833,222 @@ private fun androidx.compose.ui.graphics.GraphicsLayerScope.blurEffect(
     val radius = maxBlurDp.dp.toPx() * progress
     if (radius <= 0.01f) return null
     return BlurEffect(radius, radius, TileMode.Decal)
+}
+
+// ---------------------------------------------------------------- 详情页底栏
+
+/** 详情页底栏的胶囊宽度：5 个动作项，单项宽度与批量栏同一口径（68.9dp）。 */
+private val DETAIL_BAR_WIDTH: Dp = 344.5.dp
+
+/** 详情页底栏的一个动作项。 */
+private data class DetailBarEntry(
+    val icon: Painter,
+    val label: String,
+    val enabled: Boolean,
+    val onPick: () -> Unit,
+)
+
+/**
+ * 应用详情页底栏：打开 / 结束运行 / 停用·启用 / 导出 +「更多」。
+ *
+ * 形态与材质跟列表页底栏同源：悬浮形态是 64dp 胶囊（[FLOATING_BAR_GUTTER] 外扩，
+ * 距屏幕底由调用方的 [modifier] 补齐），标准形态是整宽栏；模糊开关只对悬浮形态生效。
+ *
+ * 置灰规则与列表页的长按菜单一致：已停用 → 打开与结束运行置灰、停用换成启用；
+ * 运行态未知（null）只是还没读到，不置灰结束运行。
+ */
+@Composable
+internal fun AppDetailBottomSlot(
+    app: DeviceApp?,
+    running: Boolean?,
+    exportEnabled: Boolean,
+    floatingForm: Boolean,
+    glassActive: Boolean,
+    gaussianActive: Boolean,
+    backdrop: LayerBackdrop?,
+    onAction: (AppAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var moreOpen by remember { mutableStateOf(false) }
+    val highlight = rememberGlassHighlight()
+    val colors = batchActionColors()
+    val disabled = app?.isEnabled == false
+    val enabled = app?.isEnabled == true
+    val entries = listOf(
+        DetailBarEntry(
+            icon = rememberVectorPainter(MiuixIcons.Play),
+            label = stringResource(R.string.app_manager_open),
+            enabled = enabled,
+            onPick = { onAction(AppAction.OPEN) },
+        ),
+        DetailBarEntry(
+            icon = rememberVectorPainter(MiuixIcons.Close),
+            label = stringResource(R.string.app_manager_force_stop),
+            enabled = enabled && running != false,
+            onPick = { onAction(AppAction.FORCE_STOP) },
+        ),
+        DetailBarEntry(
+            icon = batchActionIcon(if (disabled) AppAction.ENABLE else AppAction.DISABLE),
+            label = stringResource(if (disabled) R.string.app_manager_enable else R.string.app_manager_disable),
+            enabled = app != null,
+            onPick = { onAction(if (disabled) AppAction.ENABLE else AppAction.DISABLE) },
+        ),
+        DetailBarEntry(
+            icon = rememberVectorPainter(MiuixIcons.Download),
+            label = stringResource(R.string.app_manager_batch_export),
+            enabled = exportEnabled,
+            onPick = { onAction(AppAction.EXPORT_APK) },
+        ),
+        DetailBarEntry(
+            icon = rememberVectorPainter(MiuixIcons.More),
+            label = stringResource(R.string.app_manager_more),
+            enabled = app != null,
+            onPick = { moreOpen = true },
+        ),
+    )
+    // 弹层按父布局边界定位：与胶囊同处一个包裹盒才能锚在它右端、向上展开
+    val moreMenu: @Composable () -> Unit = {
+        DetailMoreMenu(
+            show = moreOpen,
+            enabled = app != null,
+            onDismiss = { moreOpen = false },
+            onPick = { action ->
+                moreOpen = false
+                onAction(action)
+            },
+        )
+    }
+    if (floatingForm) {
+        Box(
+            modifier = modifier.fillMaxWidth().consumeBottomBarSwipes(),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Box(
+                modifier = Modifier.padding(FLOATING_BAR_GUTTER),
+                contentAlignment = Alignment.Center,
+            ) {
+                val press = rememberGlassPressState(enabled = glassActive)
+                val pressProgress = { press?.pressProgress?.value ?: 0f }
+                Box {
+                    FloatingGlassBar(
+                        backdrop = backdrop,
+                        isBlurEnabled = glassActive,
+                        isGaussianBlurEnabled = gaussianActive,
+                        pressScaleAmount = AppManagerMotion.PRESS_SCALE_BOTTOM_BAR_DP.dp,
+                        pressProgress = pressProgress,
+                        pressModifier = press?.modifier ?: Modifier,
+                        highlight = highlight,
+                        modifier = Modifier
+                            .width(DETAIL_BAR_WIDTH)
+                            .height(BATCH_ROW_HEIGHT)
+                            .then(press?.gestureModifier ?: Modifier),
+                        pressLens = true,
+                        pressInnerShadow = true,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            entries.forEach { entry ->
+                                BarActionItem(
+                                    icon = entry.icon,
+                                    label = entry.label,
+                                    enabled = entry.enabled,
+                                    colors = colors,
+                                    press = BatchPressFloating,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = entry.onPick,
+                                )
+                            }
+                        }
+                    }
+                    moreMenu()
+                }
+            }
+        }
+    } else {
+        Box(modifier = modifier.fillMaxWidth().consumeBottomBarSwipes()) {
+            BlurredBar(backdrop = backdrop, allowProgressive = false) {
+                // 与列表页底栏同构：栏体取 surface，栏顶一条分割线与正文分界。
+                // 无模糊时 BlurredBar 不画底，栏体色由这层自己铺，否则正文从底下透出来。
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (backdrop == null) Modifier.background(colorScheme.surface) else Modifier),
+                ) {
+                    HorizontalDivider()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(BATCH_ROW_HEIGHT),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        entries.forEach { entry ->
+                            BarActionItem(
+                                icon = entry.icon,
+                                label = entry.label,
+                                enabled = entry.enabled,
+                                colors = colors,
+                                press = BatchPressStandard,
+                                modifier = Modifier.weight(1f),
+                                onClick = entry.onPick,
+                            )
+                        }
+                    }
+                }
+            }
+            moreMenu()
+        }
+    }
+}
+
+/**
+ * 「更多」：清除数据与卸载。
+ *
+ * 位置提供者按父布局边界对齐右端，于是弹层贴着底栏右端、在底栏上方展开。
+ */
+@Composable
+private fun DetailMoreMenu(
+    show: Boolean,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onPick: (AppAction) -> Unit,
+) {
+    val items = listOf(
+        DropdownItem(
+            text = stringResource(R.string.app_manager_clear_data),
+            enabled = enabled,
+            icon = { iconModifier ->
+                Icon(
+                    painter = rememberVectorPainter(MiuixIcons.Clear),
+                    contentDescription = null,
+                    modifier = iconModifier.size(22.dp),
+                )
+            },
+            onClick = { onPick(AppAction.CLEAR_DATA) },
+        ),
+        DropdownItem(
+            text = stringResource(R.string.app_manager_uninstall),
+            enabled = enabled,
+            icon = { iconModifier ->
+                Icon(
+                    painter = rememberVectorPainter(MiuixIcons.Delete),
+                    contentDescription = null,
+                    modifier = iconModifier.size(22.dp),
+                )
+            },
+            onClick = { onPick(AppAction.UNINSTALL) },
+        ),
+    )
+    OverlayDropdownPopup(
+        entries = listOf(DropdownEntry(items)),
+        show = show,
+        onDismiss = onDismiss,
+        onDismissFinished = {},
+        maxHeight = null,
+        dropdownColors = DropdownDefaults.dropdownColors(),
+        renderInRootScaffold = true,
+    )
 }

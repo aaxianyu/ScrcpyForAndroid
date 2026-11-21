@@ -13,6 +13,7 @@ import io.github.miuzarte.scrcpyforandroid.storage.Storage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -154,6 +155,9 @@ object AppRuntime {
     // 屏幕上那份仍会持续布局，而新进入的页面登记得更晚。
     private val snackbarHostStateLaidOut =
         Collections.newSetFromMap(IdentityHashMap<SnackbarHostState, Boolean>())
+    // 切页时栈会增删，位置不稳定；按登记先后给每份宿主编号，用来判断哪份是后来者
+    private var hostSeq = 0L
+    private val hostSeqByIdentity = IdentityHashMap<SnackbarHostState, Long>()
 
     var snackbarHostState: SnackbarHostState?
         get() = synchronized(snackbarHostStateLock) {
@@ -173,11 +177,13 @@ object AppRuntime {
     fun registerSnackbarHostState(hostState: SnackbarHostState): () -> Unit {
         synchronized(snackbarHostStateLock) {
             snackbarHostStateStack.add(hostState)
+            hostSeqByIdentity[hostState] = ++hostSeq
         }
         return {
             synchronized(snackbarHostStateLock) {
                 snackbarHostStateStack.remove(hostState)
                 snackbarHostStateLaidOut.remove(hostState)
+                hostSeqByIdentity.remove(hostState)
             }
         }
     }
@@ -193,6 +199,57 @@ object AppRuntime {
 
     internal fun isHostRegistered(hostState: SnackbarHostState): Boolean =
         synchronized(snackbarHostStateLock) { snackbarHostStateStack.contains(hostState) }
+
+    private fun hostSeqOf(hostState: SnackbarHostState): Long? =
+        synchronized(snackbarHostStateLock) { hostSeqByIdentity[hostState] }
+
+    /** 比 [seq] 更早登记、仍在绘制的宿主：退出后接管屏幕的那一页。 */
+    private fun laidOutHostBefore(seq: Long): SnackbarHostState? =
+        synchronized(snackbarHostStateLock) {
+            snackbarHostStateStack.lastOrNull { host ->
+                (hostSeqByIdentity[host] ?: Long.MAX_VALUE) < seq && snackbarHostStateLaidOut.contains(host)
+            }
+        }
+
+    /**
+     * 转场最长等这么多帧（约 2s）；仍无人接手就退回普通发送。
+     */
+    private const val SNACKBAR_HANDOFF_MAX_FRAMES = 120
+
+    /**
+     * 页面随后会退出：等接手的页面登记好提示宿主再发，提示才会落在留在屏幕上的页面。
+     *
+     * 转场期间旧页面还在栈里，直接发送会被它收走，随它一起消失；转场中新登记的宿主
+     * 可能属于不在绘制的组合，所以只认登记在退出者之前、且仍在布局的那份。
+     */
+    internal fun snackbarAfterPageExit(
+        message: String,
+        duration: SnackbarDuration? = null,
+    ) {
+        val exiting = snackbarHostState
+        snackbarScope.launch {
+            val exitingSeq = exiting?.let(::hostSeqOf) ?: 0L
+            var frames = 0
+            while (frames < SNACKBAR_HANDOFF_MAX_FRAMES) {
+                val host = laidOutHostBefore(exitingSeq)
+                if (host != null) {
+                    showOnHost(
+                        host = host,
+                        message = message,
+                        actionLabel = null,
+                        withDismissAction = true,
+                        duration = duration,
+                        onResult = null,
+                        dismissNewest = false,
+                    )
+                    return@launch
+                }
+                awaitFrame()
+                frames++
+            }
+            snackbar(message, duration = duration)
+        }
+    }
 
     suspend fun snackbarDismissNewest() = snackbarHostState?.newestSnackbarData()?.dismiss()
 

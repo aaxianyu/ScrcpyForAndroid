@@ -11,9 +11,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -52,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
@@ -77,12 +80,15 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.data.DeviceAppRepository
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.LocalApkInstall
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.PackageDetailClient
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.PackageDetailResult
+import io.github.miuzarte.scrcpyforandroid.appmanager.data.runningOrNull
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.appManagerErrorText
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.exportFileName
+import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppAction
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.PackageDetail
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.SizeFormat
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppConfirmDialog
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppDetailBottomSlot
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerMotion
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.MaskedTopBarAction
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.TransferProgressDialog
@@ -118,6 +124,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Download
 import top.yukonga.miuix.kmp.icon.extended.Store
+import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -153,11 +160,17 @@ internal fun AppDetailScreen(packageName: String) {
     val asBundle by appSettings.bundleState.collectAsState()
     val glassSwitch = asBundle.floatingBottomBarBlur
     val blurMode = LocalBlurMode.current
+    val blurEnabled = LocalEnableBlur.current
+    // 底栏与列表页同一套门控：悬浮形态要运行时着色器；模糊开关只对悬浮形态生效
+    val floatingForm = asBundle.floatingBottomBar && isRuntimeShaderSupported()
+    val glassActive = floatingForm && blurEnabled && glassSwitch
+    val gaussianActive = floatingForm && blurEnabled && !glassSwitch
     val topBarGlass = blurBackdrop != null && blurMode == AppSettings.BlurMode.PROGRESSIVE && glassSwitch
     val maskEnabled = blurBackdrop != null && blurMode == AppSettings.BlurMode.PROGRESSIVE
     val maskAlpha = remember { Animatable(0f) }
     val topBarHighlight = rememberGlassHighlight()
     val animationsDisabled = rememberAnimationsDisabled()
+    val navBarsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     LaunchedEffect(maskEnabled, pageScroll) {
         if (!maskEnabled) {
             maskAlpha.snapTo(0f)
@@ -215,6 +228,46 @@ internal fun AppDetailScreen(packageName: String) {
 
     var confirmVisible by remember { mutableStateOf(false) }
     var exportPrompt by remember { mutableStateOf<DetailExportPrompt?>(null) }
+    // 待确认的动作：确认框收起后再交给仓库执行
+    var pendingAction by remember { mutableStateOf<AppAction?>(null) }
+    var actionConfirmVisible by remember { mutableStateOf(false) }
+
+    /** 执行一个设备动作：成功后给短提示；卸载完没有可看的页面，直接退回列表。 */
+    fun executeAction(action: AppAction, target: DeviceApp) {
+        DeviceAppRepository.performAction(action, target) { result ->
+            when (result) {
+                is DeviceAppRepository.ActionResult.Success -> {
+                    val text = appActionSuccessText(action, result.app)
+                    if (action == AppAction.UNINSTALL) {
+                        // 详情页随即退出：提示落到返回后的列表上；本页已不在栈顶时不再代它弹栈
+                        AppRuntime.snackbarAfterPageExit(text)
+                        if (navigator.isCurrent(RootScreen.AppDetail(packageName))) navigator.pop()
+                    } else {
+                        AppRuntime.snackbar(snackHost, text)
+                    }
+                }
+
+                is DeviceAppRepository.ActionResult.Failure ->
+                    AppRuntime.snackbar(
+                        snackHost,
+                        appActionFailureText(action, result.app, result.error),
+                    )
+            }
+        }
+    }
+
+    /** 底栏与更多菜单的统一入口：打开与导出直接执行，其余先二次确认。 */
+    fun pickAction(action: AppAction) {
+        val target = app ?: return
+        when (action) {
+            AppAction.OPEN -> executeAction(action, target)
+            AppAction.EXPORT_APK -> confirmVisible = true
+            else -> {
+                pendingAction = action
+                actionConfirmVisible = true
+            }
+        }
+    }
 
     fun copyToClipboard(text: String, messageResId: Int) {
         LocalInputService.setClipboardText(context, text)
@@ -625,6 +678,23 @@ internal fun AppDetailScreen(packageName: String) {
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        bottomBar = {
+            AppDetailBottomSlot(
+                app = app,
+                running = listState.runningPackages.runningOrNull(packageName),
+                exportEnabled = app != null && !transfer.active && exportPrompt == null,
+                floatingForm = floatingForm,
+                glassActive = glassActive,
+                gaussianActive = gaussianActive,
+                backdrop = blurBackdrop,
+                onAction = ::pickAction,
+                modifier = if (floatingForm) {
+                    Modifier.padding(bottom = navBarsBottom + 4.dp)
+                } else {
+                    Modifier
+                },
+            )
+        },
         snackbarHost = {
             SnackbarHost(
                 snackHost,
@@ -654,22 +724,6 @@ internal fun AppDetailScreen(packageName: String) {
                                 glassActive = topBarGlass,
                                 backdrop = blurBackdrop,
                                 highlight = topBarHighlight,
-                            )
-                        },
-                        actions = {
-                            MaskedTopBarAction(
-                                icon = MiuixIcons.Download,
-                                contentDescription = stringResource(R.string.app_manager_export_apk),
-                                onClick = {
-                                    haptic.contextClick()
-                                    confirmVisible = true
-                                },
-                                maskAlpha = { maskAlpha.value },
-                                glassActive = topBarGlass,
-                                backdrop = blurBackdrop,
-                                highlight = topBarHighlight,
-                                // 等待形态查询或保存框的这段时间里再点没有新目标，只会把前一次导出丢掉
-                                enabled = app != null && !transfer.active && exportPrompt == null,
                             )
                         },
                     )
@@ -823,6 +877,21 @@ internal fun AppDetailScreen(packageName: String) {
                 }
             }
 
+            // 悬浮形态常驻：底部软滚动渐隐，与列表页同源；胶囊（bottomBar 槽位）压在上层
+            if (floatingForm) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(AppManagerMotion.BOTTOM_SCROLL_SCrim_DP.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, colorScheme.surface),
+                            ),
+                        ),
+                )
+            }
+
             AppConfirmDialog(
                 visible = confirmVisible,
                 confirmLabel = stringResource(R.string.app_manager_action_export),
@@ -848,6 +917,51 @@ internal fun AppDetailScreen(packageName: String) {
                     app?.let { startExport(it) }
                 },
                 onDismissRequest = { confirmVisible = false },
+            )
+
+            AppConfirmDialog(
+                visible = actionConfirmVisible && pendingAction != null,
+                title = app?.let { target ->
+                    stringResource(
+                        when (pendingAction) {
+                            AppAction.DISABLE -> R.string.app_manager_confirm_title_disable_single
+                            AppAction.ENABLE -> R.string.app_manager_confirm_title_enable_single
+                            AppAction.FORCE_STOP -> R.string.app_manager_confirm_title_force_stop_single
+                            AppAction.CLEAR_DATA -> R.string.app_manager_confirm_title_clear_data_single
+                            else -> R.string.app_manager_confirm_title_uninstall_single
+                        },
+                        target.displayLabel,
+                    )
+                } ?: "",
+                summary = stringResource(
+                    when (pendingAction) {
+                        AppAction.DISABLE -> R.string.app_manager_confirm_disable_single
+                        AppAction.ENABLE -> R.string.app_manager_confirm_enable_single
+                        AppAction.FORCE_STOP -> R.string.app_manager_confirm_force_stop_single
+                        AppAction.CLEAR_DATA -> R.string.app_manager_confirm_clear_data_single
+                        else -> R.string.app_manager_confirm_uninstall_single
+                    },
+                ),
+                confirmLabel = stringResource(
+                    when (pendingAction) {
+                        AppAction.DISABLE -> R.string.app_manager_disable
+                        AppAction.ENABLE -> R.string.app_manager_enable
+                        AppAction.FORCE_STOP -> R.string.app_manager_force_stop
+                        AppAction.CLEAR_DATA -> R.string.app_manager_clear_data
+                        else -> R.string.app_manager_uninstall
+                    },
+                ),
+                dangerous = pendingAction != AppAction.ENABLE,
+                onConfirm = {
+                    val action = pendingAction
+                    actionConfirmVisible = false
+                    pendingAction = null
+                    if (action != null && app != null) executeAction(action, app)
+                },
+                onDismissRequest = {
+                    actionConfirmVisible = false
+                    pendingAction = null
+                },
             )
 
             TransferProgressDialog(
