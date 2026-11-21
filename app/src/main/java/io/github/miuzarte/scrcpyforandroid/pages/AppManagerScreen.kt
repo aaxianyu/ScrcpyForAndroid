@@ -12,13 +12,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -92,6 +89,7 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.ui.appManagerErrorText
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.SearchOverlay
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.TransferProgressDialog
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.bottomSlotClearance
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.navigationBarBottomInset
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.rememberAnimationsDisabled
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.rememberGlassHighlight
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.scaledBy
@@ -898,6 +896,8 @@ internal fun AppManagerScreen(
         onDispose(unregister)
     }
 
+    val navBarsBottom = navigationBarBottomInset()
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Scaffold 上不挂 scrollBehavior 的嵌套滚动连接：OverlayBottomSheet 由本
         // Scaffold 托管，它的列表滚动会顺着这条连接冒泡到 ScrollBehavior、把本页顶栏
@@ -909,7 +909,10 @@ internal fun AppManagerScreen(
                 // （不进 Scaffold 的 bottomBar 槽位，那样会改变它与搜索浮层的前后关系），
                 // 所以避让量由这里显式给出。
                 val clearance = remember {
-                    Animatable(if (searchOpen) 0.dp else bottomSlotClearance(floatingForm), Dp.VectorConverter)
+                    Animatable(
+                        if (searchOpen) 0.dp else bottomSlotClearance(floatingForm),
+                        Dp.VectorConverter,
+                    )
                 }
                 LaunchedEffect(searchOpen, floatingForm) {
                     clearance.animateTo(
@@ -930,9 +933,6 @@ internal fun AppManagerScreen(
                 )
             },
         ) { _ ->
-            val navBarsBottom = WindowInsets.navigationBars
-                .asPaddingValues()
-                .calculateBottomPadding()
             // 顶栏在采样层外，内容区元素与列表 contentPadding 都要避开它（onGloballyPositioned 实测）
             var topBarHeightPx by remember { mutableStateOf(0) }
             val topBarHeight = with(density) { topBarHeightPx.toDp() }
@@ -976,7 +976,7 @@ internal fun AppManagerScreen(
                             scrollBehavior = scrollBehavior,
                             listState = if (page == 0) userListState else systemListState,
                             iconProvider = { packageName -> DeviceAppRepository.icon(packageName) },
-                            bottomInnerPadding = if (floatingForm) 92.dp else 64.dp,
+                            bottomInnerPadding = if (floatingForm) 92.dp else 64.dp + navBarsBottom,
                             topInnerPadding = topBarHeight,
                             onRefresh = { DeviceAppRepository.refresh() },
                             onListTouch = { listTouchTick.intValue++ },
@@ -1224,7 +1224,8 @@ internal fun AppManagerScreen(
                 )
                 val sections = remember(currentGroupApps) { AppOrdering.groupBySection(currentGroupApps) }
                 // 滑块底距 = 底栏高度 + 8dp（与顶栏距离一致，不贴底）
-                val scrollerBottomInset = (if (floatingForm) 92.dp else 64.dp) + 8.dp
+                val scrollerBottomInset =
+                    (if (floatingForm) 92.dp else 64.dp + navBarsBottom) + 8.dp
                 FastScroller(
                     listState = currentListState,
                     sections = sections,

@@ -16,11 +16,14 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -396,6 +399,7 @@ private fun StandardBottomSlot(
     modifier: Modifier = Modifier,
 ) {
     val haptic = LocalHapticFeedback.current
+    val navigationBarsInset = navigationBarBottomInset()
     val groupAlpha = remember { Animatable(1f) }
     val batchOffset = remember { Animatable(1f) }
     val latestBatchActive by rememberUpdatedState(batchActive)
@@ -426,7 +430,6 @@ private fun StandardBottomSlot(
                     .fillMaxWidth()
                     .alpha(groupAlpha.value),
                 color = if (backdrop != null) Color.Transparent else colorScheme.surface,
-                defaultWindowInsetsPadding = false,
             ) {
                 AppGroup.entries.forEach { group ->
                     NavigationBarItem(
@@ -452,10 +455,12 @@ private fun StandardBottomSlot(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(64.dp)
+                        .padding(bottom = navigationBarsInset)
+                        .height(BATCH_ROW_HEIGHT)
                         .alpha(1f - batchOffset.value)
                         .offset {
-                            IntOffset(0, (BATCH_ROW_HEIGHT.toPx() * batchOffset.value).toInt())
+                            val slideDistance = BATCH_ROW_HEIGHT + navigationBarsInset
+                            IntOffset(0, (slideDistance.toPx() * batchOffset.value).toInt())
                         },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -747,11 +752,20 @@ private val FLOATING_BAR_GUTTER: Dp = 8.dp
 private val FLOATING_BAR_EDGE_DP: Dp = 4.dp
 
 /**
- * 底部槽位在系统手势区之上占掉的高度，供页面把消息条等内容抬到底栏上方。
+ * 系统导航条占用的底部高度。标准形态的整宽栏把这段也铺成自己的底色，列表内容与批量栏
+ * 据此加高避让量；手势导航下为 0。
+ */
+@Composable
+internal fun navigationBarBottomInset(): Dp =
+    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+/**
+ * 底栏顶部低于 Scaffold 消息条槽位底多少，供页面把消息条抬到底栏上方。
  *
- * 分组栏与批量栏同高，所以这个量与当前是哪一个在场无关。两种形态各自的值与
- * [AppManagerBottomSlot] 的布局同源：悬浮形态是胶囊高 64dp + 两侧外扩 8dp +
- * 距屏幕底 4dp；标准形态是 NavigationBar 的 item 高 64dp。
+ * 槽位底由 Scaffold 自己避让系统栏（本页没有 bottomBar 槽位，取 contentWindowInsets
+ * 的底边），已经落在导航条之上，所以这里只量栏体本身：分组栏与批量栏同高，两种形态
+ * 各自的值与 [AppManagerBottomSlot] 的布局同源——悬浮形态是胶囊高 64dp + 两侧外扩 8dp
+ * + 距屏幕底 4dp，标准形态是 NavigationBar 的 item 高 64dp。
  */
 internal fun bottomSlotClearance(floatingForm: Boolean): Dp = when (floatingForm) {
     true -> BATCH_ROW_HEIGHT + FLOATING_BAR_GUTTER * 2 + FLOATING_BAR_EDGE_DP
@@ -870,6 +884,7 @@ internal fun AppDetailBottomSlot(
     modifier: Modifier = Modifier,
 ) {
     var moreOpen by remember { mutableStateOf(false) }
+    val navigationBarsInset = navigationBarBottomInset()
     val highlight = rememberGlassHighlight()
     val colors = batchActionColors()
     val disabled = app?.isEnabled == false
@@ -997,6 +1012,7 @@ internal fun AppDetailBottomSlot(
                             )
                         }
                     }
+                    Spacer(Modifier.fillMaxWidth().height(navigationBarsInset))
                 }
             }
             moreMenu()

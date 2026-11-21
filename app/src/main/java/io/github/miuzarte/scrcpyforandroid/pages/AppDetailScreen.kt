@@ -15,7 +15,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -91,6 +90,7 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppConfirmDialog
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppDetailBottomSlot
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerMotion
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.MaskedTopBarAction
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.navigationBarBottomInset
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.TransferProgressDialog
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.rememberAnimationsDisabled
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.rememberGlassHighlight
@@ -170,7 +170,7 @@ internal fun AppDetailScreen(packageName: String) {
     val maskAlpha = remember { Animatable(0f) }
     val topBarHighlight = rememberGlassHighlight()
     val animationsDisabled = rememberAnimationsDisabled()
-    val navBarsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val navBarsBottom = navigationBarBottomInset()
     LaunchedEffect(maskEnabled, pageScroll) {
         if (!maskEnabled) {
             maskAlpha.snapTo(0f)
