@@ -973,6 +973,7 @@
     <string name="app_manager_install_unreadable_package">cannot read the package name</string>
     <string name="app_manager_action_install">Install</string>
     <string name="app_manager_action_export">Export</string>
+    <string name="app_manager_more">More</string>
     <string name="app_manager_confirm_title_install_single">Install "%1$s"</string>
     <string name="app_manager_confirm_title_install_batch">Install %1$d selected apps</string>
     <string name="app_manager_confirm_title_uninstall_single">Uninstall "%1$s"</string>

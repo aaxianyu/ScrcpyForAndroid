@@ -8,11 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import io.github.miuzarte.scrcpyforandroid.R
-import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppAction
-import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
-import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetDialog
-import io.github.miuzarte.scrcpyforandroid.ui.ActionSheetItem
 import io.github.miuzarte.scrcpyforandroid.ui.DialogHeading
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.DropdownDefaults
@@ -21,64 +17,6 @@ import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.popup.OverlayDropdownPopup
-
-/**
- * 应用操作面板。
- *
- * 标题 = 应用名，动作为通宽文本行（无图标、无选中标记）。
- * 「打开」对已停用应用置灰且不响应点击、不给任何提示（角标已提供解释）。
- *
- * 点任一动作先记下动作并收起面板，调用方在面板收起时执行下一步。
- */
-@Composable
-fun AppActionSheet(
-    visible: Boolean,
-    app: DeviceApp?,
-    onDismissRequest: () -> Unit,
-    onActionPicked: (AppAction) -> Unit,
-    /** 打开应用详情；它是独立页面，不属于 [AppAction] 那组设备动作。 */
-    onDetailsPicked: () -> Unit,
-    /** 该应用此刻有进程在跑；null = 运行态未知 */
-    running: Boolean? = null,
-) {
-    if (app == null) return
-    // 强行停止只在「确实有进程在跑」时可用：已停用一律置灰（停用优先）；
-    // 运行态未知时不置灰——拿不到运行状态就没依据禁用，否则一次 ps -A 读失败
-    // 会让全列表的强行停止都点不动。置灰而不隐藏，菜单位置保持稳定
-    val forceStopEnabled = app.isEnabled && running != false
-    ActionSheetDialog(
-        visible = visible,
-        title = app.displayLabel,
-        onDismissRequest = onDismissRequest,
-        actions = listOf(
-            ActionSheetItem(stringResource(R.string.app_manager_detail_title)) {
-                onDetailsPicked()
-            },
-            ActionSheetItem(stringResource(R.string.app_manager_open), app.isEnabled) {
-                onActionPicked(AppAction.OPEN)
-            },
-            ActionSheetItem(stringResource(R.string.app_manager_force_stop), forceStopEnabled) {
-                onActionPicked(AppAction.FORCE_STOP)
-            },
-            ActionSheetItem(
-                stringResource(
-                    if (app.isEnabled) R.string.app_manager_disable else R.string.app_manager_enable,
-                ),
-            ) {
-                onActionPicked(if (app.isEnabled) AppAction.DISABLE else AppAction.ENABLE)
-            },
-            ActionSheetItem(stringResource(R.string.app_manager_clear_data)) {
-                onActionPicked(AppAction.CLEAR_DATA)
-            },
-            ActionSheetItem(stringResource(R.string.app_manager_export_apk)) {
-                onActionPicked(AppAction.EXPORT_APK)
-            },
-            ActionSheetItem(stringResource(R.string.app_manager_uninstall)) {
-                onActionPicked(AppAction.UNINSTALL)
-            },
-        ),
-    )
-}
 
 /**
  * 安装来源面板：miuix 弹窗（OverlayDialog），

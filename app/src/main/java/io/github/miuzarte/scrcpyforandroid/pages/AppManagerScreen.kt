@@ -70,12 +70,10 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.data.LocalApkInstall
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.TransferProgress
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.currentDeviceKey
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.exportFileName
-import io.github.miuzarte.scrcpyforandroid.appmanager.data.runningOrNull
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppAction
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.AppOrdering
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.DeviceApp
 import io.github.miuzarte.scrcpyforandroid.appmanager.domain.LocalApp
-import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppActionSheet
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppConfirmDialog
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerBottomSlot
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerCollapsedTitle
@@ -318,7 +316,7 @@ internal fun AppManagerScreen(
     /**
      * 选中集里该动作真正作用到的条目。
      *
-     * 启用只作用于已停用的、停用只作用于已启用的；其余动作（导出 / 卸载 / 强行停止 /
+     * 启用只作用于已停用的、停用只作用于已启用的；其余动作（导出 / 卸载 / 结束运行 /
      * 清除数据）作用于全部选中项。混合选中时命令、提示计数与行尾在途圈都按这个集合走，
      * 已经是目标态的条目不会被重复操作。
      */
@@ -336,17 +334,6 @@ internal fun AppManagerScreen(
     // 揭示圆心：取手指落点 pressInRoot，由顶栏按钮 / 悬浮圆钮的按下上报
     var searchRevealCenter by remember { mutableStateOf(Offset.Zero) }
 
-    // 弹层族（显示开关与内容引用分离）
-    var actionSheetApp by remember { mutableStateOf<DeviceApp?>(null) }
-    var actionSheetVisible by remember { mutableStateOf(false) }
-    var pendingSheetAction by remember { mutableStateOf<AppAction?>(null) }
-    // 「应用详情」是独立页面而不是设备动作：包名先记下，等面板收起后再推路由
-    var pendingDetailPackage by remember { mutableStateOf<String?>(null) }
-    // 面板按包名回读最新行：点开面板时那次状态校准是异步的，读回来要能刷到面板上——
-    // 「打开」「强行停止」是否置灰看的正是这一行的启用态与运行态。行已不在列表时退回快照。
-    val actionSheetLiveApp = actionSheetApp?.let { snapshot ->
-        uiState.apps.firstOrNull { it.packageName == snapshot.packageName } ?: snapshot
-    }
     var installSheetOpen by remember { mutableStateOf(false) }
     var localPickerOpen by remember { mutableStateOf(false) }
     var displayOptionsOpen by remember { mutableStateOf(false) }
@@ -625,7 +612,7 @@ internal fun AppManagerScreen(
 
     // 运行态定时刷新：只有停在本页且处于前台时才每 30 秒重拉一次 `ps -A`。
     // 被控设备上的应用随时会被用户自己打开 / 退出，一次快照放到几十分钟后必然过时，
-    // 角标和「强行停止」的置灰就会说谎。只拉进程表、不拉应用清单，代价很小。
+    // 角标和「结束运行」的置灰就会说谎。只拉进程表、不拉应用清单，代价很小。
     val refreshRunningTick by rememberUpdatedState<() -> Unit>({
         if (!uiState.notConnected) DeviceAppRepository.refreshRunningState()
     })
@@ -684,7 +671,7 @@ internal fun AppManagerScreen(
                 showExportDone(message, result.uri, result.kind, result.folderUri)
 
             is DeviceAppRepository.ExportResult.Failure ->
-                snackbar.show(singleFailureText(AppAction.EXPORT_APK, app, result.error))
+                snackbar.show(appActionFailureText(AppAction.EXPORT_APK, app, result.error))
         }
     }
 
@@ -865,7 +852,7 @@ internal fun AppManagerScreen(
             }
 
             is DeviceAppRepository.ExportKindResult.Unavailable -> {
-                snackbar.show(singleFailureText(AppAction.EXPORT_APK, request.app, result.reason))
+                snackbar.show(appActionFailureText(AppAction.EXPORT_APK, request.app, result.reason))
                 null
             }
         }
@@ -1001,17 +988,12 @@ internal fun AppManagerScreen(
                                     if (!selected.remove(app.packageName)) {
                                         selected.add(app.packageName)
                                         // 勾上时校准一次：勾选之后马上要按状态挑动作
-                                        // （启用/停用互斥、强行停止要看是否在跑）
+                                        // （启用/停用互斥、结束运行要看是否在跑）
                                         DeviceAppRepository.refreshAppState(app.packageName)
                                     }
                                 } else {
-                                    // 菜单先弹出来，再校准这一个应用的状态：用户可能刚在被控
-                                    // 设备上打开、退出或停用过它，上一次快照未必还成立。校准是
-                                    // 异步的，读回来会经 actionSheetLiveApp 刷到已打开的面板上；
-                                    // 读不到也照样弹菜单——展开菜单的优先级高于状态准确。
-                                    actionSheetApp = app
-                                    actionSheetVisible = true
-                                    DeviceAppRepository.refreshAppState(app.packageName)
+                                    // 行上只有会话里的快照；详情页自己会校准这一个应用的状态
+                                    navigator.push(RootScreen.AppDetail(app.packageName))
                                 }
                             },
                             onAppLongClick = { app ->
@@ -1338,330 +1320,258 @@ internal fun AppManagerScreen(
                 onDismissRequest = { searchOpen = false },
                 onExitFinished = { },
                 onAppClick = { app ->
-                    // 先收起输入法再弹操作菜单
+                    // 进详情前先收起输入法：返回时浮层已关，键盘不该重新弹出
                     focusManager.clearFocus()
                     keyboardController?.hide()
-                    // 同列表行：先弹菜单，再校准这一个应用的状态（不阻塞展开）
-                    actionSheetApp = app
-                    actionSheetVisible = true
-                    DeviceAppRepository.refreshAppState(app.packageName)
+                    navigator.push(RootScreen.AppDetail(app.packageName))
                 },
                 // 背景与圆形揭示铺满全屏；状态栏、输入法、导航条的间距由浮层内容自行内衬
                 modifier = Modifier.fillMaxSize(),
             )
 
-        // ---------------------------------------------------------------- 弹层族
-        // 弹层必须在 Scaffold 内组合：overlay 组件默认 renderInRootScaffold=true，
-        // 在 Scaffold 外部会落入 LocalDialogStates 的默认空列表而无法渲染
+            // 弹层族必须在本 Scaffold 内组合：overlay 组件默认 renderInRootScaffold=true，
+            // 在 Scaffold 外部会落入 LocalDialogStates 的默认空列表，没有任何宿主渲染它
 
-        // 应用操作面板：点动作 → 记下动作 → 收起面板 → 下面的 LaunchedEffect 随
-        // visible 翻 false 立即执行下一步
-        AppActionSheet(
-            visible = actionSheetVisible,
-            app = actionSheetLiveApp,
-            onDismissRequest = {
-                actionSheetVisible = false
-            },
-            onActionPicked = { action ->
-                pendingSheetAction = action
-                actionSheetVisible = false
-            },
-            onDetailsPicked = {
-                pendingDetailPackage = actionSheetLiveApp?.packageName ?: actionSheetApp?.packageName
-                actionSheetVisible = false
-            },
-            // 运行态未知（null）时传 null：面板内部据此不置灰强行停止
-            running = actionSheetLiveApp?.let { app ->
-                uiState.runningPackages.runningOrNull(app.packageName)
-            },
-        )
-        LaunchedEffect(actionSheetVisible, actionSheetApp) {
-            if (!actionSheetVisible) {
-                val detailPackage = pendingDetailPackage
-                pendingDetailPackage = null
-                if (detailPackage != null) {
-                    actionSheetApp = null
-                    navigator.push(RootScreen.AppDetail(detailPackage))
-                    return@LaunchedEffect
-                }
-                val action = pendingSheetAction
-                val app = actionSheetLiveApp
-                pendingSheetAction = null
-                actionSheetApp = null
-                if (action == null || app == null) return@LaunchedEffect
-                when (action) {
-                    AppAction.OPEN -> DeviceAppRepository.performAction(action, app) { result ->
+            // 安装来源面板
+            InstallSourceSheet(
+                visible = installSheetOpen,
+                onDismissRequest = { installSheetOpen = false },
+                onPickFiles = {
+                    installSheetOpen = false
+                    apkPicker.launch(arrayOf("application/vnd.android.package-archive", "*/*"))
+                },
+                onPickLocalApps = {
+                    installSheetOpen = false
+                    // 从这里进就是新一次选择：中断过的安装会把上次的搜索词与勾选留在会话里
+                    viewModel.clearLocalPickerSession()
+                    localPickerOpen = true
+                    // 列表已在会话里：直接显示，枚举在后台刷新；列表为空时由选择器自身的加载态呈现
+                    viewModel.loadLocalApps(background = true)
+                },
+            )
+
+            // 本机应用选择器（会话状态在 ViewModel）
+            val localApps by viewModel.localApps.collectAsState()
+            val localAppsLoading by viewModel.localAppsLoading.collectAsState()
+            val localAppsLoaded by viewModel.localAppsLoaded.collectAsState()
+            val localPermissionMissing by viewModel.localAppsPermissionMissing.collectAsState()
+            val localSlow by viewModel.localAppsSlow.collectAsState()
+            val localIconEpoch by viewModel.localIconEpoch.collectAsState()
+            LocalAppPickerSheet(
+                visible = localPickerOpen,
+                apps = localApps,
+                loading = localAppsLoading,
+                permissionMissing = localPermissionMissing,
+                slow = localSlow,
+                query = viewModel.localPickerQuery,
+                selectedPackages = viewModel.localPickerSelection.toSet(),
+                busy = uiState.busy,
+                loaded = localAppsLoaded,
+                batchMode = viewModel.localBatchMode,
+                onBatchModeChange = { viewModel.localBatchMode = it },
+                iconEpoch = localIconEpoch,
+                onQueryChange = viewModel::onLocalPickerQueryChange,
+                onToggleSelect = viewModel::toggleLocalSelection,
+                onRefresh = { viewModel.loadLocalApps() },
+                onClearSelection = viewModel::clearLocalSelection,
+                hideVersion = hideVersion,
+                hideApkSize = hideApkSize,
+                onToggleHideVersion = viewModel::toggleHideVersion,
+                onToggleHideApkSize = viewModel::toggleHideApkSize,
+                onInstallSingleApp = { app ->
+                    // 单击直接弹安装确认弹窗：快照该应用，等对话框回来再执行
+                    localPickerOpen = false
+                    confirmRequest = ConfirmRequest(
+                        action = AppAction.UNINSTALL,
+                        app = null,
+                        batchCount = 1,
+                        isInstall = true,
+                        installApps = listOf(app),
+                        splitCount = if (app.apkPaths.size > 1) 1 else 0,
+                    )
+                    confirmVisible = true
+                },
+                onConfirm = {
+                    localPickerOpen = false
+                    // 选择集必须在这一刻快照：确认框期间选择器被隐藏，但 VM 会话保留；安装完成后 clearLocalPickerSession 才会清它，
+                    val picked = localApps.filter { it.packageName in viewModel.localPickerSelection }
+                    confirmRequest = ConfirmRequest(
+                        action = AppAction.UNINSTALL,
+                        app = null,
+                        batchCount = picked.size,
+                        isInstall = true,
+                        installApps = picked,
+                        splitCount = picked.count { it.apkPaths.size > 1 },
+                    )
+                    confirmVisible = true
+                },
+                onDismissRequest = {
+                    // 主动关闭：搜索词与选择集均清空
+                    viewModel.clearLocalPickerSession()
+                    localPickerOpen = false
+                },
+                onGoToSettings = {
+                    val opened = runCatching {
+                        val intent = android.content.Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.fromParts("package", context.packageName, null),
+                        )
+                        context.startActivity(intent)
+                        true
+                    }.getOrDefault(false)
+                    if (!opened) {
+                        snackbar.show(AppRuntime.stringResource(R.string.pref_cannot_open_settings))
+                    }
+                },
+            )
+
+            // 执行已确认的操作（对话框收起后由 LaunchedEffect 调用）
+            val executeConfirm: (ConfirmRequest) -> Unit = { request ->
+                when {
+                    request.isInstall -> {
+                        // 执行只认点确认时定下的快照：弹窗收起后选择集不再参与本次安装
+                        val appsToInstall = request.installApps
+                        DeviceAppRepository.installLocalApps(appsToInstall) { outcome ->
+                            snackbar.show(installOutcomeText(outcome, appsToInstall.singleOrNull()?.label))
+                            viewModel.clearLocalPickerSession()
+                        }
+                    }
+
+                    // 单个应用导出：与批量导出同一条路径，落盘位置由系统版本决定
+                    request.action == AppAction.EXPORT_APK && request.app != null ->
+                        startApkExport(request.app)
+
+                    request.app != null -> DeviceAppRepository.performAction(
+                        request.action,
+                        request.app,
+                    ) { result ->
                         snackbar.show(
                             when (result) {
                                 is DeviceAppRepository.ActionResult.Success ->
-                                    singleSuccessText(action, result.app)
+                                    appActionSuccessText(request.action, result.app)
 
                                 is DeviceAppRepository.ActionResult.Failure ->
-                                    singleFailureText(action, result.app, result.error)
+                                    appActionFailureText(request.action, result.app, result.error)
                             },
                         )
                     }
 
-                    // 导出：与批量导出走同一道确认，落盘位置由系统版本决定
-                    AppAction.EXPORT_APK -> {
-                        confirmRequest = ConfirmRequest(
-                            action = AppAction.EXPORT_APK,
-                            app = app,
-                            batchCount = 1,
-                            isInstall = false,
-                            splitCount = if (app.isSplit) 1 else 0,
-                        )
-                        confirmVisible = true
+                    // 批量导出：只选一个时按单包导出（文件名 = 包名.apk），多个才打 ZIP
+                    request.action == AppAction.EXPORT_APK -> {
+                        val appsToExport = currentSelection()
+                        when (appsToExport.size) {
+                            0 -> batchMode = false
+                            1 -> startApkExport(appsToExport.first())
+                            else -> startZipExport(appsToExport)
+                        }
                     }
 
-                else -> {
-                    confirmRequest = ConfirmRequest(action, app, batchCount = 1, isInstall = false)
-                    confirmVisible = true
+                    else -> {
+                        // 先退批量模式再执行：底栏立刻收起；执行与随后的列表刷新在后台跑完，
+                        // 批量停用 / 启用不占界面等待刷新完成。
+                        // 清单先取快照——selected.clear() 之后就读不到了；
+                        // 走 batchTargets 过滤：启用只发给出已停用的条目，已经是目标态的不重复操作
+                        val targets = batchTargets(request.action).map { it.packageName }
+                        batchMode = false
+                        selected.clear()
+                        DeviceAppRepository.performBatch(request.action, targets) { outcome ->
+                            snackbar.show(batchOutcomeText(request.action, outcome))
+                        }
+                    }
                 }
             }
-        }
-    }
 
-    // 安装来源面板
-    InstallSourceSheet(
-        visible = installSheetOpen,
-        onDismissRequest = { installSheetOpen = false },
-        onPickFiles = {
-            installSheetOpen = false
-            apkPicker.launch(arrayOf("application/vnd.android.package-archive", "*/*"))
-        },
-        onPickLocalApps = {
-            installSheetOpen = false
-            // 从这里进就是新一次选择：中断过的安装会把上次的搜索词与勾选留在会话里
-            viewModel.clearLocalPickerSession()
-            localPickerOpen = true
-            // 列表已在会话里：直接显示，枚举在后台刷新；列表为空时由选择器自身的加载态呈现
-            viewModel.loadLocalApps(background = true)
-        },
-    )
-
-    // 本机应用选择器（会话状态在 ViewModel）
-    val localApps by viewModel.localApps.collectAsState()
-    val localAppsLoading by viewModel.localAppsLoading.collectAsState()
-    val localAppsLoaded by viewModel.localAppsLoaded.collectAsState()
-    val localPermissionMissing by viewModel.localAppsPermissionMissing.collectAsState()
-    val localSlow by viewModel.localAppsSlow.collectAsState()
-    val localIconEpoch by viewModel.localIconEpoch.collectAsState()
-    LocalAppPickerSheet(
-        visible = localPickerOpen,
-        apps = localApps,
-        loading = localAppsLoading,
-        permissionMissing = localPermissionMissing,
-        slow = localSlow,
-        query = viewModel.localPickerQuery,
-        selectedPackages = viewModel.localPickerSelection.toSet(),
-        busy = uiState.busy,
-        loaded = localAppsLoaded,
-        batchMode = viewModel.localBatchMode,
-        onBatchModeChange = { viewModel.localBatchMode = it },
-        iconEpoch = localIconEpoch,
-        onQueryChange = viewModel::onLocalPickerQueryChange,
-        onToggleSelect = viewModel::toggleLocalSelection,
-        onRefresh = { viewModel.loadLocalApps() },
-        onClearSelection = viewModel::clearLocalSelection,
-        hideVersion = hideVersion,
-        hideApkSize = hideApkSize,
-        onToggleHideVersion = viewModel::toggleHideVersion,
-        onToggleHideApkSize = viewModel::toggleHideApkSize,
-        onInstallSingleApp = { app ->
-            // 单击直接弹安装确认弹窗：快照该应用，等对话框回来再执行
-            localPickerOpen = false
-            confirmRequest = ConfirmRequest(
-                action = AppAction.UNINSTALL,
-                app = null,
-                batchCount = 1,
-                isInstall = true,
-                installApps = listOf(app),
-                splitCount = if (app.apkPaths.size > 1) 1 else 0,
+            // 安装 / 提取进度弹窗：模态盖住本页，期间页面不可操作
+            val transfer by DeviceAppRepository.transfer.collectAsState()
+            AppManagerTransferProgress(
+                progress = transfer,
+                onAbort = {
+                    DeviceAppRepository.cancelTransfer()
+                    snackbar.show(AppRuntime.stringResource(R.string.app_manager_transfer_aborted))
+                },
             )
-            confirmVisible = true
-        },
-        onConfirm = {
-            localPickerOpen = false
-            // 选择集必须在这一刻快照：确认框期间选择器被隐藏，但 VM 会话保留；安装完成后 clearLocalPickerSession 才会清它，
-            val picked = localApps.filter { it.packageName in viewModel.localPickerSelection }
-            confirmRequest = ConfirmRequest(
-                action = AppAction.UNINSTALL,
-                app = null,
-                batchCount = picked.size,
-                isInstall = true,
-                installApps = picked,
-                splitCount = picked.count { it.apkPaths.size > 1 },
+
+            // 二次确认对话框：确认后先收起再执行
+            val confirm = confirmRequest
+            AppConfirmDialog(
+                visible = confirmVisible && confirm != null,
+                title = confirm?.let { c ->
+                    when {
+                        c.isInstall && c.batchCount == 1 && c.installApps.size == 1 ->
+                            stringResource(R.string.app_manager_confirm_title_install_single, c.installApps[0].label)
+
+                        c.isInstall -> stringResource(R.string.app_manager_confirm_title_install_batch, c.batchCount)
+
+                        // 批量导出（含只选一个的情形）：标题带数量
+                        c.action == AppAction.EXPORT_APK && c.app == null ->
+                            stringResource(R.string.app_manager_confirm_title_batch_export, c.batchCount)
+
+                        // 单个应用导出：标题带应用名，与其它单应用动作同一形态
+                        c.action == AppAction.EXPORT_APK ->
+                            stringResource(R.string.app_manager_confirm_title_export_single, c.app?.displayLabel ?: "")
+
+                        c.app != null -> stringResource(
+                            when (c.action) {
+                                AppAction.UNINSTALL -> R.string.app_manager_confirm_title_uninstall_single
+                                AppAction.DISABLE -> R.string.app_manager_confirm_title_disable_single
+                                AppAction.ENABLE -> R.string.app_manager_confirm_title_enable_single
+                                AppAction.FORCE_STOP -> R.string.app_manager_confirm_title_force_stop_single
+                                AppAction.CLEAR_DATA -> R.string.app_manager_confirm_title_clear_data_single
+                                else -> R.string.app_manager_confirm_title_uninstall_single
+                            },
+                            c.app.displayLabel,
+                        )
+
+                        else -> stringResource(
+                            when (c.action) {
+                                AppAction.UNINSTALL -> R.string.app_manager_confirm_title_uninstall_batch
+                                AppAction.DISABLE -> R.string.app_manager_confirm_title_disable_batch
+                                AppAction.ENABLE -> R.string.app_manager_confirm_title_enable_batch
+                                else -> R.string.app_manager_confirm_title_uninstall_batch
+                            },
+                            c.batchCount,
+                        )
+                    }
+                } ?: "",
+                // 右按钮写明动作本身；破坏性动作取错误色
+                confirmLabel = when {
+                    confirm?.isInstall == true -> stringResource(R.string.app_manager_action_install)
+                    confirm?.action == AppAction.EXPORT_APK -> stringResource(R.string.app_manager_action_export)
+                    confirm?.action == AppAction.UNINSTALL -> stringResource(R.string.app_manager_uninstall)
+                    confirm?.action == AppAction.DISABLE -> stringResource(R.string.app_manager_disable)
+                    confirm?.action == AppAction.ENABLE -> stringResource(R.string.app_manager_enable)
+                    confirm?.action == AppAction.FORCE_STOP -> stringResource(R.string.app_manager_force_stop)
+                    confirm?.action == AppAction.CLEAR_DATA -> stringResource(R.string.app_manager_clear_data)
+                    else -> stringResource(R.string.button_confirm)
+                },
+                // 安装请求借用 UNINSTALL 作哨兵，别把安装也染成危险色
+                dangerous = confirm?.isInstall != true && (
+                    confirm?.action == AppAction.UNINSTALL ||
+                        confirm?.action == AppAction.CLEAR_DATA ||
+                        confirm?.action == AppAction.FORCE_STOP
+                    ),
+                summary = confirmSummary(confirm),
+                onConfirm = {
+                    if (confirm != null) {
+                        pendingExecute = { executeConfirm(confirm) }
+                    }
+                    confirmVisible = false
+                },
+                onDismissRequest = {
+                    confirmVisible = false
+                    confirmRequest = null
+                    if (confirm?.isInstall == true) {
+                        // 被对话框挤占后取消：选择器恢复原状，搜索词与选择集均保留
+                        localPickerOpen = true
+                    }
+                },
             )
-            confirmVisible = true
-        },
-        onDismissRequest = {
-            // 主动关闭：搜索词与选择集均清空
-            viewModel.clearLocalPickerSession()
-            localPickerOpen = false
-        },
-        onGoToSettings = {
-            val opened = runCatching {
-                val intent = android.content.Intent(
-                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    android.net.Uri.fromParts("package", context.packageName, null),
-                )
-                context.startActivity(intent)
-                true
-            }.getOrDefault(false)
-            if (!opened) {
-                snackbar.show(AppRuntime.stringResource(R.string.pref_cannot_open_settings))
-            }
-        },
-    )
-
-    // 执行已确认的操作（对话框收起后由 LaunchedEffect 调用）
-    val executeConfirm: (ConfirmRequest) -> Unit = { request ->
-        when {
-            request.isInstall -> {
-                // 执行只认点确认时定下的快照：弹窗收起后选择集不再参与本次安装
-                val appsToInstall = request.installApps
-                DeviceAppRepository.installLocalApps(appsToInstall) { outcome ->
-                    snackbar.show(installOutcomeText(outcome, appsToInstall.singleOrNull()?.label))
-                    viewModel.clearLocalPickerSession()
+            LaunchedEffect(confirmVisible) {
+                if (!confirmVisible) {
+                    pendingExecute?.invoke()
+                    pendingExecute = null
                 }
             }
-
-            // 单个应用导出：与批量导出同一条路径，落盘位置由系统版本决定
-            request.action == AppAction.EXPORT_APK && request.app != null ->
-                startApkExport(request.app)
-
-            request.app != null -> DeviceAppRepository.performAction(
-                request.action,
-                request.app,
-            ) { result ->
-                snackbar.show(
-                    when (result) {
-                        is DeviceAppRepository.ActionResult.Success ->
-                            singleSuccessText(request.action, result.app)
-
-                        is DeviceAppRepository.ActionResult.Failure ->
-                            singleFailureText(request.action, result.app, result.error)
-                    },
-                )
-            }
-
-            // 批量导出：只选一个时按单包导出（文件名 = 包名.apk），多个才打 ZIP
-            request.action == AppAction.EXPORT_APK -> {
-                val appsToExport = currentSelection()
-                when (appsToExport.size) {
-                    0 -> batchMode = false
-                    1 -> startApkExport(appsToExport.first())
-                    else -> startZipExport(appsToExport)
-                }
-            }
-
-            else -> {
-                // 先退批量模式再执行：底栏立刻收起；执行与随后的列表刷新在后台跑完，
-                // 批量停用 / 启用不占界面等待刷新完成。
-                // 清单先取快照——selected.clear() 之后就读不到了；
-                // 走 batchTargets 过滤：启用只发给出已停用的条目，已经是目标态的不重复操作
-                val targets = batchTargets(request.action).map { it.packageName }
-                batchMode = false
-                selected.clear()
-                DeviceAppRepository.performBatch(request.action, targets) { outcome ->
-                    snackbar.show(batchOutcomeText(request.action, outcome))
-                }
-            }
-        }
-    }
-
-    // 安装 / 提取进度弹窗：模态盖住本页，期间页面不可操作
-    val transfer by DeviceAppRepository.transfer.collectAsState()
-    AppManagerTransferProgress(
-        progress = transfer,
-        onAbort = {
-            DeviceAppRepository.cancelTransfer()
-            snackbar.show(AppRuntime.stringResource(R.string.app_manager_transfer_aborted))
-        },
-    )
-
-    // 二次确认对话框：确认后先收起再执行
-    val confirm = confirmRequest
-    AppConfirmDialog(
-        visible = confirmVisible && confirm != null,
-        title = confirm?.let { c ->
-            when {
-                c.isInstall && c.batchCount == 1 && c.installApps.size == 1 ->
-                    stringResource(R.string.app_manager_confirm_title_install_single, c.installApps[0].label)
-
-                c.isInstall -> stringResource(R.string.app_manager_confirm_title_install_batch, c.batchCount)
-
-                // 批量导出（含只选一个的情形）：标题带数量
-                c.action == AppAction.EXPORT_APK && c.app == null ->
-                    stringResource(R.string.app_manager_confirm_title_batch_export, c.batchCount)
-
-                // 单个应用导出：标题带应用名，与其它单应用动作同一形态
-                c.action == AppAction.EXPORT_APK ->
-                    stringResource(R.string.app_manager_confirm_title_export_single, c.app?.displayLabel ?: "")
-
-                c.app != null -> stringResource(
-                    when (c.action) {
-                        AppAction.UNINSTALL -> R.string.app_manager_confirm_title_uninstall_single
-                        AppAction.DISABLE -> R.string.app_manager_confirm_title_disable_single
-                        AppAction.ENABLE -> R.string.app_manager_confirm_title_enable_single
-                        AppAction.FORCE_STOP -> R.string.app_manager_confirm_title_force_stop_single
-                        AppAction.CLEAR_DATA -> R.string.app_manager_confirm_title_clear_data_single
-                        else -> R.string.app_manager_confirm_title_uninstall_single
-                    },
-                    c.app.displayLabel,
-                )
-
-                else -> stringResource(
-                    when (c.action) {
-                        AppAction.UNINSTALL -> R.string.app_manager_confirm_title_uninstall_batch
-                        AppAction.DISABLE -> R.string.app_manager_confirm_title_disable_batch
-                        AppAction.ENABLE -> R.string.app_manager_confirm_title_enable_batch
-                        else -> R.string.app_manager_confirm_title_uninstall_batch
-                    },
-                    c.batchCount,
-                )
-            }
-        } ?: "",
-        // 右按钮写明动作本身；破坏性动作取错误色
-        confirmLabel = when {
-            confirm?.isInstall == true -> stringResource(R.string.app_manager_action_install)
-            confirm?.action == AppAction.EXPORT_APK -> stringResource(R.string.app_manager_action_export)
-            confirm?.action == AppAction.UNINSTALL -> stringResource(R.string.app_manager_uninstall)
-            confirm?.action == AppAction.DISABLE -> stringResource(R.string.app_manager_disable)
-            confirm?.action == AppAction.ENABLE -> stringResource(R.string.app_manager_enable)
-            confirm?.action == AppAction.FORCE_STOP -> stringResource(R.string.app_manager_force_stop)
-            confirm?.action == AppAction.CLEAR_DATA -> stringResource(R.string.app_manager_clear_data)
-            else -> stringResource(R.string.button_confirm)
-        },
-        // 安装请求借用 UNINSTALL 作哨兵，别把安装也染成危险色
-        dangerous = confirm?.isInstall != true && (
-            confirm?.action == AppAction.UNINSTALL ||
-                confirm?.action == AppAction.CLEAR_DATA ||
-                confirm?.action == AppAction.FORCE_STOP
-            ),
-        summary = confirmSummary(confirm),
-        onConfirm = {
-            if (confirm != null) {
-                pendingExecute = { executeConfirm(confirm) }
-            }
-            confirmVisible = false
-        },
-        onDismissRequest = {
-            confirmVisible = false
-            confirmRequest = null
-            if (confirm?.isInstall == true) {
-                // 被对话框挤占后取消：选择器恢复原状，搜索词与选择集均保留
-                localPickerOpen = true
-            }
-        },
-    )
-    LaunchedEffect(confirmVisible) {
-        if (!confirmVisible) {
-            pendingExecute?.invoke()
-            pendingExecute = null
-        }
-    }
         }
     }
 }
@@ -1713,18 +1623,6 @@ private const val RUNNING_REFRESH_INTERVAL_MS = 30_000L
  */
 private fun errorText(error: AppManagerError): String = appManagerErrorText(error)
 
-private fun singleSuccessText(action: AppAction, app: DeviceApp): String = when (action) {
-    AppAction.OPEN -> AppRuntime.stringResource(R.string.app_manager_opening, app.displayLabel)
-    AppAction.FORCE_STOP -> AppRuntime.stringResource(R.string.app_manager_stopped, app.displayLabel)
-    AppAction.CLEAR_DATA ->
-        AppRuntime.stringResource(R.string.app_manager_data_cleared, app.displayLabel)
-
-    AppAction.DISABLE -> AppRuntime.stringResource(R.string.app_manager_disabled_done, app.displayLabel)
-    AppAction.ENABLE -> AppRuntime.stringResource(R.string.app_manager_enabled_done, app.displayLabel)
-    AppAction.UNINSTALL -> AppRuntime.stringResource(R.string.app_manager_uninstalled, app.displayLabel)
-    AppAction.EXPORT_APK -> AppRuntime.stringResource(R.string.app_manager_exported, app.displayLabel)
-}
-
 /** 安装 / 提取进度弹窗：模态盖住本页，取消需二次确认。 */
 @Composable
 private fun AppManagerTransferProgress(
@@ -1769,32 +1667,6 @@ private fun zipExportOutcomeText(
     AppRuntime.stringResource(R.string.app_manager_export_rolled_back, total)
 }
 
-/** 单包导出的失败文案，按动作分派。 */
-private fun singleFailureText(action: AppAction, app: DeviceApp, error: AppManagerError): String =
-    when (action) {
-        AppAction.OPEN -> AppRuntime.stringResource(
-            R.string.app_manager_open_failed,
-            app.displayLabel,
-            errorText(error),
-        )
-
-        AppAction.EXPORT_APK -> AppRuntime.stringResource(
-            R.string.app_manager_export_failed,
-            errorText(error),
-        )
-
-        else -> AppRuntime.stringResource(
-            when (action) {
-                AppAction.UNINSTALL -> R.string.app_manager_uninstall_failed
-                AppAction.DISABLE -> R.string.app_manager_disable_failed
-                AppAction.ENABLE -> R.string.app_manager_enable_failed
-                AppAction.FORCE_STOP -> R.string.app_manager_force_stop_failed
-                AppAction.CLEAR_DATA -> R.string.app_manager_clear_data_failed
-                AppAction.OPEN, AppAction.EXPORT_APK -> R.string.app_manager_uninstall_failed
-            },
-            errorText(error),
-        )
-    }
 
 /** 确认框摘要末尾的 split 提示行：有分包才多出一行，批量文案里顺带报分包个数。 */
 private fun splitHintLine(count: Int, resId: Int, withCount: Boolean = false): String {
