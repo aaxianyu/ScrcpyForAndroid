@@ -2026,6 +2026,7 @@ private fun singleExportSummary(
 
 private fun installErrorText(raw: String?): String =
     installFailureReason(raw)
+        ?: raw?.trim()?.takeIf { it.isNotEmpty() }
         ?: AppRuntime.stringResource(R.string.app_compare_install_failed_unknown)
 
 private fun exportErrorText(raw: String?): String = when (raw) {
