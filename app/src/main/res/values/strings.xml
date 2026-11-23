@@ -799,6 +799,7 @@
     <string name="tools_activate_app_desc">Run launch scripts over ADB</string>
     <string name="tools_activate_detecting">Detecting installed apps…</string>
     <string name="tools_activate_detect_failed">Failed to detect apps: %1$s</string>
+    <string name="tools_activate_detect_timeout">the device did not return the app list in time</string>
     <string name="tools_activate_detect_failed_hint">App detection failed. Check the ADB connection and retry.</string>
     <string name="tools_activate_none">No supported apps detected</string>
     <string name="tools_activate_hint">Select apps to activate via ADB shell.</string>
@@ -809,6 +810,7 @@
     <string name="tools_activate_result_success">%1$s activated</string>
     <string name="tools_activate_result_unconfirmed">%1$s: result not confirmed; check the service status in the app</string>
     <string name="tools_activate_result_interrupted">%1$s: activation interrupted; try again</string>
+    <string name="tools_activate_result_interrupted_reason">%1$s: activation interrupted: %2$s</string>
     <string name="tools_readback_unconfirmed">Unable to confirm the setting: invalid or empty readback</string>
     <string name="tools_activate_result_failed">%1$s activation failed</string>
     <string name="tools_activate_result_failed_reason">%1$s activation failed: %2$s</string>
@@ -820,6 +822,7 @@
     <string name="tools_activate_reason_bad_script">The startup script could not run; open the app to regenerate it</string>
     <string name="tools_activate_reason_missing_command">A command the startup script needs is missing on the device</string>
     <string name="tools_activate_reason_unknown">Unknown reason; copy details to inspect</string>
+    <string name="tools_activate_reason_script_timeout">startup script timed out</string>
     <string name="tools_device_info">Device info</string>
     <string name="tools_device_info_desc">Model, system, battery, storage</string>
     <string name="device_info_unknown">Unknown</string>

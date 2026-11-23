@@ -60,6 +60,7 @@ import io.github.miuzarte.scrcpyforandroid.ui.contextClick
 import io.github.miuzarte.scrcpyforandroid.ui.rememberBlurBackdrop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -142,6 +143,11 @@ private const val RES_MAX = 4320
 private const val ADB_TCP_DEFAULT_PORT = 5555
 private const val ADB_TCP_PORT_MIN = 1024
 private const val ADB_TCP_PORT_MAX = 65535
+// 激活探测只等一次回包；启动脚本要拉起守护进程，给足时间但不能无限等
+private const val ACTIVATION_PROBE_TIMEOUT_MS = 4_000L
+private const val ACTIVATION_SCRIPT_TIMEOUT_MS = 20_000L
+// 列包比单次探测慢，设备装得多时也要留出余量
+private const val ACTIVATION_LIST_TIMEOUT_MS = 8_000L
 // 行尾状态值只是顺手读一下，adbd 卡住时不能让行尾一直空白等下去
 private const val TOOL_STATE_READ_TIMEOUT_MS = 4_000L
 // 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
@@ -164,7 +170,7 @@ private sealed interface ActivationResult {
     data object Unconfirmed : ActivationResult
 
     /** 发送途中中断，命令是否到达设备无从判断：不以「已执行」对外陈述，原因留给详情。 */
-    data class Interrupted(val detail: String) : ActivationResult
+    data class Interrupted(val detail: String, val reason: String = "") : ActivationResult
     data class Failed(val reason: String, val detail: String) : ActivationResult
 }
 
@@ -204,7 +210,7 @@ private val KNOWN_ACTIVATABLES = listOf(
 )
 
 private suspend fun ActivatableApp.probeStatus(): ActivationStatus =
-    when (probeServiceRunning(probeCommand) { NativeAdbService.shell(it) }) {
+    when (probeServiceRunning(probeCommand) { NativeAdbService.shell(it, ACTIVATION_PROBE_TIMEOUT_MS) }) {
         true -> ActivationStatus.RUNNING
         false -> ActivationStatus.STOPPED
         null -> ActivationStatus.UNKNOWN
@@ -214,6 +220,9 @@ private suspend fun ActivatableApp.probeStatus(): ActivationStatus =
 private suspend fun ActivatableApp.probeStatusOrNull(): ActivationStatus? =
     try {
         probeStatus()
+    } catch (_: TimeoutCancellationException) {
+        // 探测没有回包：当作探不出结论，不据此判成未激活
+        ActivationStatus.UNKNOWN
     } catch (error: CancellationException) {
         throw error
     } catch (_: Throwable) {
@@ -256,7 +265,10 @@ private suspend fun activateOne(app: ActivatableApp): Pair<ActivatableApp, Activ
     val before = app.probeStatusOrNull()
     if (before == ActivationStatus.RUNNING) return app to ActivationResult.AlreadyRunning
     val attempt = try {
-        tryStartupScripts(app.startupScripts) { NativeAdbService.shell(it) }
+        tryStartupScripts(app.startupScripts) { NativeAdbService.shell(it, ACTIVATION_SCRIPT_TIMEOUT_MS) }
+    } catch (_: TimeoutCancellationException) {
+        val reason = AppRuntime.stringResource(R.string.tools_activate_reason_script_timeout)
+        return app to ActivationResult.Interrupted(detail = app.name + "\n" + reason, reason = reason)
     } catch (error: CancellationException) {
         throw error
     } catch (error: Throwable) {
@@ -279,7 +291,11 @@ private fun activationResultMessage(app: ActivatableApp, result: ActivationResul
     ActivationResult.AlreadyRunning -> AppRuntime.stringResource(R.string.tools_activate_result_running, app.name)
     ActivationResult.Activated -> AppRuntime.stringResource(R.string.tools_activate_result_success, app.name)
     ActivationResult.Unconfirmed -> AppRuntime.stringResource(R.string.tools_activate_result_unconfirmed, app.name)
-    is ActivationResult.Interrupted -> AppRuntime.stringResource(R.string.tools_activate_result_interrupted, app.name)
+    is ActivationResult.Interrupted -> if (result.reason.isBlank()) {
+        AppRuntime.stringResource(R.string.tools_activate_result_interrupted, app.name)
+    } else {
+        AppRuntime.stringResource(R.string.tools_activate_result_interrupted_reason, app.name, result.reason)
+    }
     is ActivationResult.Failed -> if (result.reason.isBlank()) {
         AppRuntime.stringResource(R.string.tools_activate_result_failed, app.name)
     } else {
@@ -732,7 +748,7 @@ internal fun UtilityToolsScreen(
             activationSheetOpen = true
             try {
                 withContext(Dispatchers.IO) {
-                    val installed = NativeAdbService.shell("pm list packages")
+                    val installed = NativeAdbService.shell("pm list packages", ACTIVATION_LIST_TIMEOUT_MS)
                         .lineSequence()
                         .map { it.removePrefix("package:").trim() }
                         .toSet()
@@ -758,6 +774,14 @@ internal fun UtilityToolsScreen(
                 }
                 if (activationToken !== token) return@launch
                 activationDetectFailed = false
+            } catch (_: TimeoutCancellationException) {
+                // 超时也被包成 CancellationException：不单独拦下会被当成任务取消，弹窗停在空列表
+                if (activationToken !== token) return@launch
+                activationDetectFailed = true
+                AppRuntime.snackbar(
+                    R.string.tools_activate_detect_failed,
+                    AppRuntime.stringResource(R.string.tools_activate_detect_timeout),
+                )
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
