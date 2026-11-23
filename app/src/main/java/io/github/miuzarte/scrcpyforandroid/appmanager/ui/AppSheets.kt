@@ -15,6 +15,7 @@ import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownEntry
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayCascadingListPopup
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.popup.OverlayDropdownPopup
 
@@ -118,5 +119,62 @@ fun DisplayOptionsMenu(
         dropdownColors = DropdownDefaults.dropdownColors(),
         renderInRootScaffold = true,
         collapseOnSelection = false,
+    )
+}
+
+/**
+ * 应用管理顶栏「更多」：筛选项作为子菜单原地展开（可连续勾选），应用对比跳转独立页面。
+ */
+@Composable
+fun AppManagerMoreMenu(
+    visible: Boolean,
+    hideVersion: Boolean,
+    hideApkSize: Boolean,
+    hideDisabled: Boolean,
+    onToggleHideVersion: () -> Unit,
+    onToggleHideApkSize: () -> Unit,
+    onToggleHideDisabled: () -> Unit,
+    onCompare: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val filterItems = listOf(
+        DropdownItem(
+            text = stringResource(R.string.app_manager_hide_version),
+            selected = hideVersion,
+            onClick = onToggleHideVersion,
+        ),
+        DropdownItem(
+            text = stringResource(R.string.app_manager_hide_apk_size),
+            selected = hideApkSize,
+            onClick = onToggleHideApkSize,
+        ),
+        DropdownItem(
+            text = stringResource(R.string.app_manager_hide_disabled),
+            selected = hideDisabled,
+            onClick = onToggleHideDisabled,
+        ),
+    )
+    val entry = DropdownEntry(
+        items = listOf(
+            DropdownItem(
+                text = stringResource(R.string.app_manager_filter_display),
+                children = filterItems,
+            ),
+            DropdownItem(
+                text = stringResource(R.string.app_compare_title),
+                onClick = onCompare,
+            ),
+        ),
+    )
+    OverlayCascadingListPopup(
+        show = visible,
+        entries = listOf(entry),
+        onDismissRequest = onDismiss,
+        onDismissFinished = onDismiss,
+        maxHeight = null,
+        dropdownColors = DropdownDefaults.dropdownColors(),
+        renderInRootScaffold = true,
+        collapseOnSelection = false,
+        enableWindowDim = true,
     )
 }

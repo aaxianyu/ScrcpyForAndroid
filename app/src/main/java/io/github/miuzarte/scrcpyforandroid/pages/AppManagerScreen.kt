@@ -63,6 +63,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppManagerError
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.DeviceAppRepository
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.exportViewIntent
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.openExportTarget
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.LocalApkInstall
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.TransferProgress
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.currentDeviceKey
@@ -77,9 +79,9 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerCollapsedTitl
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerRefreshIconSize
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerListPage
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerMotion
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerMoreMenu
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerViewModel
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.appSectionHeaderHeight
-import io.github.miuzarte.scrcpyforandroid.appmanager.ui.DisplayOptionsMenu
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.FastScroller
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.installFailureReason
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.InstallSourceSheet
@@ -123,7 +125,7 @@ import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.SelectAll
-import top.yukonga.miuix.kmp.icon.extended.Tune
+import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.shader.isRenderEffectSupported
 import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -334,9 +336,13 @@ internal fun AppManagerScreen(
 
     var installSheetOpen by remember { mutableStateOf(false) }
     var localPickerOpen by remember { mutableStateOf(false) }
-    var displayOptionsOpen by remember { mutableStateOf(false) }
-    // 进多选态时收掉显示选项浮层：它锚在已退场的 Tune 钮上
-    LaunchedEffect(batchMode) { if (batchMode) displayOptionsOpen = false }
+    var moreMenuOpen by remember { mutableStateOf(false) }
+    // 进多选态时收掉两级浮层：它们锚在已退场的更多钮上
+    LaunchedEffect(batchMode) {
+        if (batchMode) {
+            moreMenuOpen = false
+        }
+    }
     var confirmRequest by remember { mutableStateOf<ConfirmRequest?>(null) }
     var confirmVisible by remember { mutableStateOf(false) }
     var pendingExecute by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -355,41 +361,6 @@ internal fun AppManagerScreen(
     /** 落盘目标打不开时的提示（用户取消保存框不算失败，静默返回）。 */
     fun exportTargetUnreadableText(): String =
         AppRuntime.stringResource(R.string.app_manager_export_failed, "cannot open target")
-
-    /** 导出产物的查看意图；条目属于本应用，交给对方之前先把读权限让出来。 */
-    fun exportViewIntent(uri: android.net.Uri, mimeType: String): android.content.Intent =
-        android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
-            // clipData 让 chooser 把读权限一并转给用户选中的应用
-            clipData = android.content.ClipData.newRawUri(null, uri)
-            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-    /** 按 [kind] 的 MIME 向系统拉起「打开方式」，由用户挑能打开它的应用；`.apks` 起不来时退回通配 MIME。 */
-    fun openExportTarget(uri: android.net.Uri, kind: DeviceAppRepository.ExportKind): Boolean {
-        fun open(mimeType: String): Boolean = runCatching {
-            val intent = exportViewIntent(uri, mimeType)
-            // Resolver 总能解析 ACTION_CHOOSER：先看内层 intent 的候选，才判得出没有应用能接
-            val candidates = context.packageManager.queryIntentActivities(
-                intent,
-                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
-            )
-            if (candidates.isEmpty()) return@runCatching false
-            // 系统可能已给这个 MIME 设了默认应用：套 chooser 才会把候选摆给用户
-            val chooser = android.content.Intent.createChooser(intent, null)
-                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(chooser)
-            true
-        }.getOrDefault(false)
-        // 分包安装器未必注册 `.apks` 这个 type：先按它起，起不来再退回 */*，让系统把全部候选摆出来
-        val mimeTypes =
-            if (kind == DeviceAppRepository.ExportKind.APK_SET) {
-                listOf(kind.mimeType, "*/*")
-            } else {
-                listOf(kind.mimeType)
-            }
-        return mimeTypes.any { open(it) }
-    }
 
     /**
      * 拉起导出产物所在的目录。
@@ -655,7 +626,7 @@ internal fun AppManagerScreen(
             message = message,
             actionLabel = actionLabel,
             onAction = {
-                if (!openExportTarget(target, kind)) {
+                if (!openExportTarget(context, target, kind)) {
                     snackbar.show(AppRuntime.stringResource(R.string.app_manager_export_open_failed))
                 }
             },
@@ -1155,34 +1126,6 @@ internal fun AppManagerScreen(
                                                 anchorModifier = rememberPressInRootModifier(onSearchAnchor),
                                             )
                                         }
-                                        // 显示选项菜单与 tune 钮包在同一个 Box 里：弹出层以该 Box
-                                        // 为锚点。
-                                        Box {
-                                            MaskedTopBarAction(
-                                                icon = MiuixIcons.Tune,
-                                                contentDescription = stringResource(R.string.app_manager_display_options),
-                                                onClick = {
-                                                    haptic.contextClick()
-                                                    displayOptionsOpen = true
-                                                },
-                                                enabled = actionsEnabled,
-                                                maskAlpha = { maskAlpha.value },
-                                                glassActive = topBarGlass,
-                                                backdrop = topBarBackdrop,
-                                                highlight = topBarHighlight,
-                                            )
-                                            DisplayOptionsMenu(
-                                                visible = displayOptionsOpen,
-                                                hideVersion = hideVersion,
-                                                hideApkSize = hideApkSize,
-                                                onToggleHideVersion = viewModel::toggleHideVersion,
-                                                onToggleHideApkSize = viewModel::toggleHideApkSize,
-                                                onDismissRequest = { displayOptionsOpen = false },
-                                                hideDisabled = hideDisabled,
-                                                onToggleHideDisabled = viewModel::toggleHideDisabled,
-                                                showHideDisabled = true,
-                                            )
-                                        }
                                         MaskedTopBarAction(
                                             icon = MiuixIcons.Add,
                                             contentDescription = stringResource(R.string.app_manager_install_apk),
@@ -1196,6 +1139,36 @@ internal fun AppManagerScreen(
                                             enabled = !uiState.busy && actionsEnabled,
                                             highlight = topBarHighlight,
                                         )
+                                        // 更多菜单的锚点
+                                        Box {
+                                            MaskedTopBarAction(
+                                                icon = MiuixIcons.More,
+                                                contentDescription = stringResource(R.string.cd_more),
+                                                onClick = {
+                                                    haptic.contextClick()
+                                                    moreMenuOpen = true
+                                                },
+                                                enabled = actionsEnabled,
+                                                maskAlpha = { maskAlpha.value },
+                                                glassActive = topBarGlass,
+                                                backdrop = topBarBackdrop,
+                                                highlight = topBarHighlight,
+                                            )
+                                            AppManagerMoreMenu(
+                                                visible = moreMenuOpen,
+                                                hideVersion = hideVersion,
+                                                hideApkSize = hideApkSize,
+                                                hideDisabled = hideDisabled,
+                                                onToggleHideVersion = viewModel::toggleHideVersion,
+                                                onToggleHideApkSize = viewModel::toggleHideApkSize,
+                                                onToggleHideDisabled = viewModel::toggleHideDisabled,
+                                                onCompare = {
+                                                    moreMenuOpen = false
+                                                    navigator.push(RootScreen.AppCompare)
+                                                },
+                                                onDismiss = { moreMenuOpen = false },
+                                            )
+                                        }
                                     }
                                 },
                                 scrollBehavior = scrollBehavior,

@@ -22,6 +22,7 @@ import java.security.spec.X509EncodedKeySpec
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -851,6 +852,7 @@ internal class DirectAdbConnection(
             },
             flowControlWindow,
         )
+        stream.onAbandon = { id -> streams.remove(id) }
         streams[localId] = stream
         sendMsg(A_OPEN, localId, 0, (service + "\u0000").toByteArray(Charsets.UTF_8))
         try {
@@ -1043,11 +1045,19 @@ internal class DirectAdbConnection(
                     A_OKAY -> streams[msg.arg1]?.onRemoteOkay(msg.arg0)
                     A_WRTE -> {
                         val s = streams[msg.arg1]
-                        if (s != null) {
-                            s.onData(msg.data)
-                            sendMsg(A_OKAY, msg.arg1, msg.arg0)
-                        } else {
-                            sendMsg(A_CLSE, 0, msg.arg0)
+                        when {
+                            s == null -> sendMsg(A_CLSE, 0, msg.arg0)
+                            // 已关闭但还没摘表的流（forceClose 或放弃时的竞争窗口）：
+                            // 摘表并回 CLSE，后续 WRTE 不再替它 ACK
+                            s.closed -> {
+                                streams.remove(msg.arg1)
+                                sendMsg(A_CLSE, msg.arg1, msg.arg0)
+                            }
+
+                            // 只有还愿意收的流才 ACK：abandon 之后这条流已经发过 CLSE
+                            else -> if (s.onData(msg.data)) {
+                                sendMsg(A_OKAY, msg.arg1, msg.arg0)
+                            }
                         }
                     }
 
@@ -1222,9 +1232,30 @@ class AdbSocketStream(
     var closedByPeer: Boolean = false
         private set
 
+    /** 放弃流时通知连接把它从流表里摘掉；连接之外的人拿不到那张表。 */
+    var onAbandon: ((Int) -> Unit)? = null
+
     private val latch = CountDownLatch(1)
     private val latchOk = AtomicBoolean(false)
     private val queue = LinkedBlockingQueue<Any>()
+
+    // 收到 WRTE 就立刻回 OKAY，设备会把整条流全速推进队列；消费端一慢（落盘、主线程忙）
+    // 队列就无上限堆积，256KB 一块很快吃满堆。按字节预算做背压：额度用完就不再收新块，
+    // 内存占用被压在这个上限内。
+    private val queuedBytes = Semaphore(MAX_STREAM_QUEUE_BYTES, true)
+
+    // 关闭路径只归还一次额度：之后不再计账，避免已入队的块在关闭后继续抬高预算
+    private val quotaReleased = AtomicBoolean(false)
+
+    private fun releaseQuota() {
+        if (quotaReleased.compareAndSet(false, true)) {
+            queuedBytes.release(MAX_STREAM_QUEUE_BYTES)
+        }
+    }
+
+    private fun returnQuota(bytes: Int) {
+        if (!quotaReleased.get()) queuedBytes.release(bytes)
+    }
 
     // need notifyAll() / wait()
     private val writeLock = Object()
@@ -1251,8 +1282,23 @@ class AdbSocketStream(
         }
     }
 
-    internal fun onData(data: ByteArray) {
-        if (!closed) queue.offer(data)
+    /** 收下一块数据；返回 false 表示这条流已经放弃，调用方不应再回 A_OKAY。 */
+    internal fun onData(data: ByteArray): Boolean {
+        if (closed) return false
+        val reserved = data.size.coerceAtMost(MAX_STREAM_QUEUE_BYTES)
+        // 连接级读线程由全部流共用：等待额度期间整条连接都读不下去，
+        // 所以等一个消费端短时间能追上的量就放弃这条流，并连协议一起收尾
+        if (!queuedBytes.tryAcquire(reserved, BACKPRESSURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            Log.w(STREAM_TAG, "stream $localId: queue budget unclaimed for ${BACKPRESSURE_TIMEOUT_MS}ms, abandoning")
+            abandon()
+            return false
+        }
+        if (closed) {
+            returnQuota(reserved)
+            return false
+        }
+        queue.offer(data)
+        return true
     }
 
     /** 对端正常结束这条流（A_CLSE）：EOF 代表输出完整。 */
@@ -1263,6 +1309,28 @@ class AdbSocketStream(
 
     internal fun forceClose() {
         closed = true
+        sealLocal()
+    }
+
+    /**
+     * 放弃这条流：本机不再读，向设备发 A_CLSE，并通知连接从流表里摘除。
+     *
+     * [forceClose] 只关本机这一侧；这里额外把对端与连接侧都收尾，设备才会停止推送。
+     */
+    internal fun abandon() {
+        if (closed) return
+        closed = true
+        if (remoteId != 0) runCatching {
+            sender(A_CLSE, localId, remoteId, ByteArray(0))
+        }
+        sealLocal()
+        onAbandon?.invoke(localId)
+    }
+
+    /** 关掉本机这一侧：叫醒等待者、投递结束标记、把额度一次性还清。 */
+    private fun sealLocal() {
+        // 叫醒可能卡在额度上的读线程，让等待者立刻看到结束标记
+        releaseQuota()
         queue.offer(EndOfStreamMarker)
         latch.countDown()
         if (flowControlWindow > 0) {
@@ -1286,10 +1354,8 @@ class AdbSocketStream(
         if (remoteId != 0) runCatching {
             sender(A_CLSE, localId, remoteId, ByteArray(0))
         }
-        queue.offer(EndOfStreamMarker)
-        if (flowControlWindow > 0) {
-            synchronized(writeLock) { writeLock.notifyAll() }
-        }
+        // 读完剩余块的那一侧已不会再归还额度，这里统一放开
+        sealLocal()
     }
 
     private inner class InStream: InputStream() {
@@ -1310,6 +1376,7 @@ class AdbSocketStream(
                     this.off += n
                     return n
                 }
+                chunk?.let { returnQuota(it.size.coerceAtMost(MAX_STREAM_QUEUE_BYTES)) }
                 chunk = null
                 this.off = 0
                 val next = queue.take()
@@ -1370,3 +1437,10 @@ private fun OutputStream.writeIntLE(v: Int) {
     write(v shr 16 and 0xFF)
     write(v shr 24 and 0xFF)
 }
+
+private const val MAX_STREAM_QUEUE_BYTES = 4 * 1024 * 1024
+
+/** 单块数据的等待上限：超过就当作消费端已经停摆，断开这条流。 */
+private const val BACKPRESSURE_TIMEOUT_MS = 5_000L
+
+private const val STREAM_TAG = "DirectAdbStream"

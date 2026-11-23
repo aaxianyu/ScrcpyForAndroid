@@ -74,6 +74,7 @@ fun MaskedTopBarAction(
     backdrop: LayerBackdrop?,
     highlight: State<Highlight>,
     enabled: Boolean = true,
+    tint: Color = Color.Unspecified,
     modifier: Modifier = Modifier,
     anchorModifier: Modifier = Modifier,
 ) {
@@ -219,7 +220,8 @@ fun MaskedTopBarAction(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = colorScheme.onSurface.copy(alpha = if (enabled) 1f else DISABLED_ALPHA),
+                tint = (if (tint == Color.Unspecified) colorScheme.onSurface else tint)
+                    .copy(alpha = if (enabled) 1f else DISABLED_ALPHA),
             )
         }
     }

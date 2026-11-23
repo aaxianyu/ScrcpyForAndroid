@@ -76,6 +76,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppManagerError
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.DeviceAppRepository
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.openExportTarget
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.LocalApkInstall
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.PackageDetailClient
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.PackageDetailResult
@@ -274,41 +275,6 @@ internal fun AppDetailScreen(packageName: String) {
         AppRuntime.snackbar(snackHost, messageResId)
     }
 
-    /** 导出产物的查看意图；条目属于本应用，交给对方之前先把读权限让出来。 */
-    fun exportViewIntent(uri: Uri, mimeType: String): Intent =
-        Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
-            // clipData 让 chooser 把读权限一并转给用户选中的应用
-            clipData = ClipData.newRawUri(null, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-    /** 按 [kind] 的 MIME 向系统拉起「打开方式」；`.apks` 起不来时退回通配 MIME。 */
-    fun openExportTarget(uri: Uri, kind: DeviceAppRepository.ExportKind): Boolean {
-        fun open(mimeType: String): Boolean = runCatching {
-            val intent = exportViewIntent(uri, mimeType)
-            // 先看内层 intent 的候选，才判得出没有应用能接这份产物
-            val candidates = context.packageManager.queryIntentActivities(
-                intent,
-                PackageManager.MATCH_DEFAULT_ONLY,
-            )
-            if (candidates.isEmpty()) return@runCatching false
-            // 系统可能已给这个 MIME 设了默认应用：套 chooser 才会把候选摆给用户
-            val chooser = Intent.createChooser(intent, null)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            context.startActivity(chooser)
-            true
-        }.getOrDefault(false)
-        // 分包安装器未必注册 `.apks` 这个 type：先按它起，起不来再退回 */*，让系统把全部候选摆出来
-        val mimeTypes =
-            if (kind == DeviceAppRepository.ExportKind.APK_SET) {
-                listOf(kind.mimeType, "*/*")
-            } else {
-                listOf(kind.mimeType)
-            }
-        return mimeTypes.any { open(it) }
-    }
-
     // 导出后点「安装」的重试状态：缺「安装未知应用」权限时先拉系统设置，回页后续装一次。
     // 续装请求只在本进程内有效，进程重建后不替用户续一个陈旧请求，重新导出即可。
     var pendingInstallUri by remember { mutableStateOf<Uri?>(null) }
@@ -461,7 +427,7 @@ internal fun AppDetailScreen(packageName: String) {
             message = message,
             actionLabel = AppRuntime.stringResource(R.string.app_manager_snackbar_open),
             onResult = { result ->
-                if (result == SnackbarResult.ActionPerformed && !openExportTarget(target, kind)) {
+                if (result == SnackbarResult.ActionPerformed && !openExportTarget(context, target, kind)) {
                     AppRuntime.snackbar(snackHost, R.string.app_manager_export_open_failed)
                 }
             },
