@@ -44,7 +44,6 @@ import androidx.core.content.FileProvider
 import io.github.miuzarte.scrcpyforandroid.R
 import io.github.miuzarte.scrcpyforandroid.models.isWmRestored
 import io.github.miuzarte.scrcpyforandroid.models.parseWmSetting
-import io.github.miuzarte.scrcpyforandroid.scaffolds.SectionSmallTitle
 import io.github.miuzarte.scrcpyforandroid.scaffolds.SuperTextField
 import io.github.miuzarte.scrcpyforandroid.constants.UiSpacing
 import io.github.miuzarte.scrcpyforandroid.nativecore.NativeAdbService
@@ -84,6 +83,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.textStyles
 import top.yukonga.miuix.kmp.utils.PressFeedbackType
@@ -142,6 +142,8 @@ private const val RES_MAX = 4320
 private const val ADB_TCP_DEFAULT_PORT = 5555
 private const val ADB_TCP_PORT_MIN = 1024
 private const val ADB_TCP_PORT_MAX = 65535
+// 行尾状态值只是顺手读一下，adbd 卡住时不能让行尾一直空白等下去
+private const val TOOL_STATE_READ_TIMEOUT_MS = 4_000L
 // 重启/关机必然切断连接：发出命令后最多等这么久就必须让用户去看设备，回读永远等不到有效结果
 private const val REBOOT_RESULT_WAIT_MS = 3_000L
 
@@ -345,6 +347,8 @@ internal fun UtilityToolsScreen(
     var stockResolution by remember { mutableStateOf("") }
     var activeResolution by remember { mutableStateOf("") }
     var adbOverTcpOn by remember { mutableStateOf(false) }
+    // 端口状态要等异步读取，读到之前不能断言「未开启」：那会和「设备没连上」混为一谈
+    var adbTcpStateKnown by remember { mutableStateOf(false) }
     var activeTcpPort by remember { mutableStateOf("") }
     var adbOverTcpBusy by remember { mutableStateOf(false) }
     var portSheetOpen by remember { mutableStateOf(false) }
@@ -427,6 +431,7 @@ internal fun UtilityToolsScreen(
                 if (switched) {
                     adbOverTcpOn = true
                     activeTcpPort = port.toString()
+                    adbTcpStateKnown = true
                     AppRuntime.snackbar(R.string.tools_wireless_adb_on, port as Any)
                 } else {
                     AppRuntime.snackbar(R.string.tools_wireless_adb_failed, AppRuntime.stringResource(R.string.tools_apply_not_effective))
@@ -436,6 +441,7 @@ internal fun UtilityToolsScreen(
                 if (it is AdbPortReconnectFailure) {
                     adbOverTcpOn = true
                     activeTcpPort = port.toString()
+                    adbTcpStateKnown = true
                     AppRuntime.snackbar(R.string.tools_wireless_adb_reconnect_failed, port, it.message ?: "")
                 } else {
                     AppRuntime.snackbar(R.string.tools_wireless_adb_failed, it.message ?: "")
@@ -448,11 +454,36 @@ internal fun UtilityToolsScreen(
         scope.launch(Dispatchers.IO) {
             // 属性可能残留禁用哨兵值或异常文本：只有合法端口号才视为已启用
             val port = runCatching {
-                NativeAdbService.shell("getprop service.adb.tcp.port").trim()
-            }.getOrDefault("")
+                NativeAdbService.shell("getprop service.adb.tcp.port", TOOL_STATE_READ_TIMEOUT_MS).trim()
+            }.getOrNull() ?: return@launch
             val valid = port.toIntOrNull() in 1024..65535
             adbOverTcpOn = valid
             activeTcpPort = if (valid) port else ""
+            adbTcpStateKnown = true
+        }
+    }
+
+    // 读不到就留空，免得「设备没连上」显示成「设备没有分辨率」
+    // 也只补空白行：用户已经操作过的值不能被这次迟到的读取盖回去
+    LaunchedEffect(Unit) {
+        scope.launch(Dispatchers.IO) {
+            val sizeUntouched = stockResolution.isBlank() && activeResolution.isBlank()
+            val densityUntouched = stockDensity.isBlank() && activeDensity.isBlank()
+            if (!sizeUntouched && !densityUntouched) return@launch
+            if (!NativeAdbService.isConnected()) return@launch
+            runCatching {
+                val output = NativeAdbService.shell("wm size; wm density", TOOL_STATE_READ_TIMEOUT_MS)
+                if (sizeUntouched) {
+                    val physicalSize = extractDisplaySize(output, "Physical")
+                    stockResolution = physicalSize
+                    activeResolution = extractDisplaySize(output, "Override").ifBlank { physicalSize }
+                }
+                if (densityUntouched) {
+                    val physicalDensity = extractDensity(output, "Physical")
+                    stockDensity = physicalDensity
+                    activeDensity = extractDensity(output, "Override").ifBlank { physicalDensity }
+                }
+            }
         }
     }
 
@@ -1117,37 +1148,64 @@ internal fun UtilityToolsScreen(
                 if (blurActive) Modifier.layerBackdrop(blurBackdrop)
                 else Modifier,
         ) {
+            // 标题要比组件默认大一号，ArrowPreference 不开放字号参数，只能覆盖行内的 textStyles
+            val pageTextStyles = textStyles
+            val listTextStyles =
+                remember(pageTextStyles) {
+                    pageTextStyles.copy(headline1 = pageTextStyles.headline1.copy(fontSize = 18.sp))
+                }
             LazyColumn(
                 contentPadding = pagePadding,
                 scrollBehavior = scrollBehavior,
                 bottomInnerPadding = UiSpacing.PageBottom,
             ) {
-                toolGroups.forEach { (titleResId, tools) ->
+                // 分组标题不展示，分组边界只由卡片之间的留白体现
+                toolGroups.forEach { (_, tools) ->
                     item {
-                        SectionSmallTitle(stringResource(titleResId))
                         Card {
                             Column {
-                                tools.forEach { tool ->
-                                    ArrowPreference(
-                                        title = stringResource(tool.titleResId),
-                                        summary =
-                                            if (tool.titleResId == R.string.tools_wireless_adb && adbOverTcpOn) {
-                                                stringResource(R.string.tools_wireless_adb_active, activeTcpPort)
-                                            } else {
-                                                stringResource(tool.descResId)
+                                MiuixTheme(textStyles = listTextStyles) {
+                                    tools.forEach { tool ->
+                                        ArrowPreference(
+                                            title = stringResource(tool.titleResId),
+                                            summary = stringResource(tool.descResId),
+                                            startAction = {
+                                                Icon(
+                                                    modifier = Modifier.padding(end = UiSpacing.Small),
+                                                    painter = painterResource(tool.icon),
+                                                    contentDescription = null,
+                                                    tint = Color.Unspecified,
+                                                )
                                             },
-                                        startAction = {
-                                            Icon(
-                                                painter = painterResource(tool.icon),
-                                                contentDescription = null,
-                                                tint = Color.Unspecified,
-                                            )
-                                        },
-                                        onClick = {
-                                            haptic.contextClick()
-                                            tool.onClick()
-                                        },
-                                    )
+                                            endActions = {
+                                                // 无线调试的端口状态要等异步读取，读到之前不写「未开启」
+                                                val state = when (tool.titleResId) {
+                                                    R.string.tools_screen_density -> activeDensity
+                                                    R.string.tools_screen_resolution ->
+                                                        activeResolution.replace('x', '×')
+                                                    R.string.tools_wireless_adb ->
+                                                        when {
+                                                            !adbTcpStateKnown -> ""
+                                                            adbOverTcpOn ->
+                                                                stringResource(R.string.tools_wireless_adb_port, activeTcpPort)
+                                                            else -> stringResource(R.string.tools_wireless_adb_port_off)
+                                                        }
+                                                    else -> ""
+                                                }
+                                                if (state.isNotEmpty()) {
+                                                    Text(
+                                                        text = state,
+                                                        fontSize = textStyles.footnote1.fontSize,
+                                                        color = colorScheme.onSurfaceVariantSummary,
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                haptic.contextClick()
+                                                tool.onClick()
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }

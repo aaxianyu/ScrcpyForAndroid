@@ -720,11 +720,11 @@
     <string name="tools_group_app">Apps</string>
     <string name="tools_group_debug">Debugging tools</string>
     <string name="tools_app_manager">App manager</string>
-    <string name="tools_app_manager_desc">Disable, uninstall, export and more</string>
+    <string name="tools_app_manager_desc">Disable, uninstall, export</string>
     <string name="tools_not_implemented">Not implemented yet</string>
     <string name="tools_not_connected">No device connected</string>
     <string name="tools_screenshot">Screenshot</string>
-    <string name="tools_screenshot_desc">Capture the current screen as PNG</string>
+    <string name="tools_screenshot_desc">Capture the screen as PNG</string>
     <string name="tools_screenshot_executing">Capturing screenshot…</string>
     <string name="tools_screenshot_done">Screenshot captured</string>
     <string name="tools_screenshot_saved">Screenshot saved: %1$s</string>
@@ -734,7 +734,7 @@
     <string name="tools_screenshot_save">Save</string>
     <string name="tools_screenshot_open">Open</string>
     <string name="tools_advanced_reboot">Advanced reboot</string>
-    <string name="tools_advanced_reboot_desc">Reboot into Recovery, Fastboot and other modes</string>
+    <string name="tools_advanced_reboot_desc">Boot to Recovery or Fastboot</string>
     <string name="tools_reboot_normal">Reboot</string>
     <string name="tools_reboot_soft">Soft reboot</string>
     <string name="tools_reboot_shutdown">Shutdown</string>
@@ -755,7 +755,7 @@
     <string name="tools_reboot_executing">Executing: %1$s…</string>
     <string name="tools_reboot_unconfirmed">Cannot confirm %1$s. Check the device.</string>
     <string name="tools_screen_density">Screen DPI</string>
-    <string name="tools_screen_density_desc">Change how large UI elements appear</string>
+    <string name="tools_screen_density_desc">Change UI element size</string>
     <string name="tools_density_hint">DPI (%1$d–%2$d)</string>
     <string name="tools_density_applied">DPI set to %1$s</string>
     <string name="tools_density_restored">DPI restored to factory: %1$s</string>
@@ -766,9 +766,9 @@
     <string name="tools_value_now">Active</string>
     <string name="tools_value_restore">Restore</string>
     <string name="tools_screen_resolution">Screen resolution</string>
-    <string name="tools_screen_resolution_desc">Change the number of pixels the screen outputs</string>
+    <string name="tools_screen_resolution_desc">Change output pixel size</string>
     <string name="tools_screen_standby">Screen standby</string>
-    <string name="tools_screen_standby_desc">Turn off display and touch without locking</string>
+    <string name="tools_screen_standby_desc">Screen and touch off, no lock</string>
     <string name="tools_screen_standby_dialog_desc">Display and touch turn off without locking; you can switch back any time.</string>
     <string name="tools_screen_standby_turn_off">Turn off screen</string>
     <string name="tools_screen_standby_wake_up">Turn on screen</string>
@@ -785,8 +785,8 @@
     <string name="tools_resolution_read_failed">Failed to read resolution: %1$s</string>
     <string name="tools_wireless_adb">Wireless debugging</string>
     <string name="tools_wireless_adb_dialog_title">Set wireless debugging port</string>
-    <string name="tools_wireless_adb_desc">Enable TCP/IP mode and set the listening port</string>
-    <string name="tools_wireless_adb_active">Active on port %1$s</string>
+    <string name="tools_wireless_adb_desc">Enable TCP/IP and set port</string>
+    <string name="tools_wireless_adb_port">Port %1$s</string>
     <string name="tools_wireless_adb_on">Wireless debugging enabled on port %1$d</string>
     <string name="tools_wireless_adb_reconnect_failed">Port %1$d accepted, but reconnection failed. Connect manually to this port. Details: %2$s</string>
     <string name="tools_wireless_adb_port_default">When left blank</string>
@@ -796,7 +796,7 @@
     <string name="tools_wireless_adb_failed">Failed to enable wireless debugging: %1$s</string>
     <string name="tools_activate_app">Activate apps</string>
     <string name="tools_activate_action">Activate</string>
-    <string name="tools_activate_app_desc">Run app startup scripts over ADB</string>
+    <string name="tools_activate_app_desc">Run launch scripts over ADB</string>
     <string name="tools_activate_detecting">Detecting installed apps…</string>
     <string name="tools_activate_detect_failed">Failed to detect apps: %1$s</string>
     <string name="tools_activate_detect_failed_hint">App detection failed. Check the ADB connection and retry.</string>
@@ -821,7 +821,7 @@
     <string name="tools_activate_reason_missing_command">A command the startup script needs is missing on the device</string>
     <string name="tools_activate_reason_unknown">Unknown reason; copy details to inspect</string>
     <string name="tools_device_info">Device info</string>
-    <string name="tools_device_info_desc">View model, system, battery, storage and more</string>
+    <string name="tools_device_info_desc">Model, system, battery, storage</string>
     <string name="device_info_unknown">Unknown</string>
     <string name="device_info_device_model">Brand &amp; model</string>
     <string name="device_info_android_version">Android version</string>
@@ -881,7 +881,7 @@
     <string name="device_info_selinux_enforcing">Enforcing</string>
     <string name="device_info_selinux_permissive">Permissive</string>
     <string name="tools_process_manager">Process manager</string>
-    <string name="tools_process_manager_desc">View and stop running apps by memory use</string>
+    <string name="tools_process_manager_desc">View and stop apps by memory</string>
     <string name="tools_process_loading">Reading process list…</string>
     <string name="tools_process_empty">No running apps</string>
     <string name="tools_process_empty_filtered">Nothing left after hiding system apps</string>

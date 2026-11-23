@@ -785,7 +785,7 @@
     <string name="tools_wireless_adb">无线调试</string>
     <string name="tools_wireless_adb_dialog_title">设置无线调试端口</string>
     <string name="tools_wireless_adb_desc">启用 TCP/IP 模式并设置监听端口</string>
-    <string name="tools_wireless_adb_active">端口 %1$s 正在运行</string>
+    <string name="tools_wireless_adb_port">端口 %1$s</string>
     <string name="tools_wireless_adb_on">无线调试已在端口 %1$d 开启</string>
     <string name="tools_wireless_adb_reconnect_failed">设备已接受切换到端口 %1$d，但重新连接失败。请手动连接此端口。详情：%2$s</string>
     <string name="tools_wireless_adb_port_default">留空则用</string>
