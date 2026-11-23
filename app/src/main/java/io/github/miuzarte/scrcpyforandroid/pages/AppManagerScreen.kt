@@ -1107,6 +1107,8 @@ internal fun AppManagerScreen(
                                             glassActive = topBarGlass,
                                             backdrop = topBarBackdrop,
                                             highlight = topBarHighlight,
+                                            // 图标始终是「全选」，靠颜色区分全选与否
+                                            tint = if (allGroupSelected) colorScheme.primary else colorScheme.onSurface,
                                         )
                                     } else {
                                         if (!floatingForm) {
