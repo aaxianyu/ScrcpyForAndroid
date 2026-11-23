@@ -65,6 +65,7 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.data.AppManagerError
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.DeviceAppRepository
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.exportViewIntent
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.openExportTarget
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.localReadPermissionSettingsIntent
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.LocalApkInstall
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.TransferProgress
 import io.github.miuzarte.scrcpyforandroid.appmanager.data.currentDeviceKey
@@ -1392,11 +1393,7 @@ internal fun AppManagerScreen(
                 },
                 onGoToSettings = {
                     val opened = runCatching {
-                        val intent = android.content.Intent(
-                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            android.net.Uri.fromParts("package", context.packageName, null),
-                        )
-                        context.startActivity(intent)
+                        context.startActivity(localReadPermissionSettingsIntent(context))
                         true
                     }.getOrDefault(false)
                     if (!opened) {
@@ -1404,6 +1401,20 @@ internal fun AppManagerScreen(
                     }
                 },
             )
+
+            // 从授权页回来：系统刚把权限写下去，枚举未必立刻能看到全量列表，主动补读几轮
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME &&
+                        localPickerOpen &&
+                        localPermissionMissing
+                    ) {
+                        viewModel.retryLocalAppsUntilGranted()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
 
             // 执行已确认的操作（对话框收起后由 LaunchedEffect 调用）
             val executeConfirm: (ConfirmRequest) -> Unit = { request ->

@@ -142,6 +142,9 @@ class AppManagerViewModel(
     /** 进行中的本机图标预热任务，重复加载时取消上一轮。 */
     private var localIconWarmJob: Job? = null
 
+    /** 进行中的「授权后补读」：同时只跑一轮，重复触发直接并到这一轮上。 */
+    private var localRetryJob: Job? = null
+
     private val _localAppsPermissionMissing = MutableStateFlow(false)
     val localAppsPermissionMissing: StateFlow<Boolean> = _localAppsPermissionMissing.asStateFlow()
 
@@ -163,31 +166,68 @@ class AppManagerViewModel(
         val hasCachedList = _localApps.value.isNotEmpty()
         _localAppsLoading.value = !background || !hasCachedList
         DeviceAppRepository.loadLocalApps(background = background) { result ->
-            // 代次收口：枚举慢了之后用户可能又拉了一次，回来的旧结果不能再写
-            if (generation != localLoadGeneration) return@loadLocalApps
-            // 回调一到就收：置位在枚举返回的那一刻，不等图标预热（预热是后台的）
-            _localAppsLoading.value = false
-            when (result) {
-                is LocalAppRepository.Result.Success -> {
-                    _localApps.value = result.apps
-                    _localAppsPermissionMissing.value = false
-                    _localAppsLoaded.value = true
-                    _localAppsSlow.value = false
-                    warmLocalIcons(result.apps)
-                }
+            commitLocalResult(generation, result)
+        }
+    }
 
-                LocalAppRepository.Result.PermissionMissing -> {
-                    _localApps.value = emptyList()
-                    _localAppsPermissionMissing.value = true
-                    _localAppsLoaded.value = true
-                    _localAppsSlow.value = false
+    /**
+     * 授权页回来后的补读。
+     *
+     * 系统把权限写下去、应用这边读到完整列表之间有一段时差，只读一次常常还是
+     * 「只能枚举到自身」，用户就得反复开关选择器。这里按次数重试，直到拿到列表或放弃。
+     * 一轮拿不到结论（看门狗回了超时）就收手：那枚枚举还在跑，再发一轮只会叠在它上面。
+     */
+    fun retryLocalAppsUntilGranted() {
+        if (localRetryJob?.isActive == true) return
+        localRetryJob = viewModelScope.launch {
+            var lastGeneration = 0
+            try {
+                for (attempt in 0 until LOCAL_PERMISSION_RETRY_ATTEMPTS) {
+                    val generation = ++localLoadGeneration
+                    lastGeneration = generation
+                    _localAppsLoading.value = true
+                    val result = DeviceAppRepository.loadLocalAppsNow()
+                    // Slow 是看门狗先到点：这次枚举还没结论，权限提示留在原位，
+                    // 本轮到此为止，等下一次回页再补读
+                    if (result is LocalAppRepository.Result.Slow) return@launch
+                    commitLocalResult(generation, result)
+                    if (result is LocalAppRepository.Result.Success) return@launch
+                    if (attempt < LOCAL_PERMISSION_RETRY_ATTEMPTS - 1) {
+                        delay(LOCAL_PERMISSION_RETRY_DELAY_MS)
+                    }
                 }
+            } finally {
+                // 期间用户又开了选择器：新一轮加载自己管加载态，这里不能把它收掉
+                if (lastGeneration == localLoadGeneration) _localAppsLoading.value = false
+            }
+        }
+    }
 
-                LocalAppRepository.Result.Slow -> {
-                    // 不碰列表与 loaded：后台那次枚举还在跑，回来会覆盖这个状态。
-                    // 列表已在屏上时不换超时提示，否则后台刷新会把可用列表顶掉
-                    if (_localApps.value.isEmpty()) _localAppsSlow.value = true
-                }
+    private fun commitLocalResult(generation: Int, result: LocalAppRepository.Result) {
+        // 代次收口：枚举慢了之后用户可能又拉了一次，回来的旧结果不能再写
+        if (generation != localLoadGeneration) return
+        // 回调一到就收：置位在枚举返回的那一刻，不等图标预热（预热是后台的）
+        _localAppsLoading.value = false
+        when (result) {
+            is LocalAppRepository.Result.Success -> {
+                _localApps.value = result.apps
+                _localAppsPermissionMissing.value = false
+                _localAppsLoaded.value = true
+                _localAppsSlow.value = false
+                warmLocalIcons(result.apps)
+            }
+
+            LocalAppRepository.Result.PermissionMissing -> {
+                _localApps.value = emptyList()
+                _localAppsPermissionMissing.value = true
+                _localAppsLoaded.value = true
+                _localAppsSlow.value = false
+            }
+
+            LocalAppRepository.Result.Slow -> {
+                // 不碰列表与 loaded：后台那次枚举还在跑，回来会覆盖这个状态。
+                // 列表已在屏上时不换超时提示，否则后台刷新会把可用列表顶掉
+                if (_localApps.value.isEmpty()) _localAppsSlow.value = true
             }
         }
     }

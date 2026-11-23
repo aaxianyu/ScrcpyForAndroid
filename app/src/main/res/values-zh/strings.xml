@@ -955,7 +955,7 @@
     <string name="app_manager_install_nothing">没有选中的应用</string>
     <string name="app_manager_install_no_apk">这个压缩包里没有可安装的 APK</string>
     <string name="app_manager_local_picker_title">从本机应用选择</string>
-    <string name="app_manager_local_permission_hint">请授予「读取应用列表」权限，然后关闭并重新打开本窗口。</string>
+    <string name="app_manager_local_permission_hint">请授予「读取应用列表」权限，返回后会自动刷新。</string>
     <string name="app_manager_local_go_to_settings">前往授权</string>
     <string name="app_manager_local_install_confirm">安装包将逐个推送到设备。</string>
     <string name="app_manager_local_install_confirm_split">其中 %1$d 个含 split 分包，将一并推送安装。</string>

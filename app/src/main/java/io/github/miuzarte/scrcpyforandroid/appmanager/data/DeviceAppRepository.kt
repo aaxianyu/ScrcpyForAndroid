@@ -30,10 +30,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import java.io.File
 import java.io.OutputStream
 import java.util.zip.ZipOutputStream
@@ -1776,6 +1778,20 @@ object DeviceAppRepository {
             withContext(Dispatchers.Main) { onResult(LocalAppRepository.Result.Slow) }
         }
     }
+
+    /**
+     * 枚举本机应用的挂起版本：等这次枚举有了结论再返回，供「授权后重试」这类需要
+     * 逐次判定结果的流程使用。
+     *
+     * 看门狗先到点时拿到 [LocalAppRepository.Result.Slow]，本次调用就以它为结论；
+     * 后台那次枚举跑完不会回传结果，需要真实结果就再调一次。
+     */
+    suspend fun loadLocalAppsNow(background: Boolean = false): LocalAppRepository.Result =
+        suspendCancellableCoroutine { cont ->
+            loadLocalApps(background = background) { result ->
+                if (cont.isActive) cont.resume(result)
+            }
+        }
 
     // ---------------------------------------------------------------- 内部
 

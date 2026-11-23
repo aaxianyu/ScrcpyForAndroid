@@ -956,7 +956,7 @@
     <string name="app_manager_install_nothing">No app selected</string>
     <string name="app_manager_install_no_apk">No installable APK in this archive</string>
     <string name="app_manager_local_picker_title">Select from this device</string>
-    <string name="app_manager_local_permission_hint">Grant the \"Read app list\" permission, then close and reopen this window.</string>
+    <string name="app_manager_local_permission_hint">Grant the \"Read app list\" permission. The list refreshes when you come back.</string>
     <string name="app_manager_local_go_to_settings">Go to settings</string>
     <string name="app_manager_local_install_confirm">The packages will be pushed to the device one by one.</string>
     <string name="app_manager_local_install_confirm_split">%1$d of them ship split APKs; all parts are pushed.</string>

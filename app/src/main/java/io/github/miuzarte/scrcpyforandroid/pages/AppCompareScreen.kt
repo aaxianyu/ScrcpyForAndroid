@@ -105,6 +105,9 @@ import io.github.miuzarte.scrcpyforandroid.appmanager.ui.openExportTarget
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.AppManagerRefreshIconSize
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.appManagerErrorText
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.installFailureReason
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.LOCAL_PERMISSION_RETRY_ATTEMPTS
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.LOCAL_PERMISSION_RETRY_DELAY_MS
+import io.github.miuzarte.scrcpyforandroid.appmanager.ui.localReadPermissionSettingsIntent
 import io.github.miuzarte.scrcpyforandroid.ui.DialogHeading
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.MaskedTopBarAction
 import io.github.miuzarte.scrcpyforandroid.appmanager.ui.TransferProgressDialog
@@ -350,6 +353,9 @@ internal fun AppCompareScreen() {
     var installedPackages by remember { mutableStateOf(emptySet<String>()) }
     // 本机侧读不到列表（没给「读取应用列表」权限）：此时两侧都没有比较的底
     var localUnavailable by remember { mutableStateOf(false) }
+    var localRetryActive by remember { mutableStateOf(false) }
+    // 本机列表的加载代次：自动刷新与授权后补读会同时发生，只认最后一次发起的结论
+    var localLoadGeneration by remember { mutableStateOf(0) }
     // Android 9 及以下写不进 Download/Scrcpy，落盘位置交给系统保存框，这里存它等的对象
     var safSingle by remember { mutableStateOf<DeviceApp?>(null) }
     var safSingleKind by remember { mutableStateOf<DeviceAppRepository.ExportKind?>(null) }
@@ -497,21 +503,53 @@ internal fun AppCompareScreen() {
     val installSelection = remember { mutableStateListOf<String>() }
     val exportSelection = remember { mutableStateListOf<String>() }
 
+    fun applyLocalResult(generation: Int, result: LocalAppRepository.Result) {
+        if (generation != localLoadGeneration) return
+        localTimedOut = result is LocalAppRepository.Result.Slow
+        localUnavailable = result is LocalAppRepository.Result.PermissionMissing
+        if (result is LocalAppRepository.Result.Success) {
+            localApps = result.apps
+            // 行内只查内存 LRU；读图是跨进程调用，预热只在 IO 里跑一次
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    result.apps.forEach { DeviceAppRepository.warmLocalIcon(it) }
+                }
+                localIconEpoch += 1
+            }
+        }
+    }
+
     fun loadLocal() {
+        val generation = ++localLoadGeneration
         localLoading = true
         DeviceAppRepository.loadLocalApps { result ->
+            if (generation != localLoadGeneration) return@loadLocalApps
             localLoading = false
-            localTimedOut = result is LocalAppRepository.Result.Slow
-            localUnavailable = result is LocalAppRepository.Result.PermissionMissing
-            if (result is LocalAppRepository.Result.Success) {
-                localApps = result.apps
-                // 行内只查内存 LRU；读图是跨进程调用，预热只在 IO 里跑一次
-                scope.launch {
-                    withContext(Dispatchers.IO) {
-                        result.apps.forEach { DeviceAppRepository.warmLocalIcon(it) }
-                    }
-                    localIconEpoch += 1
+            applyLocalResult(generation, result)
+        }
+    }
+
+    // 从授权页回来：系统把权限写下去与本机枚举读到全量列表之间有时差，读一次常常
+    // 还是只能枚举到自身，这里按次数补读，直到拿到列表
+    fun retryLocalPermission() {
+        if (localRetryActive) return
+        localRetryActive = true
+        // 补读走后台节流：整页载入卡只留给首次枚举，提示卡原位等结果
+        localLoading = false
+        scope.launch {
+            try {
+                for (attempt in 0 until LOCAL_PERMISSION_RETRY_ATTEMPTS) {
+                    val generation = ++localLoadGeneration
+                    val result = DeviceAppRepository.loadLocalAppsNow(background = true)
+                    // Slow 是看门狗先到点：那次枚举还在跑，权限提示留在原位，
+                    // 本轮到此为止，等下一次回页再补读
+                    if (result is LocalAppRepository.Result.Slow) return@launch
+                    applyLocalResult(generation, result)
+                    if (result is LocalAppRepository.Result.Success) return@launch
+                    if (attempt < LOCAL_PERMISSION_RETRY_ATTEMPTS - 1) delay(LOCAL_PERMISSION_RETRY_DELAY_MS)
                 }
+            } finally {
+                localRetryActive = false
             }
         }
     }
@@ -565,6 +603,8 @@ internal fun AppCompareScreen() {
                     if (leftAt != 0L && SystemClock.elapsedRealtime() - leftAt >= AUTO_REFRESH_AFTER_BACKGROUND_MS) {
                         autoRefresh()
                     }
+                    // 回页时本机列表还读不出来：权限可能刚在别处给过，补读几轮把列表取回来
+                    if (localUnavailable) retryLocalPermission()
                     if (installInFlight) return@LifecycleEventObserver
                     val content = pendingInstallContent
                     val source = pendingInstallUri
@@ -1142,6 +1182,18 @@ internal fun AppCompareScreen() {
                             NoticeCard(
                                 text = stringResource(R.string.app_manager_local_permission_hint),
                                 modifier = Modifier.padding(bottom = UiSpacing.PageItem),
+                                actionText = stringResource(R.string.app_manager_local_go_to_settings),
+                                onAction = {
+                                    val opened = runCatching {
+                                        context.startActivity(localReadPermissionSettingsIntent(context))
+                                        true
+                                    }.getOrDefault(false)
+                                    if (!opened) {
+                                        AppRuntime.snackbar(
+                                            AppRuntime.stringResource(R.string.pref_cannot_open_settings),
+                                        )
+                                    }
+                                },
                             )
                         }
                     }
@@ -1485,16 +1537,36 @@ private fun DirectionTabs(
 }
 
 @Composable
-private fun NoticeCard(text: String, modifier: Modifier = Modifier) {
+private fun NoticeCard(
+    text: String,
+    modifier: Modifier = Modifier,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    val hasAction = actionText != null && onAction != null
     Card(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = text,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(UiSpacing.PageItem),
-            style = textStyles.footnote2,
-            color = colorScheme.onSurfaceVariantSummary,
-        )
+            horizontalAlignment = if (hasAction) Alignment.CenterHorizontally else Alignment.Start,
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.fillMaxWidth(),
+                style = textStyles.footnote2,
+                color = colorScheme.onSurfaceVariantSummary,
+                textAlign = if (hasAction) TextAlign.Center else TextAlign.Start,
+            )
+            if (actionText != null && onAction != null) {
+                Spacer(Modifier.height(UiSpacing.ContentVertical))
+                ComparePill(
+                    text = actionText,
+                    onClick = onAction,
+                    small = true,
+                )
+            }
+        }
     }
 }
 
@@ -1531,9 +1603,14 @@ private fun CompareLoadingCard(modifier: Modifier = Modifier) {
     }
 }
 
-/** 区块全选与行尾单条操作共用这套胶囊。 */
+/** 区块全选、行尾单条操作、提示卡动作共用这套胶囊。 */
 @Composable
-private fun ComparePill(text: String, onClick: () -> Unit, enabled: Boolean = true) {
+private fun ComparePill(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    small: Boolean = false,
+) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(percent = 50))
@@ -1544,11 +1621,14 @@ private fun ComparePill(text: String, onClick: () -> Unit, enabled: Boolean = tr
                 indication = null,
                 onClick = onClick,
             )
-            .padding(horizontal = 18.dp, vertical = 5.dp),
+            .padding(
+                horizontal = if (small) 14.dp else 18.dp,
+                vertical = if (small) 4.dp else 5.dp,
+            ),
     ) {
         Text(
             text = text,
-            style = textStyles.body1,
+            style = if (small) textStyles.footnote1 else textStyles.body1,
             color = colorScheme.onSecondaryVariant.copy(alpha = if (enabled) 1f else 0.4f),
         )
     }
@@ -1785,6 +1865,7 @@ private const val AUTO_REFRESH_AFTER_BACKGROUND_MS = 800L
 
 // 断开期间的探针间隔：链路通常在一两秒内被系统重连回来，这个频率够快又不会一直占着通道
 private const val CONNECTIVITY_RETRY_INTERVAL_MS = 3_000L
+
 
 @Composable
 private fun CompareBottomBar(
