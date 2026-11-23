@@ -456,6 +456,8 @@ internal fun UtilityToolsScreen(
             val port = runCatching {
                 NativeAdbService.shell("getprop service.adb.tcp.port", TOOL_STATE_READ_TIMEOUT_MS).trim()
             }.getOrNull() ?: return@launch
+            // 端口可能在读取期间已被用户开启：这次迟到的结果不能把新值盖回去
+            if (adbTcpStateKnown) return@launch
             val valid = port.toIntOrNull() in 1024..65535
             adbOverTcpOn = valid
             activeTcpPort = if (valid) port else ""
