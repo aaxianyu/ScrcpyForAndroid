@@ -26,7 +26,7 @@
 | universal | 不确定架构时选它，体积最大 |
 | x86 / x86_64 | 模拟器 |
 
-版本号带 `e` 后缀（如 `v0.7.2e`）的才是本分支的发布，不带后缀的是上游原版。
+版本号带 `e` 后缀（如 `v0.7.2e`）的才是本分支的发布，不带后缀的是上游原版；预发布再带 `_preN`（如 `v0.7.3e_pre1`）。
 
 > [!警告]
 > **从旧版 0.5.x（0.5.4e）升级的用户请先卸载旧版，或清理应用数据后再安装。**
@@ -37,16 +37,20 @@
 
 ## 本分支增强
 
-以下功能在上游 v0.7.2 的基础上新增，括号内为引入的大致模块：
+以下功能在上游的基础上新增，括号内为引入的大致模块：
 
 - **应用管理**
   - 设备应用清单：安装、卸载、停用/启用、清除数据、导出 APK，支持批量操作
-  - 分包应用（split APK）可安装、可导出为 ZIP
+  - 应用详情页：单独查看应用信息，动作底栏直接操作，更多菜单收纳低频操作
+  - 应用对比：两台设备的应用并排对比（版本更新 / 仅单侧存在），可跨设备安装与导出
+  - 分包应用（split APK）可安装、批量导出时为 ZIP
   - 应用图标与清单本地缓存，按设备分区，连接后静默刷新
   - 搜索、拼音排序、快速滚动条
 - **实用工具**
   - 截图、高级重启（recovery / bootloader / fastboot 等）、屏幕 DPI、屏幕分辨率
-  - 无线调试开关、应用激活（Shizuku等）、设备信息面板、进程管理、熄屏待机
+  - 无线调试开关、一键激活（Shizuku / 冰箱 / 黑阈 / 小黑屋）、设备信息面板、进程管理、熄屏待机
+- **设备信息**
+  - 独立页面展示处理器主频、屏幕 DPI、屏幕尺寸等硬件信息
 - **连接与投屏**
   - 局域网发现可连接的 ADB 设备
   - ADB 连接保活（前台服务 + 守护协程自动重连）
@@ -56,7 +60,7 @@
   - MIUI 风格滑动悬浮球（边缘吸附、无操作渐隐、展开动画、动作排序）
   - 终端命令书签
   - 锁屏密码自动填充支持填充后自动回车
-  - Snackbar 显示时长可调
+  - Snackbar 显示时长可调（500-5000ms）
 - **所有应用**
   - 置顶、搜索、图标显示、滚动条
   - 最近任务图标显示
@@ -65,35 +69,38 @@
 
 ## 与上游同步
 
-本分支以上游 [miuzarte/ScrcpyForAndroid](https://github.com/miuzarte/ScrcpyForAndroid) 的 release tag 为基线，不定期同步上游更新
+本分支以上游 [miuzarte/ScrcpyForAndroid](https://github.com/miuzarte/ScrcpyForAndroid) 的 release tag 为基线，不定期同步上游更新；当前已同步到上游 0.7.3 系列的最新提交。
 
 ## 截图
 
 **应用管理**
 
-<img src="https://github.com/user-attachments/assets/b5384aa1-401e-4c2c-b7b9-6b22a29892fd" height="300" alt="应用管理">
-<img src="https://github.com/user-attachments/assets/690322a8-c024-4832-9658-1b2e99489860" height="300" alt="应用管理-操作菜单">
-<img src="https://github.com/user-attachments/assets/12f07712-b6c2-4df4-89b7-3f4fec453d2c" height="300" alt="应用管理-多选">
-<img src="https://github.com/user-attachments/assets/c4bdd1f4-df3d-41c1-9e73-800a58065819" height="300" alt="所有应用-收藏置顶">
+<img src="https://github.com/user-attachments/assets/951fb651-ee39-45d3-8346-5e1ed9b68ab6" height="300" alt="应用管理">
+<img src="https://github.com/user-attachments/assets/1dce63e0-6207-4646-8b4a-eef7367db3d6" height="300" alt="应用详情">
+<img src="https://github.com/user-attachments/assets/1d97ea77-f0d5-48ca-a017-ec2ace7ebf3c" height="300" alt="应用详情-更多菜单">
+<img src="https://github.com/user-attachments/assets/faf09244-b146-451e-bfdb-ad418cc84cc7" height="300" alt="应用对比">
+<img src="https://github.com/user-attachments/assets/c96349dc-16a3-4245-8dcd-e01f4ad660e7" height="300" alt="所有应用-置顶与搜索">
 
 **实用工具**
 
-<img src="https://github.com/user-attachments/assets/97df0fbe-f150-4b28-90f6-2f13b075660d" height="300" alt="工具页">
-<img src="https://github.com/user-attachments/assets/5704b812-a44e-4b72-8e45-91a2c68569d0" height="300" alt="工具-修改分辨率">
+<img src="https://github.com/user-attachments/assets/a9bfba66-341a-4f4f-b423-a2230354d5f3" height="300" alt="实用工具">
+<img src="https://github.com/user-attachments/assets/7403e424-dab2-4f5a-b2de-c3d386843ddb" height="300" alt="一键激活">
+<img src="https://github.com/user-attachments/assets/b9acef23-6aef-43b8-b089-0ea417da6b67" height="300" alt="设备信息">
+<img src="https://github.com/user-attachments/assets/03b70758-f668-450d-ba63-49fc7c5e5970" height="300" alt="修改分辨率">
 
 **连接与投屏**
 
-<img src="https://github.com/user-attachments/assets/ff5fa601-57b2-4a6b-8402-5ce76990731b" height="300" alt="局域网扫描">
-<img src="https://github.com/user-attachments/assets/a6470205-a269-4119-8e30-937d0695f0e2" height="300" alt="投屏时修改设备显示">
+<img src="https://github.com/user-attachments/assets/57ce0162-321b-4737-8086-a53ded6b204e" height="300" alt="局域网扫描">
+<img src="https://github.com/user-attachments/assets/5f67f601-2a63-42df-8cdf-2cde5df70e40" height="300" alt="投屏时修改显示">
 
 **交互**
 
-<img src="https://github.com/user-attachments/assets/5b62a51b-8d1b-482b-8468-ea9e0e0cdde0" height="300" alt="悬浮球-操作">
-<img src="https://github.com/user-attachments/assets/00b30ef8-c5c5-4c4f-9f0b-65e3cb42f933" height="300" alt="悬浮球新排序">
-<img src="https://github.com/user-attachments/assets/1ee40173-81a6-43b2-b45c-82b09331a95a" height="300" alt="命令书签">
-<img src="https://github.com/user-attachments/assets/2c4952c1-34f5-499f-95e5-615e6cfd0459" height="300" alt="密码-自动回车">
+<img src="https://github.com/user-attachments/assets/e474eaa0-d0d2-402e-964b-cfbab9a8dd8e" height="300" alt="投屏内悬浮球展开">
+<img src="https://github.com/user-attachments/assets/c7da5d6c-365d-42b4-b60c-16d0ffecb337" height="300" alt="悬浮球排序">
+<img src="https://github.com/user-attachments/assets/c20551b5-4965-45fc-a41f-d9179f4685d2" height="300" alt="命令书签">
+<img src="https://github.com/user-attachments/assets/ac4c1a05-52bb-4396-bd87-2f316152356e" height="300" alt="密码自动回车">
 
-> 截图来自 [issues/3](https://github.com/aaxianyu/ScrcpyForAndroid/issues/3)，点击图片可查看原图。
+> 截图来自 [issues/1](https://github.com/aaxianyu/ScrcpyForAndroid/issues/1)，点击图片可查看原图。
 
 ## 功能
 
